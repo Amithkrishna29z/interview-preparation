@@ -12,6 +12,7 @@
 | `Spring_Boot_Junior_Developer_Interview_Questions.md` | Spring Boot, REST API, JPA, Testing, Annotations | ⭐⭐⭐ HIGH |
 | `Spring_Security_JWT_Interview_Questions.md` | Spring Security, JWT, CORS, BCrypt | ⭐⭐⭐ HIGH |
 | `REST_API_HTTP_Interview_Questions.md` | HTTP methods, Status codes, REST design | ⭐⭐⭐ HIGH |
+| `Networking_Interview_Questions.md` | OSI Model, TCP/UDP, DNS, HTTPS, Ports, WebSockets, Load Balancing | ⭐⭐⭐ HIGH |
 | `DSA_Interview_Questions.md` | Arrays, Linked List, Stack, Binary Search, Sorting | ⭐⭐⭐ HIGH |
 | `Software_Engineering_Principles_Interview_Questions.md` | Agile, Scrum, Kanban, SOLID, Design Patterns, Clean Code, TDD | ⭐⭐⭐ HIGH |
 | `Database_Concepts_Interview_Questions.md` | ACID, Normalization, SQL, Transactions | ⭐⭐ MEDIUM |
@@ -300,6 +301,66 @@ HAVING COUNT(*) > 1;
 // Find Cycle → Fast/Slow pointers (Floyd's)
 // Binary Search → left + (right-left)/2 to avoid overflow
 // Fibonacci → Iterative (not recursive — avoid O(2^n))
+```
+
+---
+
+## ⚡ Networking — Must Know Answers
+
+### OSI Model (7 Layers)
+```
+Memory trick: "Please Do Not Throw Sausage Pizza Away"
+7 - Application   → HTTP, HTTPS, FTP, DNS, SMTP
+6 - Presentation  → SSL/TLS, encryption, encoding
+5 - Session       → Session management
+4 - Transport     → TCP (reliable), UDP (fast)
+3 - Network       → IP routing (routers)
+2 - Data Link     → MAC addresses (switches)
+1 - Physical      → Cables, Wi-Fi
+```
+
+### TCP vs UDP
+| | TCP | UDP |
+|--|-----|-----|
+| Reliable? | ✅ Yes (ACK, retransmit) | ❌ No |
+| Speed | Slower | ✅ Faster |
+| Order | ✅ Guaranteed | ❌ No |
+| Use | HTTP, SSH, Email, FTP | DNS, Streaming, Gaming, VoIP |
+
+### TCP 3-Way Handshake
+```
+Client ──SYN──────────────→ Server   ("I want to connect")
+Client ←──SYN-ACK───────── Server   ("OK, I'm ready")
+Client ──ACK──────────────→ Server   ("Great, let's talk!")
+[Connection Open — data can now flow]
+```
+
+### Must-Know Ports
+```
+22   = SSH          80   = HTTP
+53   = DNS          443  = HTTPS
+3306 = MySQL        5432 = PostgreSQL
+6379 = Redis        8080 = Spring Boot (dev)
+27017= MongoDB
+```
+
+### DNS Lookup Chain
+```
+Browser cache → OS cache → ISP Resolver → Root DNS → TLD (.com) → Authoritative DNS → IP returned
+```
+
+### HTTP vs HTTPS
+```
+HTTP  = Port 80, plain text, INSECURE
+HTTPS = Port 443, TLS encrypted, SECURE
+TLS Handshake: Certificate verification → session key exchange → encrypted channel
+```
+
+### WebSocket vs HTTP Polling
+```
+Short Polling:  Client asks every N seconds (wasteful)
+Long Polling:   Client waits, server holds request open
+WebSocket:      Persistent full-duplex connection (real-time chat, live data)
 ```
 
 ---
