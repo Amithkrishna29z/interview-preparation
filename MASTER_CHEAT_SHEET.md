@@ -9,6 +9,7 @@
 | File | Topics Covered | Priority |
 |------|---------------|---------|
 | `Java_Developer_Interview_Questions.md` | Core Java, OOP, Collections, Exceptions, Multithreading, Streams, Java 8+ | ⭐⭐⭐ HIGH |
+| `Java_Data_Types_Notes.md` | Primitives, Wrappers, Autoboxing, Type Casting, String, Arrays, var | ⭐⭐⭐ HIGH |
 | `Spring_Boot_Junior_Developer_Interview_Questions.md` | Spring Boot, REST API, JPA, Testing, Annotations | ⭐⭐⭐ HIGH |
 | `Spring_Security_JWT_Interview_Questions.md` | Spring Security, JWT, CORS, BCrypt | ⭐⭐⭐ HIGH |
 | `REST_API_HTTP_Interview_Questions.md` | HTTP methods, Status codes, REST design | ⭐⭐⭐ HIGH |
@@ -22,7 +23,10 @@
 | `Git_Docker_DevOps_Interview_Questions.md` | Git commands, Docker, Maven | ⭐ LOWER |
 | `MongoDB_Interview_Questions.md` | MongoDB CRUD, Aggregation, Indexing | ⭐ LOWER |
 | `PostgreSQL_Interview_Questions.md` | PostgreSQL, JSONB, Advanced features | ⭐ LOWER |
+| `JavaScript_Interview_Questions.md` | var/let/const, Closures, Prototypes, Promises, Event Loop, ES6+, DOM | ⭐⭐⭐ HIGH |
+| `Kafka_RabbitMQ_Interview_Questions.md` | Kafka topics/partitions/offsets, consumer groups, delivery semantics, RabbitMQ exchanges, AMQP, messaging patterns | ⭐⭐ MEDIUM |
 | `HR_Behavioral_Interview_Questions.md` | STAR method, HR questions, Tell me about yourself | ⭐⭐⭐ HIGH |
+| `World_Class_Software_Engineer_Roadmap.md` | Full mastery roadmap: DSA, System Design, Architecture, DDD, Security, Performance, Leadership | MASTERY |
 
 ---
 
