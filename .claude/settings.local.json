@@ -2,7 +2,13 @@
   "permissions": {
     "allow": [
       "Bash(find:*)",
-      "WebSearch"
+      "WebSearch",
+      "Bash(awk *)",
+      "PowerShell(git *)",
+      "Bash(grep -vE '^\\\\-\\\\s*$')",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "PowerShell(\\(Get-Content \"C:\\\\Users\\\\amith\\\\OneDrive\\\\Desktop\\\\Documentations\\\\Interview Preparation\\\\Java_Streams_And_Lambdas_Guide.md\" | Measure-Object -Line\\).Lines)"
     ]
   }
 }
