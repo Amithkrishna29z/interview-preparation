@@ -1,5 +1,24 @@
 # Java Collections Framework – Internal Working
 
+> **How to use this guide (junior dev):** The single most asked question here is **"How does HashMap work internally?"** — start with [section 3.3](#33-hashmap-internal-structure-critical-for-interviews) and be able to explain it out loud. After that, the most common follow-ups are "ArrayList vs LinkedList" and "why must I override `equals()` and `hashCode()` together?". Everything else supports those three.
+
+---
+
+## Table of Contents
+
+1. [Concept Explanation](#1-concept-explanation)
+2. [Why It's Used in Real-World Applications](#2-why-its-used-in-real-world-applications)
+3. [Internal Working (Deep Dive)](#3-internal-working-deep-dive)
+   - [3.1 ArrayList](#31-arraylist-internal-structure)
+   - [3.2 LinkedList](#32-linkedlist-internal-structure)
+   - [3.3 HashMap ⭐ most asked](#33-hashmap-internal-structure-critical-for-interviews)
+4. [Code Examples](#4-code-examples)
+5. [Common Mistakes & Pitfalls](#5-common-mistakes--pitfalls)
+6. [Interview Tips & Common Questions](#6-interview-tips)
+7. [Short Revision Summary (Cheat Sheet)](#7-short-revision-summary)
+
+---
+
 ## 1. Concept Explanation
 
 The Java Collections Framework is a unified architecture for storing and manipulating groups of objects. Think of it as a toolbox with different types of containers, each designed for specific use cases.
@@ -122,19 +141,31 @@ public class HashMap<K,V> {
 }
 ```
 
-**How HashMap Works:**
+**How HashMap Works — in plain English first:**
+
+> **Think of it like a wall of numbered mailboxes (buckets).** When you `put(key, value)`:
+> 1. HashMap asks the key for its `hashCode()` (a number identifying it).
+> 2. It converts that number into a mailbox slot (an array index).
+> 3. It drops the entry into that mailbox. If two different keys land in the *same* mailbox (a **collision**), they're chained together in a small list inside that mailbox.
+>
+> When you `get(key)`, it does the exact same math to find the right mailbox instantly (O(1)), then walks the short chain in that mailbox to find the matching key using `equals()`. This is why **fast lookup needs a good `hashCode()`** (spreads keys across many mailboxes) **and a correct `equals()`** (picks the right entry within a mailbox).
+
+**The 3 steps in code:**
 
 ```java
-// 1. Calculate hash
+// 1. Calculate hash — turn the key into a well-mixed number
 final int hash = (key == null) ? 0 : (h = key.hashCode()) ^ (h >>> 16);
+//   ^ null keys are allowed and always go to bucket 0
+//   ^ the ">>> 16" mixes the high bits into the low bits so keys spread out evenly
 
-// 2. Find bucket index
-int index = (n - 1) & hash;  // n = table.length
+// 2. Find bucket index — pick which mailbox to use
+int index = (n - 1) & hash;  // n = table.length (always a power of 2)
+//   ^ "(n - 1) & hash" is a fast way to do "hash % n" when n is a power of 2
 
-// 3. Handle collisions (Java 8+)
-// - If bucket size < 8: Use linked list
-// - If bucket size >= 8: Convert to balanced tree (TREEIFY_THRESHOLD)
-// - If tree size <= 6: Convert back to linked list (UNTREEIFY_THRESHOLD)
+// 3. Handle collisions (Java 8+) — what if a mailbox already has entries?
+// - If bucket size < 8:  keep them in a simple linked list   → lookup O(n) within the bucket
+// - If bucket size >= 8: convert to a balanced tree (TREEIFY_THRESHOLD) → lookup O(log n)
+// - If tree size <= 6:   convert back to a linked list (UNTREEIFY_THRESHOLD)
 ```
 
 **Visual HashMap Structure:**

@@ -11,6 +11,7 @@
 8. [Spring + Axon Framework Complete Example](#8-spring--axon-framework-complete-example)
 9. [Kafka for Saga and Event Sourcing](#9-kafka-for-saga-and-event-sourcing)
 10. [Interview Questions & Answers](#10-interview-questions--answers)
+11. [Quick Reference Cheat Sheet](#11-quick-reference-cheat-sheet)
 
 ---
 
@@ -89,6 +90,8 @@ If ANY said NO:
 - Participants use different database technologies
 - Services are deployed across different data centers or cloud regions
 - Any participant may be temporarily unavailable (lock would be held indefinitely)
+
+> **Common junior mistake:** Reaching for 2PC (or a "distributed transaction") to keep microservices in sync. Across independently deployed services this blocks resources and stalls on any slow/dead participant. Use a Saga (local transactions + compensations) instead.
 
 ---
 
@@ -691,6 +694,8 @@ public void onStockReserved(StockReservedEvent event) {
     // Process payment...
 }
 ```
+
+> **Common junior mistake:** Assuming each event is delivered exactly once. Messaging is at-least-once, so the same event can arrive twice. Without an idempotency check like the one above, a retry would charge the customer twice.
 
 ---
 
@@ -1573,6 +1578,8 @@ public class BankAccountRepository {
     }
 }
 ```
+
+> **Common junior mistake:** Mutating state directly (e.g., `this.balance = newBalance` inside `withdraw()`). In event sourcing, business methods only raise events; state changes happen ONLY inside `apply()`. Skip this and replaying the event log will no longer reproduce the correct state.
 
 ---
 
@@ -2680,6 +2687,67 @@ A: Each individual step in a saga is a local ACID transaction within one service
 **Q42: How does the Outbox Pattern guarantee at-least-once delivery without losing events?**
 
 A: The guarantee comes from three properties: (1) **Atomic write** — the outbox event is written in the same database transaction as the business data; either both succeed or both fail — the event is never lost; (2) **Persistent relay** — the message relay (Debezium or polling publisher) reads from the outbox and marks events as published only after Kafka confirms delivery; (3) **Retry on failure** — if Kafka publish fails, the relay retries until success; if the relay crashes mid-publish, it retries from the last successfully published event. The downside: events may be published more than once (at-least-once), so consumers must be idempotent.
+
+---
+
+## 11. Quick Reference Cheat Sheet
+
+```
+WHICH PATTERN? (pick the smallest thing that solves your problem)
+  Saga            → you need ONE business action to span MULTIPLE services
+                    and stay consistent (place order → reserve stock → charge card)
+  CQRS            → reads and writes have VERY different needs
+                    (complex queries / high read volume vs simple writes)
+  Event Sourcing  → you must keep the FULL HISTORY of changes
+                    (audit log, "how did we get to this state?", time-travel)
+
+WHEN **NOT** TO USE THEM (these are advanced patterns — they add real complexity)
+  → A single service with one database? Use a normal ACID transaction. Done.
+  → Simple CRUD app? Plain reads/writes beat CQRS every time.
+  → Don't need history/audit? Skip Event Sourcing — current-state storage is simpler.
+  Rule of thumb: don't reach for these unless the simple approach has actually failed.
+
+SAGA STYLES
+  Choreography  → no central brain; each service reacts to events and emits its own
+                  Pick when: few steps, you want loose coupling, no single owner needed
+  Orchestration → one orchestrator tells each service what to do, in order
+                  Pick when: many steps / complex logic — you want one place to see the flow
+
+COMPENSATING TRANSACTION (the heart of Saga)
+  You CANNOT roll back across services (no global ROLLBACK).
+  So you "undo" with a NEW forward action that reverses the effect:
+    charged the card  → issue a refund
+    reserved stock    → release the reservation
+  It's a business-level undo, not a database rollback.
+
+2PC  → Two-Phase Commit: lock everyone, then commit together. Strong consistency,
+       but blocks/locks resources and one slow/dead service stalls all → avoid across microservices.
+Saga → Sequence of LOCAL transactions + compensations. No global lock; eventually consistent.
+
+ACID → strong: every transaction leaves the DB fully consistent right now (single DB).
+BASE → relaxed: Basically Available, Soft state, Eventually consistent (across services).
+
+COMMON JUNIOR MISTAKES
+  ✗ Trying to use 2PC / a distributed transaction across microservices
+        → use a Saga instead.
+  ✗ Forgetting idempotency → a retried/duplicate event charges the card twice.
+        → make handlers safe to run more than once (dedupe by event/message id).
+  ✗ Modifying state directly (setBalance(...)) in event sourcing
+        → state may ONLY change by applying an event ("tell, don't ask").
+  ✗ Expecting reads to be instantly up to date in CQRS / event sourcing
+        → the read model is eventually consistent; design the UX for that.
+  ✗ No compensation path → a saga that fails halfway leaves orphaned/inconsistent data.
+
+GLOSSARY (terms juniors trip on)
+  Idempotency           → running the same operation twice = same result as once.
+                          (deleting an already-deleted row changes nothing extra)
+  Eventual consistency  → data is NOT in sync immediately, but all copies catch up "soon".
+  Aggregate             → a cluster of objects treated as one unit for changes;
+                          the consistency boundary (e.g., Order + its OrderLines).
+  Projection / read model → a query-optimized view BUILT from events, used only for reads.
+  Event store           → append-only log of all events; the source of truth in event sourcing
+                          (you rebuild current state by replaying events).
+```
 
 ---
 

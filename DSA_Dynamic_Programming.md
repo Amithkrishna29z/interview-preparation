@@ -1,5 +1,26 @@
 # Dynamic Programming — Complete Interview Preparation Guide
 
+## Table of Contents
+
+1. [What is Dynamic Programming?](#1-what-is-dynamic-programming)
+2. [Two Approaches to DP](#2-two-approaches-to-dp)
+3. [How to Identify DP Problems](#3-how-to-identify-dp-problems)
+4. [General DP Problem-Solving Template](#4-general-dp-problem-solving-template)
+5. [1D DP Problems](#5-1d-dp-problems)
+6. [2D DP Problems](#6-2d-dp-problems)
+7. [Interval DP](#7-interval-dp)
+8. [String DP](#8-string-dp)
+9. [DP on Trees](#9-dp-on-trees)
+10. [DP Patterns Summary Table](#10-dp-patterns-summary-table)
+11. [Space Optimization Techniques](#11-space-optimization-techniques)
+12. [Interview Questions & Answers (30+)](#12-interview-questions--answers-30)
+13. [Complexity Reference Sheet](#13-complexity-reference-sheet)
+14. [Quick Revision Cheat Sheet](#14-quick-revision-cheat-sheet)
+
+> **New to DP? Read this first.** Dynamic Programming sounds scary, but it is really just **brute-force recursion + remembering answers you already computed so you never solve the same subproblem twice.** That's the whole idea. If you can write a plain recursive solution, you are most of the way there — DP simply adds a notebook to store results. Don't try to swallow all 20+ problems at once. Focus first on these five classics, in this order: **Fibonacci**, **Climbing Stairs**, **House Robber**, **Coin Change**, and **Longest Common Subsequence (LCS)**. Once those patterns click, most other DP problems will start to look familiar.
+
+---
+
 ## 1. What is Dynamic Programming?
 
 Dynamic Programming (DP) is an algorithmic technique for solving problems by breaking them into **overlapping subproblems** and storing the results of already-solved subproblems to avoid redundant computation.
@@ -8,6 +29,8 @@ Dynamic Programming (DP) is an algorithmic technique for solving problems by bre
 - Imagine calculating your commute time. Instead of re-measuring every road segment each time, you write down segment times once and reuse them.
 - DP is essentially **"remember what you've computed so you never compute it twice."**
 
+> **Think of it like:** doing your math homework and writing down the answers to problems you've already solved. The next time the same little calculation shows up, you just copy your earlier answer instead of redoing all the work.
+
 ### Two Properties Required for DP
 
 **1. Optimal Substructure**
@@ -15,10 +38,14 @@ The optimal solution to the problem can be constructed from optimal solutions to
 
 Example: Shortest path from A to C through B — if A→B→C is optimal, then A→B must be optimal for the sub-path A to B.
 
+> **Think of it like:** planning the cheapest road trip. The best route from your home to a far city is built out of the best routes between the cities along the way — good big answers are made of good smaller answers.
+
 **2. Overlapping Subproblems**
 The same subproblems recur multiple times during the computation. Without this, plain recursion or divide-and-conquer suffices — no memoization needed.
 
 Example: Fibonacci(5) requires Fibonacci(3) twice. Computing it once and caching the result is DP.
+
+> **Think of it like:** a question that keeps popping up over and over — "what's 7 times 8?" If your work asks it ten times, you solve it once and remember the answer; you don't recompute it each time.
 
 ### DP vs Divide and Conquer
 
@@ -53,6 +80,8 @@ Example: Coin change with coins [1, 3, 4] and target 6.
 ### Top-Down (Memoization)
 
 Write the natural recursive solution. Add a cache (HashMap or array) to store computed results. Before computing, check if the result is already in the cache.
+
+> **Think of it like:** solving problems on demand and jotting each answer in a notebook as you go. You start from the big question, dive into whatever smaller questions you need, and write down each answer the first time so you never repeat it.
 
 **When to prefer top-down:**
 - Not all subproblems need to be solved (sparse computation)
@@ -108,6 +137,8 @@ public class TopDownArrayTemplate {
 ### Bottom-Up (Tabulation)
 
 Build the solution iteratively from the smallest subproblems upward. Fill a table (array or 2D array) starting from base cases.
+
+> **Think of it like:** building a pyramid from the ground up. You lay the smallest base cases first, then stack each new answer on top of the ones below it, until you reach the final answer at the peak.
 
 **When to prefer bottom-up:**
 - All subproblems need to be solved
@@ -259,6 +290,8 @@ Step 5: Extract the answer
 
 **Definition:** F(n) = F(n-1) + F(n-2), F(0)=0, F(1)=1
 
+> **Think of it like:** each number is just the sum of the two numbers before it — like a rabbit family where this month's babies equal last month's plus the month before's. It's the "hello world" of DP because the same small Fibonacci values get asked for again and again.
+
 #### Approach 1 — Naive Recursion: O(2^n) time, O(n) space
 
 ```java
@@ -274,16 +307,17 @@ public long fibNaive(int n) {
 
 ```java
 public long fibMemo(int n) {
-    long[] memo = new long[n + 1];
-    Arrays.fill(memo, -1);
+    long[] memo = new long[n + 1];   // notebook: memo[i] will hold F(i) once we compute it
+    Arrays.fill(memo, -1);           // -1 means "not computed yet"
     return fibHelper(n, memo);
 }
 
 private long fibHelper(int n, long[] memo) {
-    if (n <= 1) return n;
-    if (memo[n] != -1) return memo[n];
+    if (n <= 1) return n;            // base cases: F(0)=0, F(1)=1
+    if (memo[n] != -1) return memo[n]; // already solved this? return the saved answer
+    // not solved yet: compute it from the two smaller Fibonacci numbers...
     memo[n] = fibHelper(n - 1, memo) + fibHelper(n - 2, memo);
-    return memo[n];
+    return memo[n];                 // ...and save it in the notebook before returning
 }
 // Each subproblem computed exactly once.
 ```
@@ -293,13 +327,14 @@ private long fibHelper(int n, long[] memo) {
 ```java
 public long fibTab(int n) {
     if (n <= 1) return n;
-    long[] dp = new long[n + 1];
-    dp[0] = 0;
-    dp[1] = 1;
+    long[] dp = new long[n + 1];     // dp[i] = the i-th Fibonacci number
+    dp[0] = 0;                       // base case
+    dp[1] = 1;                       // base case
+    // build upward: every value uses the two we already filled in below it
     for (int i = 2; i <= n; i++) {
         dp[i] = dp[i - 1] + dp[i - 2];
     }
-    return dp[n];
+    return dp[n];                    // the answer sits at the top of the table
 }
 ```
 
@@ -334,6 +369,8 @@ public long fibOptimal(int n) {
 
 **Problem:** You are climbing a staircase with n steps. You can climb 1 or 2 steps at a time. How many distinct ways can you reach the top?
 
+> **Think of it like:** standing on any stair and looking back. You could only have arrived here from one step below (a 1-step hop) or two steps below (a 2-step hop), so the ways to reach this stair are just the ways to reach those two stairs added together.
+
 **State definition:** dp[i] = number of distinct ways to reach step i
 
 **Recurrence:** dp[i] = dp[i-1] + dp[i-2]
@@ -345,13 +382,14 @@ public long fibOptimal(int n) {
 // Bottom-up tabulation
 public int climbStairs(int n) {
     if (n <= 2) return n;
-    int[] dp = new int[n + 1];
-    dp[0] = 1;
-    dp[1] = 1;
+    int[] dp = new int[n + 1];       // dp[i] = number of ways to reach step i
+    dp[0] = 1;                       // 1 way to be at the ground (do nothing)
+    dp[1] = 1;                       // 1 way to reach the first step
+    // ways to reach step i = ways arriving from i-1 (1-step) + from i-2 (2-step)
     for (int i = 2; i <= n; i++) {
         dp[i] = dp[i - 1] + dp[i - 2];
     }
-    return dp[n];
+    return dp[n];                    // ways to reach the top step
 }
 // Time: O(n), Space: O(n)
 
@@ -395,6 +433,8 @@ public int climbStairsK(int n, int k) {
 
 **Problem:** Given an array of non-negative integers representing money in houses, find the maximum amount you can rob. You cannot rob two adjacent houses (alarm triggers).
 
+> **Think of it like:** a burglar walking down a street of houses where robbing two next-door houses sets off the alarm. At each house you make one decision: skip it (keep what you had) or rob it (take its cash plus whatever you'd grabbed up to two houses back).
+
 **State definition:** dp[i] = maximum money robbed considering first i houses
 
 **Recurrence:** dp[i] = max(dp[i-1], dp[i-2] + nums[i])
@@ -405,16 +445,17 @@ public int climbStairsK(int n, int k) {
 ```java
 public int rob(int[] nums) {
     int n = nums.length;
-    if (n == 1) return nums[0];
+    if (n == 1) return nums[0];      // only one house: just rob it
 
-    int[] dp = new int[n];
-    dp[0] = nums[0];
-    dp[1] = Math.max(nums[0], nums[1]);
+    int[] dp = new int[n];           // dp[i] = most money robbable from houses 0..i
+    dp[0] = nums[0];                 // one house: rob it
+    dp[1] = Math.max(nums[0], nums[1]); // two houses: rob the richer one (can't take both)
 
     for (int i = 2; i < n; i++) {
+        // skip house i (keep dp[i-1]) OR rob it (its cash + best up to i-2)
         dp[i] = Math.max(dp[i - 1], dp[i - 2] + nums[i]);
     }
-    return dp[n - 1];
+    return dp[n - 1];                // best total after considering every house
 }
 // Time: O(n), Space: O(n)
 
@@ -468,6 +509,8 @@ private int robRange(int[] nums, int start, int end) {
 
 **Problem:** Given coin denominations and a target amount, find the minimum number of coins needed to make up that amount. Return -1 if impossible.
 
+> **Think of it like:** a cashier making change with as few coins as possible. To make 6 cents, you try each coin you own, see how few coins it took to make the leftover amount, and pick whichever choice uses the fewest coins overall.
+
 **State definition:** dp[i] = minimum number of coins to make amount i
 
 **Recurrence:** dp[i] = min over all coins c where c <= i: (dp[i - c] + 1)
@@ -481,17 +524,20 @@ private int robRange(int[] nums, int start, int end) {
 
 ```java
 public int coinChange(int[] coins, int amount) {
-    int[] dp = new int[amount + 1];
+    int[] dp = new int[amount + 1];  // dp[i] = fewest coins to make amount i
     Arrays.fill(dp, amount + 1); // fill with "infinity" (amount+1 is impossible)
-    dp[0] = 0;
+    dp[0] = 0;                       // 0 coins needed to make amount 0
 
-    for (int i = 1; i <= amount; i++) {
-        for (int coin : coins) {
+    for (int i = 1; i <= amount; i++) {       // solve every amount from 1 up to the target
+        for (int coin : coins) {              // try paying with each coin we have
+            // coin must fit, and the leftover amount must actually be makeable
             if (coin <= i && dp[i - coin] != amount + 1) {
+                // using this coin = 1 coin + best way to make the remainder; keep the smallest
                 dp[i] = Math.min(dp[i], dp[i - coin] + 1);
             }
         }
     }
+    // still "infinity"? then the amount can't be made → return -1
     return dp[amount] > amount ? -1 : dp[amount];
 }
 // Time: O(amount * coins.length), Space: O(amount)
@@ -519,6 +565,8 @@ Integer.MAX_VALUE + 1 overflows. Using amount+1 is safe — it is always larger 
 ### Problem 5: Coin Change — Number of Ways (Combination Sum IV)
 
 **Problem:** Count the number of distinct combinations (order matters) of coins that sum to the target.
+
+> **Think of it like:** counting how many different ways a cashier could hand you the same change — not the fewest coins this time, but every possible coin combination that adds up to the amount.
 
 **State definition:** dp[i] = number of ways to make amount i
 
@@ -567,6 +615,8 @@ public int countWaysUnordered(int[] coins, int target) {
 ### Problem 6: Word Break
 
 **Problem:** Given a string s and a dictionary of words, determine if s can be segmented into a space-separated sequence of dictionary words.
+
+> **Think of it like:** reading a sign with no spaces, such as "applepie", and checking if you can chop it into real words from your dictionary ("apple" + "pie"). You go left to right asking, "does a valid word end right here, with valid words before it?"
 
 **State definition:** dp[i] = true if s[0..i-1] can be segmented using dictionary words
 
@@ -782,6 +832,8 @@ Answer: 3 → "226"→{2,2,6},{22,6},{2,26}
 
 **Problem:** A robot starts at top-left of an m×n grid and wants to reach bottom-right. It can only move right or down. Count all unique paths.
 
+> **Think of it like:** walking through a city grid where you can only go right or down. To count the ways to reach any corner, add up the ways to reach the corner just above it and the corner just to its left — those are the only two spots you could have stepped from.
+
 **State definition:** dp[i][j] = number of unique paths to reach cell (i, j)
 
 **Recurrence:** dp[i][j] = dp[i-1][j] + dp[i][j-1]
@@ -903,6 +955,8 @@ public int minPathSumOptimal(int[][] grid) {
 - **Substring:** Characters in order AND contiguous. "BCD" is a substring of "ABCDE".
 - LCS finds the longest subsequence common to both strings.
 
+> **Think of it like:** two friends listing the movies they each watched this year, in the order they saw them. The LCS is the longest list of movies both saw in the same relative order — they don't have to be back-to-back, just in order.
+
 **State definition:** dp[i][j] = length of LCS of s1[0..i-1] and s2[0..j-1]
 
 **Recurrence:**
@@ -914,18 +968,22 @@ public int minPathSumOptimal(int[][] grid) {
 ```java
 public int lcs(String s1, String s2) {
     int m = s1.length(), n = s2.length();
+    // dp[i][j] = LCS length using first i chars of s1 and first j chars of s2.
+    // Row/col 0 stay 0 (an empty string shares nothing) — these are the base cases.
     int[][] dp = new int[m + 1][n + 1];
 
-    for (int i = 1; i <= m; i++) {
-        for (int j = 1; j <= n; j++) {
+    for (int i = 1; i <= m; i++) {           // walk through every char of s1
+        for (int j = 1; j <= n; j++) {       // against every char of s2
             if (s1.charAt(i - 1) == s2.charAt(j - 1)) {
+                // chars match: extend the LCS found before both of these chars
                 dp[i][j] = dp[i - 1][j - 1] + 1;
             } else {
+                // no match: drop one char from s1 or from s2, keep the better result
                 dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1]);
             }
         }
     }
-    return dp[m][n];
+    return dp[m][n];                         // bottom-right cell = LCS of the full strings
 }
 // Time: O(m*n), Space: O(m*n)
 ```
@@ -1019,6 +1077,8 @@ public String shortestCommonSupersequence(String s1, String s2) {
 ### Problem 13: Edit Distance (Levenshtein Distance)
 
 **Problem:** Given two strings word1 and word2, find the minimum number of operations (insert, delete, replace) to transform word1 into word2.
+
+> **Think of it like:** the autocorrect on your phone deciding how close two words are. It counts the fewest single-letter edits — add a letter, remove a letter, or swap a letter — needed to turn one word into the other.
 
 **State definition:** dp[i][j] = minimum operations to transform word1[0..i-1] into word2[0..j-1]
 
@@ -1161,6 +1221,8 @@ public int longestCommonSubstring(String s1, String s2) {
 
 **Problem:** Given n items, each with weight w[i] and value v[i], and a knapsack of capacity W, maximize the total value. Each item can be taken at most once (0 or 1 times).
 
+> **Think of it like:** packing a backpack with a weight limit before a trip. Each item weighs something and is worth something, and you want the most valuable load that still fits. For every item you face one choice: leave it out or put it in (if there's room).
+
 **State definition:** dp[i][w] = maximum value using first i items with knapsack capacity w
 
 **Recurrence:**
@@ -1256,6 +1318,8 @@ public List<Integer> knapsackItems(int[] weights, int[] values, int W) {
 ### Problem 16: Subset Sum
 
 **Problem:** Given an array of positive integers and a target sum, determine if any subset sums to the target.
+
+> **Think of it like:** checking whether you can pick some bills from your wallet to pay an exact price with no change. You don't need every bill — just some combination that adds up exactly to the target.
 
 **Relation to Knapsack:** Treat each number as an item with weight = value. Can we fill capacity exactly?
 
