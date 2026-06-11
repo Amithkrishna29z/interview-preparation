@@ -6,27 +6,110 @@
 
 ## 📚 Study Guide Index
 
+> 📂 **Complete index — all guides in this repo, grouped by area.** ⭐ = priority for a junior Java backend role.
+
+### ☕ Core Java
 | File | Topics Covered | Priority |
 |------|---------------|---------|
 | `Java_Developer_Interview_Questions.md` | Core Java, OOP, Collections, Exceptions, Multithreading, Streams, Java 8+ | ⭐⭐⭐ HIGH |
 | `Java_Data_Types_Notes.md` | Primitives, Wrappers, Autoboxing, Type Casting, String, Arrays, var | ⭐⭐⭐ HIGH |
+| `Java_Collections_Framework_Internal_Working.md` | HashMap internal, ArrayList vs LinkedList | ⭐⭐⭐ HIGH |
+| `Java_Multithreading_Concurrency_Guide.md` | Threads, synchronization, Executors, locks, concurrent collections, deadlock | ⭐⭐⭐ HIGH |
+| `Java_Streams_And_Lambdas_Guide.md` | Lambdas, functional interfaces, method refs, streams, collectors, Optional | ⭐⭐⭐ HIGH |
+| `Java_Generics_And_Wildcards_Guide.md` | Generic classes/methods, bounds, wildcards, PECS, type erasure, invariance | ⭐⭐⭐ HIGH |
+| `Java_Exception_Handling_Guide.md` | Throwable hierarchy, checked/unchecked, try/catch/finally, try-with-resources, custom exceptions | ⭐⭐⭐ HIGH |
+| `Java_Equals_And_HashCode_Guide.md` | equals()/hashCode() contract, HashMap lookup, correct implementations, JPA caveat | ⭐⭐⭐ HIGH |
+| `Java_Enums_Guide.md` | Enum fields/methods, EnumSet/EnumMap, enum singleton, @Enumerated STRING vs ORDINAL | ⭐⭐ MEDIUM |
+| `JVM_Internals_Memory_Management_GC.md` | JVM architecture, class loading, stack vs heap, GC algorithms, tuning | ⭐⭐ MEDIUM |
+| `Java_Modern_Features_9_to_21.md` | var, records, sealed classes, text blocks, virtual threads, pattern matching | ⭐⭐ MEDIUM |
+| `Java_IO_And_NIO_Guide.md` | Byte vs char streams, buffering, NIO.2 Path/Files, channels/buffers, charsets | ⭐ LOWER |
+| `Java_Reflection_And_Annotations_Guide.md` | Custom annotations, meta-annotations, reflection API, framework tie-ins | ⭐ LOWER |
+| `Java_Serialization_Guide.md` | Serializable, serialVersionUID, transient, Jackson/JSON, DTO vs entity | ⭐ LOWER |
+| `Java_Testing_JUnit_Mockito_Guide.md` | JUnit 5, Mockito, AssertJ, test slices, Testcontainers, TDD | ⭐⭐ MEDIUM |
+
+### 🌱 Spring & Persistence
+| File | Topics Covered | Priority |
+|------|---------------|---------|
+| `Java_Spring_Framework_Study_Guide.md` | IoC/DI, bean lifecycle, scopes, MVC/REST, Data JPA, transactions, AOP | ⭐⭐⭐ HIGH |
 | `Spring_Boot_Junior_Developer_Interview_Questions.md` | Spring Boot, REST API, JPA, Testing, Annotations | ⭐⭐⭐ HIGH |
+| `JPA_Hibernate_Interview_Questions.md` | Entities, relationships, fetch types, N+1, cascades, transactions, caching | ⭐⭐⭐ HIGH |
 | `Spring_Security_JWT_Interview_Questions.md` | Spring Security, JWT, CORS, BCrypt | ⭐⭐⭐ HIGH |
-| `REST_API_HTTP_Interview_Questions.md` | HTTP methods, Status codes, REST design | ⭐⭐⭐ HIGH |
+| `Spring_Bean_Validation_Guide.md` | @Valid/@Validated, built-in constraints, custom validators, error handling | ⭐⭐⭐ HIGH |
+| `Spring_AOP_And_Bean_Lifecycle.md` | 12-step bean lifecycle, BeanPostProcessor, AOP, proxies, @Transactional internals | ⭐⭐ MEDIUM |
+| `Spring_OAuth2_OIDC_Security.md` | OAuth2 grant types, OIDC, JWT validation, resource/client server, social login | ⭐⭐ MEDIUM |
+| `Spring_WebFlux_Reactive.md` | Reactive streams, Mono/Flux, backpressure, schedulers, WebClient, R2DBC | ⭐ LOWER |
+
+### 🗄️ Databases & Caching
+| File | Topics Covered | Priority |
+|------|---------------|---------|
+| `Database_Concepts_Interview_Questions.md` | ACID, Normalization, SQL, Transactions, Indexing, Locks | ⭐⭐⭐ HIGH |
+| `MySQL_Interview_Questions.md` | MySQL, Indexes, Joins, Optimization, Storage engines | ⭐⭐ MEDIUM |
+| `SQL_Advanced_Window_Functions.md` | Window functions, ranking, CTEs, EXPLAIN, advanced queries | ⭐⭐ MEDIUM |
+| `Database_Schema_Design_Patterns.md` | ERD, normalization, keys, soft delete, audit, multi-tenancy | ⭐⭐ MEDIUM |
+| `Redis_Interview_Questions.md` | Data structures, caching patterns, expiry, persistence, pub/sub, cluster | ⭐⭐ MEDIUM |
+| `PostgreSQL_Interview_Questions.md` | PostgreSQL, MVCC, JSONB, advanced features | ⭐ LOWER |
+| `MongoDB_Interview_Questions.md` | MongoDB CRUD, Aggregation, Indexing, Sharding | ⭐ LOWER |
+
+### 📨 Messaging
+| File | Topics Covered | Priority |
+|------|---------------|---------|
+| `Kafka_Interview_Questions.md` | Topics/partitions/offsets, producers, consumers, delivery semantics, Spring Kafka | ⭐⭐ MEDIUM |
+| `Kafka_RabbitMQ_Interview_Questions.md` | Kafka vs RabbitMQ, consumer groups, exchanges, AMQP, messaging patterns | ⭐⭐ MEDIUM |
+
+### 🏛️ Architecture, System Design & Patterns
+| File | Topics Covered | Priority |
+|------|---------------|---------|
+| `System_Design_Microservices_Interview_Questions.md` | Scalability, caching, microservices, API Gateway, circuit breaker | ⭐⭐ MEDIUM |
+| `GoF_Design_Patterns_Complete.md` | All 23 Gang of Four patterns with analogies and Spring usage | ⭐⭐ MEDIUM |
+| `Software_Engineering_Principles_Interview_Questions.md` | Agile, Scrum, Kanban, SOLID, Design Patterns, Clean Code, TDD | ⭐⭐ MEDIUM |
+| `Clean_Architecture_Study_Guide.md` | 4 layers, dependency rule, ports & adapters, DDD, full Spring example | ⭐⭐ MEDIUM |
+| `Architecture_Topics_For_Java_Developers.md` | DB scaling, caching, messaging, reliability, observability for Java devs | ⭐⭐ MEDIUM |
+| `Distributed_Systems_Core_Concepts_Study_Guide.md` | Load balancing, CAP, eventual consistency, distributed locks, sharding | ⭐⭐ MEDIUM |
+| `Microservices_Saga_CQRS_EventSourcing.md` | Saga, CQRS, event sourcing, outbox, compensating transactions | ⭐ LOWER |
+| `Software_Architect_Study_Guide.md` | Architecture styles, CAP/BASE, cloud, security, ADRs | ⭐ LOWER |
+| `Backend_Engineering_Mastery_Roadmap.md` | SQL/Postgres internals, Redis, Kafka, system design roadmap | MASTERY |
+| `World_Class_Software_Engineer_Roadmap.md` | Full mastery roadmap: DSA, System Design, Architecture, DDD, Security, Leadership | MASTERY |
+
+### 🌐 Networking & APIs
+| File | Topics Covered | Priority |
+|------|---------------|---------|
+| `REST_API_HTTP_Interview_Questions.md` | HTTP methods, status codes, REST design, versioning, pagination | ⭐⭐⭐ HIGH |
 | `Networking_Interview_Questions.md` | OSI Model, TCP/UDP, DNS, HTTPS, Ports, WebSockets, Load Balancing | ⭐⭐⭐ HIGH |
-| `DSA_Interview_Questions.md` | Arrays, Linked List, Stack, Binary Search, Sorting | ⭐⭐⭐ HIGH |
-| `Software_Engineering_Principles_Interview_Questions.md` | Agile, Scrum, Kanban, SOLID, Design Patterns, Clean Code, TDD | ⭐⭐⭐ HIGH |
-| `Database_Concepts_Interview_Questions.md` | ACID, Normalization, SQL, Transactions | ⭐⭐ MEDIUM |
-| `MySQL_Interview_Questions.md` | MySQL, Indexes, Joins, Optimization | ⭐⭐ MEDIUM |
-| `Java_Collections_Framework_Internal_Working.md` | HashMap internal, ArrayList vs LinkedList | ⭐⭐ MEDIUM |
-| `System_Design_Microservices_Interview_Questions.md` | Microservices, Caching, API Gateway | ⭐⭐ MEDIUM |
-| `Git_Docker_DevOps_Interview_Questions.md` | Git commands, Docker, Maven | ⭐ LOWER |
-| `MongoDB_Interview_Questions.md` | MongoDB CRUD, Aggregation, Indexing | ⭐ LOWER |
-| `PostgreSQL_Interview_Questions.md` | PostgreSQL, JSONB, Advanced features | ⭐ LOWER |
-| `JavaScript_Interview_Questions.md` | var/let/const, Closures, Prototypes, Promises, Event Loop, ES6+, DOM | ⭐⭐⭐ HIGH |
-| `Kafka_RabbitMQ_Interview_Questions.md` | Kafka topics/partitions/offsets, consumer groups, delivery semantics, RabbitMQ exchanges, AMQP, messaging patterns | ⭐⭐ MEDIUM |
+| `Networking_Concepts_Cloud_DevOps.md` | Subnetting/CIDR, TLS, NGINX, VPC, Kubernetes networking, service mesh | ⭐⭐ MEDIUM |
+
+### ⚙️ DevOps, Cloud & Tools
+| File | Topics Covered | Priority |
+|------|---------------|---------|
+| `Git_Docker_DevOps_Interview_Questions.md` | Git commands, Docker, Maven, CI/CD | ⭐⭐ MEDIUM |
+| `Docker_Concepts_Study_Guide.md` | Containers vs VMs, images, networking, volumes, Compose, security | ⭐⭐ MEDIUM |
+| `DevOps_Core_Concepts.md` | DevOps culture, CI/CD, IaC, orchestration, monitoring, SRE | ⭐⭐ MEDIUM |
+| `CI_CD_Pipelines_Deep_Dive.md` | GitHub Actions, Jenkins, GitLab CI, deployment strategies, quality gates | ⭐⭐ MEDIUM |
+| `Kubernetes_Interview_Questions.md` | K8s architecture, objects, services, scaling, probes, RBAC, Helm | ⭐⭐ MEDIUM |
+| `Observability_Tracing_Metrics_Logging.md` | Logs/metrics/traces, OpenTelemetry, Actuator, Prometheus/Grafana, ELK | ⭐⭐ MEDIUM |
+| `AWS_Cloud_Interview_Questions.md` | IAM, EC2, S3, VPC, RDS, Lambda, load balancing, CloudWatch | ⭐ LOWER |
+| `TERRAFORM_AWS_STUDY_GUIDE.md` | Infrastructure as Code, Terraform HCL, AWS provisioning | ⭐ LOWER |
+| `Vim_Nano_Editor_Study_Guide.md` | Vim & Nano editor commands and workflows | ⭐ LOWER |
+
+### 🧮 Data Structures & Algorithms
+| File | Topics Covered | Priority |
+|------|---------------|---------|
+| `DSA_Interview_Questions.md` | Arrays, Linked List, Stack, Binary Search, Sorting, Trees, Graphs (BFS/DFS), Recursion/Backtracking | ⭐⭐⭐ HIGH |
+| `DSA_Dynamic_Programming.md` | DP concept, memoization vs tabulation, classic 1D/2D problems | ⭐⭐ MEDIUM |
+
+### 🖥️ Frontend / Web (for full-stack roles)
+| File | Topics Covered | Priority |
+|------|---------------|---------|
+| `JavaScript_Interview_Questions.md` | var/let/const, Closures, Prototypes, Promises, Event Loop, ES6+, DOM | ⭐⭐ MEDIUM |
+| `typescript.md` | Types, interfaces, generics, TypeScript fundamentals | ⭐⭐ MEDIUM |
+| `React_Interview_Questions.md` | Components, hooks, state, props, lifecycle | ⭐⭐ MEDIUM |
+| `NextJS_Interview_Questions.md` | SSR/SSG, routing, data fetching, Next.js features | ⭐ LOWER |
+| `HTML_Interview_Questions.md` | Semantic HTML, forms, accessibility | ⭐ LOWER |
+| `CSS_Interview_Study_Guide.md` | Box model, flexbox, grid, responsive design | ⭐ LOWER |
+
+### 🤝 Behavioral
+| File | Topics Covered | Priority |
+|------|---------------|---------|
 | `HR_Behavioral_Interview_Questions.md` | STAR method, HR questions, Tell me about yourself | ⭐⭐⭐ HIGH |
-| `World_Class_Software_Engineer_Roadmap.md` | Full mastery roadmap: DSA, System Design, Architecture, DDD, Security, Performance, Leadership | MASTERY |
 
 ---
 
