@@ -84,6 +84,7 @@
 | `Docker_Concepts_Study_Guide.md` | Containers vs VMs, images, networking, volumes, Compose, security | ⭐⭐ MEDIUM |
 | `DevOps_Core_Concepts.md` | DevOps culture, CI/CD, IaC, orchestration, monitoring, SRE | ⭐⭐ MEDIUM |
 | `CI_CD_Pipelines_Deep_Dive.md` | GitHub Actions, Jenkins, GitLab CI, deployment strategies, quality gates | ⭐⭐ MEDIUM |
+| `Kubernetes_Learning_Guide.md` | Hands-on K8s from zero: pods, deployments, services, config, probes, scaling, storage, Spring Boot deploy, debugging | ⭐⭐ MEDIUM |
 | `Kubernetes_Interview_Questions.md` | K8s architecture, objects, services, scaling, probes, RBAC, Helm | ⭐⭐ MEDIUM |
 | `Observability_Tracing_Metrics_Logging.md` | Logs/metrics/traces, OpenTelemetry, Actuator, Prometheus/Grafana, ELK | ⭐⭐ MEDIUM |
 | `AWS_Cloud_Interview_Questions.md` | IAM, EC2, S3, VPC, RDS, Lambda, load balancing, CloudWatch | ⭐ LOWER |

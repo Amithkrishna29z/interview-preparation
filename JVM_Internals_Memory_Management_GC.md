@@ -9,6 +9,8 @@ This guide covers the modern HotSpot JVM (Java 8 through 21). The most important
 **Think of the JVM like a universal translator at the United Nations:**
 You write your speech in one language (Java). You don't care what language each listener speaks (Windows, Linux, Mac, ARM, x86). The translator (JVM) takes your one speech and instantly converts it into whatever each listener understands. You **write once**, and it **runs anywhere** there's a translator.
 
+> 📎 **Companion resource:** [NotebookLM notebook — JVM Internals & Memory Management](https://notebooklm.google.com/notebook/e0f80d4c-83df-4674-9058-56a63d1b7830/artifact/cbabc1fb-57bc-421b-8932-b1ad569fe7fd?utm_content=&utm_smc=nlm_web_share_google_oo_art_share_2_)
+
 ---
 
 ## Table of Contents
