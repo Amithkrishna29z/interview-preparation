@@ -35,6 +35,7 @@
 | `JPA_Hibernate_Interview_Questions.md` | Entities, relationships, fetch types, N+1, cascades, transactions, caching | ⭐⭐⭐ HIGH |
 | `Spring_Security_JWT_Interview_Questions.md` | Spring Security, JWT, CORS, BCrypt | ⭐⭐⭐ HIGH |
 | `Spring_Bean_Validation_Guide.md` | @Valid/@Validated, built-in constraints, custom validators, error handling | ⭐⭐⭐ HIGH |
+| `Tomcat_In_Spring_Boot_Guide.md` | Embedded vs external Tomcat, servlet container, request lifecycle, thread pool tuning, DispatcherServlet, alternative servers (Jetty/Undertow/Netty) | ⭐⭐ MEDIUM |
 | `Spring_AOP_And_Bean_Lifecycle.md` | 12-step bean lifecycle, BeanPostProcessor, AOP, proxies, @Transactional internals | ⭐⭐ MEDIUM |
 | `Spring_OAuth2_OIDC_Security.md` | OAuth2 grant types, OIDC, JWT validation, resource/client server, social login | ⭐⭐ MEDIUM |
 | `Spring_WebFlux_Reactive.md` | Reactive streams, Mono/Flux, backpressure, schedulers, WebClient, R2DBC | ⭐ LOWER |
