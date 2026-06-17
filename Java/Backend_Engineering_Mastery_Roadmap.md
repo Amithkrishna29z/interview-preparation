@@ -1,19 +1,7 @@
 # Backend Engineering Mastery Roadmap – Complete Study Guide
 
-> **Target Audience:** Java/Spring Boot developers ready to level up from junior/mid to senior/architect-level roles.  
+> **Target Audience:** Java/Spring Boot developers building toward strong backend fundamentals.  
 > **How to Use:** Study each phase in order. The phases build on each other. For each topic, understand the *why* before the *how*.
-
----
-
-## Table of Contents
-
-- [Phase 1 – SQL Deep Dive + PostgreSQL Internals + Redis](#phase-1)
-- [Phase 2 – Kafka + Event-Driven Systems + Messaging Patterns](#phase-2)
-- [Phase 3 – System Design Fundamentals + HLD + LLD](#phase-3)
-- [Phase 4 – Docker + Kubernetes](#phase-4)
-- [Phase 5 – AWS](#phase-5)
-- [Phase 6 – Distributed Systems + Consistency + Consensus](#phase-6)
-- [Phase 7 – AI Agents + Spring AI + Modern Architectures](#phase-7)
 
 ---
 
@@ -77,38 +65,15 @@ CREATE INDEX idx_covering ON orders(user_id, status, created_at);
 SELECT user_id, status, created_at FROM orders WHERE user_id = 123;
 ```
 
-### Window Functions (Senior-Level Must-Know)
+### Window Functions
+
+Window functions compute a value across a set of rows related to the current row, without collapsing them like `GROUP BY`. Know these exist: `ROW_NUMBER()/RANK()` (rank within a partition), `LAG()/LEAD()` (compare to previous/next row), `SUM() OVER (...)` (running totals), and `NTILE()` (bucket into quartiles). They use an `OVER (PARTITION BY ... ORDER BY ...)` clause.
 
 ```sql
--- ROW_NUMBER: Assign a unique rank per partition
-SELECT
-    employee_id,
-    department,
-    salary,
+-- Rank salaries within each department
+SELECT employee_id, department, salary,
     ROW_NUMBER() OVER (PARTITION BY department ORDER BY salary DESC) AS rank_in_dept
 FROM employees;
-
--- LAG/LEAD: Compare with previous/next row
-SELECT
-    order_date,
-    revenue,
-    LAG(revenue, 1) OVER (ORDER BY order_date) AS prev_day_revenue,
-    revenue - LAG(revenue, 1) OVER (ORDER BY order_date) AS day_over_day_change
-FROM daily_revenue;
-
--- Running total
-SELECT
-    order_id,
-    amount,
-    SUM(amount) OVER (ORDER BY order_date ROWS UNBOUNDED PRECEDING) AS running_total
-FROM orders;
-
--- NTILE: Divide into buckets (e.g., quartiles)
-SELECT
-    customer_id,
-    total_spent,
-    NTILE(4) OVER (ORDER BY total_spent DESC) AS spending_quartile
-FROM customer_summary;
 ```
 
 ### CTEs vs Subqueries
@@ -127,23 +92,9 @@ customer_details AS (
     JOIN high_value_customers h ON c.id = h.customer_id
 )
 SELECT * FROM customer_details ORDER BY total DESC;
-
--- Recursive CTE: For hierarchical data (org charts, trees)
-WITH RECURSIVE org_tree AS (
-    -- Base case: top-level managers
-    SELECT id, name, manager_id, 1 AS level
-    FROM employees
-    WHERE manager_id IS NULL
-
-    UNION ALL
-
-    -- Recursive case
-    SELECT e.id, e.name, e.manager_id, ot.level + 1
-    FROM employees e
-    JOIN org_tree ot ON e.manager_id = ot.id
-)
-SELECT * FROM org_tree ORDER BY level, name;
 ```
+
+A CTE (`WITH ...`) names a subquery to make queries readable and reusable. A **recursive CTE** (`WITH RECURSIVE`) walks hierarchical data like org charts or category trees by combining a base case with a self-referencing recursive case via `UNION ALL`.
 
 ### Transaction Isolation Levels
 
@@ -251,25 +202,16 @@ Modes:
 
 ### Partitioning
 
+Partitioning splits one large logical table into smaller physical tables (partitions) so queries scan only relevant partitions. Common strategies: **range** (e.g., by date), **list** (e.g., by region), and **hash**.
+
 ```sql
 -- Range partitioning: split a huge orders table by year
 CREATE TABLE orders (
-    id BIGINT,
-    user_id BIGINT,
-    amount DECIMAL,
-    created_at TIMESTAMP
+    id BIGINT, user_id BIGINT, amount DECIMAL, created_at TIMESTAMP
 ) PARTITION BY RANGE (created_at);
-
-CREATE TABLE orders_2023 PARTITION OF orders
-    FOR VALUES FROM ('2023-01-01') TO ('2024-01-01');
 
 CREATE TABLE orders_2024 PARTITION OF orders
     FOR VALUES FROM ('2024-01-01') TO ('2025-01-01');
-
--- List partitioning: split by region
-CREATE TABLE sales PARTITION BY LIST (region);
-CREATE TABLE sales_us PARTITION OF sales FOR VALUES IN ('US', 'CA', 'MX');
-CREATE TABLE sales_eu PARTITION OF sales FOR VALUES IN ('UK', 'DE', 'FR');
 ```
 
 ### PostgreSQL-Specific Features
@@ -286,12 +228,8 @@ CREATE INDEX idx_events_metadata ON events USING GIN (metadata);
 SELECT * FROM events WHERE metadata @> '{"type": "click"}';
 SELECT metadata->>'user_id' FROM events WHERE id = 1;
 
--- Full-Text Search
-SELECT title, ts_rank(to_tsvector('english', body), query) AS rank
-FROM articles,
-     to_tsquery('english', 'postgresql & indexing') query
-WHERE to_tsvector('english', body) @@ query
-ORDER BY rank DESC;
+-- Postgres also has built-in Full-Text Search (to_tsvector / to_tsquery / ts_rank)
+-- for ranked keyword search without a separate search engine.
 
 -- UPSERT (INSERT ON CONFLICT)
 INSERT INTO user_preferences (user_id, theme, language)
@@ -343,11 +281,6 @@ public class CacheService {
             .reverseRange("leaderboard:" + gameId, 0, count - 1);
     }
 
-    // Hash: user profile
-    public void updateUserProfile(String userId, Map<String, String> fields) {
-        redisTemplate.opsForHash().putAll("user:" + userId, fields);
-    }
-
     // Atomic increment: rate limiting
     public boolean isRateLimited(String userId, int maxRequests, long windowSeconds) {
         String key = "rate:" + userId + ":" + (System.currentTimeMillis() / (windowSeconds * 1000));
@@ -397,58 +330,29 @@ public User saveUser(User user) {
 
 ### Distributed Locking with Redisson
 
+When multiple app instances must coordinate access to a shared resource (e.g., decrementing stock), use a distributed lock. Redisson provides an `RLock` that implements the Redlock algorithm with lock TTLs (auto-release if the holder dies) and a wait timeout. Always acquire with `tryLock(waitTime, leaseTime, unit)` and release in a `finally` block guarded by `isHeldByCurrentThread()`.
+
 ```java
-// Redisson handles the Redlock algorithm properly
-@Service
-public class InventoryService {
-
-    @Autowired
-    private RedissonClient redissonClient;
-
-    public boolean purchaseItem(String itemId, int quantity) {
-        RLock lock = redissonClient.getLock("lock:inventory:" + itemId);
-        try {
-            // Try to acquire lock, wait up to 5s, hold for max 30s
-            boolean acquired = lock.tryLock(5, 30, TimeUnit.SECONDS);
-            if (!acquired) throw new RuntimeException("Could not acquire lock");
-
-            int stock = getStock(itemId);
-            if (stock < quantity) return false;
-
-            updateStock(itemId, stock - quantity);
-            return true;
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            return false;
-        } finally {
-            if (lock.isHeldByCurrentThread()) lock.unlock();
-        }
-    }
+RLock lock = redissonClient.getLock("lock:inventory:" + itemId);
+try {
+    if (!lock.tryLock(5, 30, TimeUnit.SECONDS)) return false; // wait 5s, hold max 30s
+    // ... critical section: check + update stock ...
+} finally {
+    if (lock.isHeldByCurrentThread()) lock.unlock();
 }
 ```
 
 ### Pub/Sub vs Redis Streams
 
+**Pub/Sub** is fire-and-forget: messages are delivered only to subscribers connected at that moment — no persistence, no consumer groups, no acknowledgements. **Redis Streams** are an append-only log with persistence, consumer groups, and acknowledgements — prefer Streams when you need durability and at-least-once processing.
+
 ```java
-// Pub/Sub: fire-and-forget, no persistence, no consumer groups
+// Pub/Sub: fire-and-forget
 redisTemplate.convertAndSend("notifications", "User 123 placed an order");
 
-// Redis Streams: persistent, consumer groups, acknowledgements (prefer this)
-// Producer
-redisTemplate.opsForStream().add("orders-stream", Map.of(
-    "orderId", "456",
-    "userId", "123",
-    "amount", "99.99"
-));
-
-// Consumer with consumer group
-redisTemplate.opsForStream().createGroup("orders-stream", "order-processors");
-List<MapRecord<String, Object, Object>> messages =
-    redisTemplate.opsForStream().read(
-        Consumer.from("order-processors", "consumer-1"),
-        StreamReadOptions.empty().count(10),
-        StreamOffset.create("orders-stream", ReadOffset.lastConsumed())
-    );
+// Streams: durable producer
+redisTemplate.opsForStream().add("orders-stream",
+    Map.of("orderId", "456", "userId", "123", "amount", "99.99"));
 ```
 
 ---
@@ -544,26 +448,10 @@ public class KafkaProducerConfig {
     }
 }
 
-// Consumer configuration
-@Configuration
-public class KafkaConsumerConfig {
-
-    @Bean
-    public ConsumerFactory<String, Object> consumerFactory() {
-        Map<String, Object> config = new HashMap<>();
-        config.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, "localhost:9092");
-        config.put(ConsumerConfig.GROUP_ID_CONFIG, "order-service");
-        config.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
-
-        // Manual offset control for at-least-once processing
-        config.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, false);
-
-        config.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
-        config.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, JsonDeserializer.class);
-
-        return new DefaultKafkaConsumerFactory<>(config);
-    }
-}
+// Consumer: key settings (group id, where to start, manual commits)
+config.put(ConsumerConfig.GROUP_ID_CONFIG, "order-service");
+config.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
+config.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, false); // commit manually for at-least-once
 ```
 
 ### Producer with Error Handling
@@ -640,20 +528,7 @@ public class OrderEventConsumer {
 | At-least-once | Commit offset after processing | Duplicate processing |
 | Exactly-once | Idempotent producer + transactional API | Highest overhead |
 
-```java
-// Exactly-once with Kafka Transactions
-@Bean
-public KafkaTransactionManager<String, Object> kafkaTransactionManager(
-        ProducerFactory<String, Object> pf) {
-    return new KafkaTransactionManager<>(pf);
-}
-
-@Transactional("kafkaTransactionManager")
-public void processAndForward(ConsumerRecord<String, OrderEvent> record) {
-    // Read from topic A and write to topic B atomically
-    kafkaTemplate.send("processed-orders", transformEvent(record.value()));
-}
-```
+For exactly-once *processing* (read-process-write across topics), Kafka offers a transactional API: configure a `KafkaTransactionManager` and annotate the handler with `@Transactional` so the consumed offset and produced records commit atomically. Highest overhead, so only use it when duplicates are genuinely unacceptable.
 
 ---
 
@@ -663,31 +538,13 @@ public void processAndForward(ConsumerRecord<String, OrderEvent> record) {
 
 **Real-world analogy:** Your bank statement. The bank doesn't store "current balance = $500". It stores every deposit and withdrawal. The balance is derived by replaying all events.
 
+Instead of persisting mutable current state, you store an append-only sequence of events (`OrderCreatedEvent`, `OrderShippedEvent`, `OrderCancelledEvent`, ...). Current state is rebuilt by replaying those events in order and applying each to a fresh aggregate. Benefits: full audit history and the ability to reconstruct any past state; cost: more complexity and the need for snapshots when event streams get long.
+
 ```java
-// Instead of storing current state...
-public class Order {
-    private String status;  // WRONG: mutable state
-}
-
-// Store events
-public abstract class OrderEvent {
-    private String orderId;
-    private Instant occurredAt;
-    private String eventType;
-}
-
-public class OrderCreatedEvent extends OrderEvent { ... }
-public class OrderShippedEvent extends OrderEvent { ... }
-public class OrderCancelledEvent extends OrderEvent { ... }
-
 // Rebuild state by replaying events
 public Order buildFromEvents(List<OrderEvent> events) {
     Order order = new Order();
-    events.forEach(event -> {
-        if (event instanceof OrderCreatedEvent e) order.apply(e);
-        else if (event instanceof OrderShippedEvent e) order.apply(e);
-        else if (event instanceof OrderCancelledEvent e) order.apply(e);
-    });
+    events.forEach(order::apply);  // apply() pattern-matches on event type
     return order;
 }
 ```
@@ -708,34 +565,7 @@ Command Side (Write)           Query Side (Read)
                          (builds read models)
 ```
 
-```java
-// Command (write)
-@RestController
-public class OrderCommandController {
-    @PostMapping("/orders")
-    public ResponseEntity<String> createOrder(@RequestBody CreateOrderCommand cmd) {
-        String orderId = orderCommandService.handle(cmd);
-        return ResponseEntity.accepted().body(orderId);
-    }
-}
-
-// Query (read from denormalized read model)
-@RestController
-public class OrderQueryController {
-    @GetMapping("/orders/{id}")
-    public OrderSummaryDto getOrder(@PathVariable String id) {
-        return orderQueryService.findById(id); // reads from Redis or read DB
-    }
-}
-
-// Projector: updates read model when events occur
-@KafkaListener(topics = "order-events")
-public void project(OrderCreatedEvent event) {
-    OrderSummaryDto dto = new OrderSummaryDto(event.getOrderId(), event.getUserId(), ...);
-    redisTemplate.opsForValue().set("order:" + event.getOrderId(), dto);
-    orderReadRepository.save(dto); // also persist for durability
-}
-```
+CQRS separates the write model (commands) from the read model (queries). Writes go through command handlers; a projector listens for events and builds denormalized read models (e.g., in Redis or a read-optimized table) that the query side serves. Use it when read and write workloads have very different shapes/scaling needs — it adds complexity, so don't reach for it by default.
 
 ---
 
@@ -757,35 +587,7 @@ PaymentService ──PAYMENT_FAILED──▶ InventoryService (compensate: relea
                                  ──▶ OrderService (compensate: cancel order)
 ```
 
-```java
-// Orchestration-based Saga (centralized coordinator)
-@Service
-public class OrderSagaOrchestrator {
-
-    public void executeSaga(CreateOrderCommand cmd) {
-        String sagaId = UUID.randomUUID().toString();
-
-        try {
-            // Step 1: Reserve inventory
-            InventoryReservation reservation = inventoryClient.reserve(cmd.getItems());
-            sagaLog.save(sagaId, "INVENTORY_RESERVED", reservation);
-
-            // Step 2: Charge payment
-            PaymentResult payment = paymentClient.charge(cmd.getUserId(), cmd.getAmount());
-            sagaLog.save(sagaId, "PAYMENT_CHARGED", payment);
-
-            // Step 3: Create shipment
-            shipmentClient.create(cmd.getOrderId(), cmd.getAddress());
-            sagaLog.save(sagaId, "SHIPMENT_CREATED", null);
-
-        } catch (PaymentFailedException e) {
-            // Compensate: release inventory
-            inventoryClient.release(sagaLog.get(sagaId, "INVENTORY_RESERVED"));
-            orderRepository.updateStatus(cmd.getOrderId(), "PAYMENT_FAILED");
-        }
-    }
-}
-```
+The other flavor is an **orchestration-based saga**, where a central orchestrator calls each service in sequence (reserve inventory → charge payment → create shipment), logs each completed step, and on failure runs the **compensating actions** in reverse (e.g., release the reserved inventory, mark the order failed). Choreography is more decoupled; orchestration is easier to trace and reason about.
 
 ### Outbox Pattern (Guaranteed Event Delivery)
 
@@ -829,22 +631,12 @@ public void relayEvents() {
 
 ### Dead Letter Queue (DLQ)
 
+A DLQ is where messages go after they repeatedly fail processing, so a poison message doesn't block the partition forever. In Spring Kafka you wire this up with a `DefaultErrorHandler` plus a `DeadLetterPublishingRecoverer`, which retries N times with a backoff and then republishes the failed record to a `<topic>.DLT` topic for later inspection/replay.
+
 ```java
-@Bean
-public ConcurrentKafkaListenerContainerFactory<String, Object> kafkaListenerContainerFactory() {
-    var factory = new ConcurrentKafkaListenerContainerFactory<String, Object>();
-    factory.setConsumerFactory(consumerFactory());
-
-    // Configure dead-letter publishing after 3 retries
-    DeadLetterPublishingRecoverer recoverer = new DeadLetterPublishingRecoverer(kafkaTemplate,
-        (record, ex) -> new TopicPartition(record.topic() + ".DLT", record.partition()));
-
-    DefaultErrorHandler errorHandler = new DefaultErrorHandler(recoverer,
-        new FixedBackOff(1000L, 3L)); // retry 3x with 1s delay
-
-    factory.setCommonErrorHandler(errorHandler);
-    return factory;
-}
+DefaultErrorHandler errorHandler = new DefaultErrorHandler(
+    new DeadLetterPublishingRecoverer(kafkaTemplate),
+    new FixedBackOff(1000L, 3L)); // retry 3x with 1s delay, then send to DLT
 ```
 
 ---
@@ -932,10 +724,8 @@ Cache invalidation strategies:
 3. Write-through: update cache on every write (consistent, write overhead)
 4. Cache-aside: populate on miss (simple, risk of cache stampede)
 
-Cache stampede prevention:
-- Mutex lock: only one thread populates, others wait
-- Probabilistic early expiration: refresh before TTL expires
-- Background refresh: serve stale while refreshing asynchronously
+Cache stampede (many requests rebuild the same expired key at once) is
+prevented with a mutex lock, probabilistic early expiration, or background refresh.
 ```
 
 ### Database Sharding
@@ -943,23 +733,17 @@ Cache stampede prevention:
 ```
 Sharding strategies:
 
-1. Range-based:
-   user_id 1-1M → Shard A
-   user_id 1M-2M → Shard B
-   Pro: Range queries easy. Con: Hotspots (new users all go to latest shard)
+1. Range-based: e.g. user_id 1-1M → Shard A, 1M-2M → Shard B
+   Pro: range queries easy. Con: hotspots (new rows pile onto the latest shard)
 
-2. Hash-based:
-   shard = hash(user_id) % num_shards
-   Pro: Even distribution. Con: Range queries require scatter-gather, resharding is hard
+2. Hash-based: shard = hash(user_id) % num_shards
+   Pro: even distribution. Con: range queries need scatter-gather, resharding is hard
 
-3. Directory-based (lookup table):
-   A lookup service maps entity → shard
-   Pro: Maximum flexibility. Con: Lookup service is a bottleneck/SPOF
+3. Directory-based: a lookup service maps entity → shard
+   Pro: flexible. Con: the lookup service is a bottleneck/SPOF
 
-Cross-shard issues:
-- Joins: must be done at application layer
-- Aggregates: scatter-gather then merge
-- Transactions: no ACID across shards (use Saga)
+Cross-shard pain: joins move to the app layer, aggregates need
+scatter-gather + merge, and there's no ACID across shards (use Saga).
 ```
 
 ---
@@ -968,60 +752,14 @@ Cross-shard issues:
 
 ### Designing a URL Shortener (Classic Interview Question)
 
-```
-Requirements:
-- Shorten URLs: POST /shorten → returns short code
-- Redirect: GET /{code} → 301/302 redirect to long URL
-- 100M URLs, 10B redirects/day
+A classic HLD question. The flow is: Client → Load Balancer → API Service → PostgreSQL, with Redis caching hot URLs and a CDN caching redirects at the edge. The two key decisions:
 
-HLD:
-┌────────┐    ┌──────────┐    ┌───────────┐    ┌──────────┐
-│Client  │───▶│Load Bal. │───▶│API Service│───▶│PostgreSQL│
-└────────┘    └──────────┘    └───────────┘    └──────────┘
-                                    │
-                              ┌─────▼──────┐
-                              │   Redis    │  (cache hot URLs)
-                              └────────────┘
-                                    │
-                              ┌─────▼──────┐
-                              │   CDN      │  (cache redirects at edge)
-                              └────────────┘
-
-ID Generation:
-Option 1: MD5/SHA256 of long URL → take first 7 chars (collision risk)
-Option 2: Base62 encode an auto-increment ID (predictable, sequential)
-Option 3: Snowflake ID → Base62 encode (distributed, non-sequential)
-
-Cache strategy:
-- 80/20 rule: 20% of URLs get 80% of traffic
-- Cache top 20% in Redis with TTL
-- Redirect cache: 301 (permanent, client caches) vs 302 (temporary, always hits server)
-```
+- **ID generation:** hash-then-truncate (collision risk), Base62-encode an auto-increment ID (simple, sequential/predictable), or a Snowflake ID Base62-encoded (distributed, non-sequential). Base62 of an ID is the common pick.
+- **Cache + redirect:** the 80/20 rule means a small fraction of URLs gets most traffic — cache those in Redis with a TTL. Use a `301` (permanent, client caches) vs `302` (temporary, always hits server) based on whether you need to track clicks.
 
 ### Designing a Notification System
 
-```
-Requirements:
-- Send email, SMS, push notifications
-- 1M notifications/day
-- Support templates, user preferences, do-not-disturb
-
-HLD:
-API ──▶ Kafka (notifications topic) ──▶ Notification Service
-                                              │
-                                    ┌─────────┼─────────┐
-                                    ▼         ▼         ▼
-                               Email Svc  SMS Svc  Push Svc
-                                 (SES)   (Twilio)  (FCM/APNS)
-
-Key decisions:
-- Use Kafka for decoupling and buffering burst traffic
-- Per-channel worker pools for independent scaling
-- User preference check before sending (opt-outs, quiet hours)
-- Idempotency: store notification_id, skip if already sent
-- Rate limiting per user/channel to avoid spam
-- Dead letter queue for failed deliveries + retry with backoff
-```
+Another common HLD question. Producers publish to Kafka (a `notifications` topic) for decoupling and burst buffering; a Notification Service fans out to per-channel workers (Email via SES, SMS via Twilio, Push via FCM/APNS) that scale independently. Key decisions: check user preferences (opt-outs, quiet hours) before sending, enforce idempotency by `notification_id` to avoid duplicates, rate-limit per user/channel, and route failed deliveries to a DLQ with retry/backoff.
 
 ---
 
@@ -1060,63 +798,13 @@ public class TokenBucketRateLimiter {
         lastRefillTime = now;
     }
 }
-
-// Distributed: same logic but in Redis Lua script for atomicity
-String luaScript = """
-    local key = KEYS[1]
-    local capacity = tonumber(ARGV[1])
-    local refill_rate = tonumber(ARGV[2])
-    local now = tonumber(ARGV[3])
-    ...
-    """;
 ```
+
+To make this work across multiple app instances, run the same refill-and-consume logic inside a **Redis Lua script** so the read-modify-write is atomic on the shared counter.
 
 ### Designing a Parking Lot System (OOP Design)
 
-```java
-// Key classes
-public enum VehicleType { MOTORCYCLE, CAR, TRUCK }
-public enum SpotType { SMALL, MEDIUM, LARGE }
-
-public abstract class Vehicle {
-    protected String licensePlate;
-    protected VehicleType type;
-    public abstract SpotType requiredSpotType();
-}
-
-public class Car extends Vehicle {
-    public Car(String plate) { this.licensePlate = plate; this.type = VehicleType.CAR; }
-    public SpotType requiredSpotType() { return SpotType.MEDIUM; }
-}
-
-public class ParkingSpot {
-    private String id;
-    private SpotType type;
-    private boolean occupied;
-    private Vehicle parkedVehicle;
-
-    public boolean canFit(Vehicle v) {
-        return !occupied && this.type == v.requiredSpotType();
-    }
-}
-
-public class ParkingLot {
-    private List<ParkingLevel> levels;
-
-    public Optional<ParkingSpot> park(Vehicle vehicle) {
-        return levels.stream()
-            .flatMap(l -> l.getSpots().stream())
-            .filter(spot -> spot.canFit(vehicle))
-            .findFirst()
-            .map(spot -> { spot.park(vehicle); return spot; });
-    }
-
-    public void leave(ParkingSpot spot) {
-        spot.free();
-        billingService.charge(spot.getParkedVehicle(), spot.getDuration());
-    }
-}
-```
+A common LLD/OOP-modeling exercise. Model the domain with clear classes and responsibilities: a `Vehicle` hierarchy (Motorcycle/Car/Truck) that declares its `requiredSpotType()`, a `ParkingSpot` (with a `canFit(vehicle)` check), `ParkingLevel`, and a `ParkingLot` that finds the first available fitting spot to park and charges via a billing service on exit. The point interviewers look for: sensible class boundaries, encapsulation, and using enums/polymorphism instead of `if`/`switch` on type.
 
 ---
 
@@ -1300,16 +988,11 @@ spec:
           initialDelaySeconds: 30
           periodSeconds: 10
         env:
-        - name: DB_PASSWORD
+        - name: DB_PASSWORD        # inject from a Secret (use configMapKeyRef for non-secret config)
           valueFrom:
             secretKeyRef:
               name: db-secret
               key: password
-        - name: APP_ENV
-          valueFrom:
-            configMapKeyRef:
-              name: app-config
-              key: environment
 
 ---
 # Service: stable network endpoint for Pods
@@ -1344,22 +1027,14 @@ spec:
       name: cpu
       target:
         type: Utilization
-        averageUtilization: 70  # Scale up when avg CPU > 70%
-  - type: Resource
-    resource:
-      name: memory
-      target:
-        type: Utilization
-        averageUtilization: 80
+        averageUtilization: 70  # Scale up when avg CPU > 70% (can add a memory metric too)
 
 ---
-# Ingress: HTTP routing to services
+# Ingress: HTTP routing to services (one rule per path/host)
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: api-ingress
-  annotations:
-    nginx.ingress.kubernetes.io/rate-limit: "100"
 spec:
   rules:
   - host: api.example.com
@@ -1370,13 +1045,6 @@ spec:
         backend:
           service:
             name: order-service
-            port:
-              number: 80
-      - path: /users
-        pathType: Prefix
-        backend:
-          service:
-            name: user-service
             port:
               number: 80
 ```
@@ -1487,32 +1155,17 @@ VPC (Virtual Private Cloud) architecture:
 
 ### IAM Best Practices
 
-```json
-// Principle of least privilege: only grant what's needed
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Action": [
-        "s3:GetObject",
-        "s3:PutObject"
-      ],
-      "Resource": "arn:aws:s3:::my-app-bucket/*"
-    },
-    {
-      "Effect": "Allow",
-      "Action": "s3:ListBucket",
-      "Resource": "arn:aws:s3:::my-app-bucket"
-    }
-  ]
-}
+Follow **least privilege**: a policy grants only the specific actions on specific resources that are needed (e.g., `s3:GetObject`/`s3:PutObject` on one bucket), nothing more.
 
-// Use IAM Roles for EC2/ECS/Lambda — NEVER hardcode credentials
-// Roles: attached to AWS resources, rotated automatically
-// Users: for humans, with MFA
-// Policies: attached to roles/users/groups
+```json
+{
+  "Effect": "Allow",
+  "Action": ["s3:GetObject", "s3:PutObject"],
+  "Resource": "arn:aws:s3:::my-app-bucket/*"
+}
 ```
+
+Key rules: use **IAM Roles** for EC2/ECS/Lambda (auto-rotated, never hardcode credentials), **Users** for humans (with MFA), and attach **Policies** to roles/users/groups.
 
 ### Lambda + API Gateway (Serverless Pattern)
 
@@ -1558,35 +1211,7 @@ Fan-out pattern: SNS → multiple SQS queues
 
 ### CloudWatch and Observability
 
-```java
-// Custom metrics from Spring Boot to CloudWatch
-@Component
-public class BusinessMetricsPublisher {
-
-    private final CloudWatchAsyncClient cloudWatch;
-
-    public void recordOrderPlaced(String region, double amount) {
-        cloudWatch.putMetricData(PutMetricDataRequest.builder()
-            .namespace("MyApp/Orders")
-            .metricData(
-                MetricDatum.builder()
-                    .metricName("OrdersPlaced")
-                    .value(1.0)
-                    .unit(StandardUnit.COUNT)
-                    .dimensions(
-                        Dimension.builder().name("Region").value(region).build()
-                    )
-                    .build(),
-                MetricDatum.builder()
-                    .metricName("OrderValue")
-                    .value(amount)
-                    .unit(StandardUnit.NONE)
-                    .build()
-            )
-            .build());
-    }
-}
-```
+CloudWatch is AWS's monitoring service for logs, metrics, alarms, and dashboards. Beyond the built-in infra metrics, you can publish **custom business metrics** (e.g., orders placed, order value) from a Spring Boot app via the SDK's `PutMetricData` API, tagging them with dimensions like region. Alarms then trigger on thresholds (e.g., error rate, latency) to notify or auto-scale.
 
 ---
 
@@ -1621,52 +1246,22 @@ A: S3 (upload trigger) → Lambda (validate + resize → save thumbnail to S3) �
 ```
 Strongest ────────────────────────────────────────▶ Weakest
 Linearizability → Sequential → Causal → Eventual
-
-Linearizability (Strong Consistency):
-- Operations appear instantaneous and in real-time order
-- Every read sees the most recent write
-- Cost: high latency (all replicas must agree before responding)
-- Examples: etcd, ZooKeeper, Google Spanner
-
-Sequential Consistency:
-- All operations in program order, but no real-time guarantee
-- Writes from one process appear in order to all others
-- Cost: lower latency than linearizability
-
-Causal Consistency:
-- Causally related operations are seen in the same order by all nodes
-- Concurrent operations may be seen in different orders
-- "If A caused B, everyone sees A before B"
-- Examples: MongoDB causal sessions
-
-Eventual Consistency:
-- Given no new writes, all replicas eventually converge
-- Reads may return stale data
-- Cost: lowest latency
-- Examples: DNS, DynamoDB default, Cassandra default
 ```
+
+- **Linearizability (strong):** every read sees the most recent write, as if there were one copy. Highest latency. Examples: etcd, ZooKeeper, Spanner.
+- **Sequential:** all operations respect program order across processes, but with no real-time guarantee.
+- **Causal:** causally related ops are seen in the same order everywhere ("if A caused B, all see A before B"); concurrent ops may differ.
+- **Eventual (weakest):** with no new writes, replicas eventually converge; reads may be stale. Lowest latency. Examples: DNS, DynamoDB/Cassandra defaults.
 
 ### Conflict Resolution in Eventual Consistency
 
 ```
 Strategies:
-1. Last-Write-Wins (LWW): highest timestamp wins
-   - Risk: clock skew can lose writes
-   - Use: when data loss is acceptable
-
-2. Vector Clocks: track causal history per replica
-   - Detect concurrent writes
-   - Application resolves conflicts
-
-3. CRDTs (Conflict-free Replicated Data Types):
-   - Data structures designed to merge automatically
-   - Counter CRDT: increment only, merge = max per replica
-   - Set CRDT: grow-only set, merge = union
-   - Examples: Redis CRDT (enterprise), Riak
-
-4. Application-level merge: let the application define merge logic
-   - Shopping cart: union of items
-   - Counter: sum all replica counts
+1. Last-Write-Wins (LWW): highest timestamp wins — simple, but clock skew can lose writes
+2. Vector Clocks: track causal history to detect concurrent writes; app resolves conflicts
+3. CRDTs (Conflict-free Replicated Data Types): structures that merge automatically
+   (e.g. grow-only set merges by union, counter by summing) — used by Riak, Redis Enterprise
+4. Application-level merge: custom merge logic (e.g. union a shopping cart's items)
 ```
 
 ---
@@ -1690,53 +1285,21 @@ Leader Election:
 4. Sends heartbeats to prevent new elections
 
 Log Replication:
-1. Client sends write to Leader
-2. Leader appends to its log
-3. Leader sends AppendEntries RPC to all Followers
-4. Followers append to their log and acknowledge
-5. Leader commits when majority acknowledge (N/2 + 1)
-6. Leader tells followers to commit
-7. Leader responds to client
+1. Client write goes to the Leader, which appends it to its log
+2. Leader replicates via AppendEntries RPC to Followers
+3. Once a majority (N/2 + 1) acknowledge, the entry is committed and applied
 
-Safety guarantees:
-- Election Safety: at most one leader per term
-- Leader Completeness: leader has all committed entries from previous terms
-- State Machine Safety: all nodes apply same entries in same order
+Safety: at most one leader per term, the leader holds all committed
+entries, and all nodes apply the same entries in the same order.
 ```
 
 ### Distributed Clocks
 
-**Problem:** Distributed systems have no global clock. `System.currentTimeMillis()` on different machines can drift.
+**Problem:** Distributed systems have no global clock — `System.currentTimeMillis()` on different machines drifts, so you can't rely on wall-clock time to order events. Key approaches to know exist:
 
-```
-Solutions:
-
-1. Logical Clocks (Lamport Timestamps):
-   - Each process has a counter
-   - Increment on local event
-   - On send: include counter value
-   - On receive: max(local, received) + 1
-   - Establishes causal ordering (A→B means A.time < B.time)
-   - But: concurrent events have arbitrary order
-
-2. Vector Clocks:
-   - Each process has a vector of counters [p1, p2, p3]
-   - Increment own counter on local event
-   - On send: include full vector
-   - On receive: element-wise max, then increment own counter
-   - Can detect concurrent events: neither A→B nor B→A
-
-3. Hybrid Logical Clocks (HLC):
-   - Combines physical time + logical counter
-   - Always moves forward, close to physical time
-   - Used by: CockroachDB, YugabyteDB
-
-4. Google TrueTime:
-   - Atomic clocks + GPS receivers in datacenters
-   - Returns [earliest, latest] time interval
-   - Spanner waits out uncertainty before commit
-   - Enables external consistency (strict serializability)
-```
+- **Lamport timestamps** (logical clocks): a per-process counter that establishes causal ordering (A→B ⇒ A.time < B.time), but can't tell concurrent events apart.
+- **Vector clocks:** a vector of counters per process that *can* detect concurrent (conflicting) events.
+- **Hybrid Logical Clocks (HLC)** combine physical + logical time (used by CockroachDB), and **Google TrueTime** uses atomic clocks/GPS to bound uncertainty (powers Spanner). These last two are advanced/architect-level — just know what they solve.
 
 ### Distributed Transactions
 
@@ -1765,29 +1328,7 @@ Solutions:
 
 ### Leader Election in Practice
 
-```java
-// Using ZooKeeper (via Apache Curator) for leader election
-public class LeaderElectionService {
-
-    private final LeaderSelector leaderSelector;
-
-    public LeaderElectionService(CuratorFramework client, String leaderPath) {
-        this.leaderSelector = new LeaderSelector(client, leaderPath, new LeaderSelectorListenerAdapter() {
-            @Override
-            public void takeLeadership(CuratorFramework client) throws Exception {
-                log.info("I am the leader now");
-                try {
-                    scheduledTask.run();
-                    Thread.currentThread().join(); // Hold leadership until interrupted
-                } catch (InterruptedException e) {
-                    log.info("Lost leadership or interrupted");
-                }
-            }
-        });
-        leaderSelector.autoRequeue(); // Re-enter queue after losing leadership
-    }
-}
-```
+In a cluster of identical nodes, you often need exactly one node to do a job (e.g., run a scheduled task). Rather than implement consensus yourself, use a coordination service — commonly **ZooKeeper via Apache Curator's `LeaderSelector`**, or a Redis/database lock. The elected leader holds leadership until it crashes or relinquishes it, at which point another node is elected.
 
 ### Idempotency
 
@@ -1981,59 +1522,17 @@ public class OrderTools {
         return orderService.cancel(orderId, reason);
     }
 }
-
-// Register tools with the agent
-@Service
-public class SupportAgent {
-
-    private final ChatClient chatClient;
-    private final OrderTools orderTools;
-
-    public SupportAgent(ChatClient.Builder builder, OrderTools orderTools) {
-        this.orderTools = orderTools;
-        this.chatClient = builder
-            .defaultSystem("You are a customer support agent. Use tools to look up real data.")
-            .defaultTools(orderTools)  // register tools
-            .build();
-    }
-
-    public String handleRequest(String customerId, String question) {
-        return chatClient.prompt()
-            .system(s -> s.param("customerId", customerId))
-            .user(question)
-            .call()
-            .content();
-    }
-}
 ```
+
+You then register these tools on the `ChatClient` (via `.defaultTools(orderTools)`). When the model decides a tool is needed, Spring AI invokes the matching `@Tool` method and feeds the result back to the model automatically.
 
 ### RAG – Retrieval-Augmented Generation
 
 **Real-world analogy:** Instead of asking the LLM to recall everything it learned in training, you give it a stack of relevant documents first and say "answer using only these". It's like giving an open-book exam rather than a closed-book one.
 
+**Step 1 — Ingest:** read source docs, split them into chunks (`TokenTextSplitter`), attach metadata (e.g., `source`), and call `vectorStore.add(documents)`, which embeds each chunk and stores it in pgvector.
+
 ```java
-// Step 1: Ingest documents into vector store
-@Service
-public class DocumentIngestionService {
-
-    @Autowired
-    private VectorStore vectorStore;
-
-    @Autowired
-    private DocumentReader pdfReader;
-
-    public void ingestProductManual(String filePath) {
-        List<Document> documents = new TokenTextSplitter()
-            .apply(new PagePdfDocumentReader(filePath).get());
-
-        // Add metadata for filtering
-        documents.forEach(doc ->
-            doc.getMetadata().put("source", "product-manual"));
-
-        vectorStore.add(documents); // Embeds and stores in pgvector
-    }
-}
-
 // Step 2: Build RAG query flow
 @Service
 public class RagService {
@@ -2073,36 +1572,7 @@ public class RagService {
 
 ### Conversation Memory
 
-```java
-@Service
-public class ConversationService {
-
-    private final ChatClient chatClient;
-    private final ChatMemoryRepository chatMemoryRepository;
-
-    public ConversationService(ChatClient.Builder builder, ChatMemoryRepository memRepo) {
-        this.chatMemoryRepository = memRepo;
-        this.chatClient = builder
-            .defaultSystem("You are a helpful assistant with memory of past conversations.")
-            .defaultAdvisors(
-                new MessageChatMemoryAdvisor(
-                    new CassandraChatMemory(memRepo),  // persistent memory
-                    "default",
-                    10  // last 10 messages
-                )
-            )
-            .build();
-    }
-
-    public String chat(String conversationId, String message) {
-        return chatClient.prompt()
-            .user(message)
-            .advisors(a -> a.param(CHAT_MEMORY_CONVERSATION_ID_KEY, conversationId))
-            .call()
-            .content();
-    }
-}
-```
+LLM calls are stateless, so to hold a multi-turn conversation you must replay prior messages each call. Spring AI handles this with a chat-memory advisor (e.g., `MessageChatMemoryAdvisor`) backed by a store (in-memory, JDBC, Cassandra, etc.), keyed by a conversation ID and typically capped to the last N messages to control token cost.
 
 ### Structured Output Extraction
 
@@ -2136,28 +1606,7 @@ public class ReviewAnalysisService {
 
 ### Agentic Architecture Patterns
 
-```
-Multi-Agent System:
-
-User Query
-    │
-    ▼
-Orchestrator Agent
-    │
-    ├──▶ Research Agent (web search, knowledge base)
-    │
-    ├──▶ Code Agent (writes, runs, tests code)
-    │
-    ├──▶ Data Agent (SQL queries, data analysis)
-    │
-    └──▶ Summary Agent (synthesizes results)
-
-Patterns:
-- Sequential: agents run one after another
-- Parallel: agents run concurrently, results merged
-- Hierarchical: manager agents delegate to worker agents
-- Competitive: multiple agents solve same problem, best answer wins
-```
+In a **multi-agent system**, an orchestrator agent delegates a user query to specialized agents (e.g., research, code, data, summary) and merges their work. Coordination patterns to be aware of: **sequential** (one after another), **parallel** (concurrent, results merged), **hierarchical** (manager delegates to workers), and **competitive** (several agents attempt the same task, best answer wins). This is an advanced/emerging area — know it exists.
 
 ### Vector Databases
 
@@ -2169,47 +1618,11 @@ Patterns:
 | Chroma | Open source | Simple, great for prototyping |
 | Qdrant | Open source | High performance, Rust-based |
 
-```java
-// Choosing embedding dimensions:
-// text-embedding-3-small: 1536 dimensions (fast, cheap)
-// text-embedding-3-large: 3072 dimensions (more accurate)
-
-// Index types in pgvector:
-// IVFFLAT: faster to build, slightly less accurate (good for large datasets)
-// HNSW: slower to build, better recall (good for smaller datasets, production)
-
-// pgvector index creation
-// CREATE INDEX ON embeddings USING hnsw (embedding vector_cosine_ops)
-// WITH (m = 16, ef_construction = 64);
-```
+Practical notes: pick embedding dimensions to balance cost vs accuracy (e.g. OpenAI `text-embedding-3-small` = 1536 dims, `-large` = 3072). In pgvector, **HNSW** gives better recall (preferred for production) while **IVFFLAT** builds faster — both are created as a normal SQL index on the embedding column.
 
 ### Modern Spring Boot + AI Architecture
 
-```
-┌──────────────────────────────────────────────────────┐
-│                   API Layer                          │
-│  REST / GraphQL / gRPC / WebSocket                   │
-└──────────────────────┬───────────────────────────────┘
-                       │
-┌──────────────────────▼───────────────────────────────┐
-│               Application Layer                      │
-│  Spring Boot Services + Spring AI                    │
-│  ┌──────────┐  ┌──────────┐  ┌────────────────────┐  │
-│  │  RAG     │  │  Agents  │  │  Traditional CRUD  │  │
-│  │ Service  │  │  Service │  │     Services       │  │
-│  └──────────┘  └──────────┘  └────────────────────┘  │
-└──────────────────────┬───────────────────────────────┘
-                       │
-┌──────────────────────▼───────────────────────────────┐
-│               Data Layer                             │
-│  PostgreSQL + pgvector │ Redis │ Kafka │ S3          │
-└──────────────────────────────────────────────────────┘
-                       │
-┌──────────────────────▼───────────────────────────────┐
-│               AI Provider Layer                      │
-│  OpenAI │ Anthropic Claude │ Ollama (local models)   │
-└──────────────────────────────────────────────────────┘
-```
+A typical layered shape: an **API layer** (REST/GraphQL/gRPC/WebSocket) → an **application layer** of Spring Boot + Spring AI services (RAG, agents, plus traditional CRUD) → a **data layer** (PostgreSQL + pgvector, Redis, Kafka, S3) → an **AI provider layer** (OpenAI, Anthropic Claude, or local models via Ollama). The takeaway: AI services sit alongside normal services and share the same data infrastructure.
 
 ---
 

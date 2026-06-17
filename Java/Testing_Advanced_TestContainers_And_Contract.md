@@ -3,20 +3,6 @@
 
 ---
 
-## Table of Contents
-1. [The Testing Pyramid and Strategy](#1-the-testing-pyramid-and-strategy)
-2. [TestContainers — Deep Dive](#2-testcontainers--deep-dive)
-3. [Pact — Consumer-Driven Contract Testing](#3-pact--consumer-driven-contract-testing)
-4. [WireMock — HTTP Service Virtualization](#4-wiremock--http-service-virtualization)
-5. [REST Assured — API Integration Testing](#5-rest-assured--api-integration-testing)
-6. [BDD with Cucumber](#6-bdd-with-cucumber)
-7. [Spring Boot Testing Slices](#7-spring-boot-testing-slices)
-8. [Test Data Management](#8-test-data-management)
-9. [Testing Asynchronous Code](#9-testing-asynchronous-code)
-10. [Interview Questions and Answers](#10-interview-questions-and-answers)
-
----
-
 ## 1. The Testing Pyramid and Strategy
 
 ### 1.1 The Classic Testing Pyramid
@@ -175,63 +161,7 @@ Test coverage (code coverage) measures what percentage of production code is exe
 - Focus coverage on: business logic, edge cases, error handling
 - Don't chase coverage for: auto-generated code, DTOs, simple getters/setters, framework boilerplate
 
-**JaCoCo Maven configuration:**
-```xml
-<plugin>
-    <groupId>org.jacoco</groupId>
-    <artifactId>jacoco-maven-plugin</artifactId>
-    <version>0.8.11</version>
-    <executions>
-        <execution>
-            <goals>
-                <goal>prepare-agent</goal>
-            </goals>
-        </execution>
-        <execution>
-            <id>report</id>
-            <phase>test</phase>
-            <goals>
-                <goal>report</goal>
-            </goals>
-        </execution>
-        <execution>
-            <id>check</id>
-            <goals>
-                <goal>check</goal>
-            </goals>
-            <configuration>
-                <rules>
-                    <rule>
-                        <limits>
-                            <limit>
-                                <counter>LINE</counter>
-                                <value>COVEREDRATIO</value>
-                                <minimum>0.80</minimum>
-                            </limit>
-                        </limits>
-                    </rule>
-                </rules>
-            </configuration>
-        </execution>
-    </executions>
-</plugin>
-```
-
-**What NOT to measure coverage on:**
-```java
-// Exclude from coverage reporting
-@Generated  // Mark auto-generated code
-public class UserMapper { ... }
-```
-
-In JaCoCo config:
-```xml
-<excludes>
-    <exclude>**/dto/**</exclude>
-    <exclude>**/config/**</exclude>
-    <exclude>**/*Application.class</exclude>
-</excludes>
-```
+**Awareness (senior-level tooling):** JaCoCo is the standard Java coverage tool, wired in via the `jacoco-maven-plugin` (goals `prepare-agent` + `report`, with an optional `check` goal to fail the build below a threshold like 0.80). You can exclude packages (e.g. `**/dto/**`, `**/config/**`) from the report. A junior just needs to know coverage exists, what line vs. branch coverage means, and that 80% is a guideline, not a law.
 
 ---
 
@@ -405,320 +335,71 @@ class UserRepositoryIntegrationTest {
 
 ### 2.4 Reusable Containers (withReuse)
 
+For faster local dev, `.withReuse(true)` keeps a container running between test runs (JVM restarts) instead of starting a fresh one each time. TestContainers hashes the container config; matching hashes reuse the existing container.
+
 ```java
-@Container
 static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:15")
-    .withDatabaseName("testdb")
-    .withUsername("test")
-    .withPassword("test")
-    .withReuse(true);  // Container persists between test runs (JVM restarts)
+    .withReuse(true);  // Container persists between test runs
 ```
 
-**How .withReuse(true) works:**
-- TestContainers computes a hash of the container configuration
-- On first run: starts the container and stores the hash
-- On subsequent runs (e.g., running tests again in the same developer session): detects same hash, reuses the already-running container instead of starting a new one
-- Massively speeds up local development
-
-**Requirement:** Add `testcontainers.reuse.enable=true` to `~/.testcontainers.properties`
+**Requirement:** add `testcontainers.reuse.enable=true` to `~/.testcontainers.properties`.
 
 ---
 
-### 2.5 MySQL TestContainer
+### 2.5 Other Backing Services (MySQL, MongoDB, Kafka, Redis, …)
+
+Every backing service follows the **same pattern** as the PostgreSQL example above: pick the matching container class (or `GenericContainer` for ones without a dedicated module), start it with `@Container`, and wire its runtime host/port into Spring via `@DynamicPropertySource` (or `@ServiceConnection` on Spring Boot 3.1+).
 
 ```java
-@Container
-static MySQLContainer<?> mysql = new MySQLContainer<>("mysql:8.0")
-    .withDatabaseName("orders_test")
-    .withUsername("orders_user")
-    .withPassword("orders_pass")
-    .withInitScript("db/init.sql")           // Run SQL on startup
-    .withUrlParam("allowPublicKeyRetrieval", "true")  // MySQL 8 requirement
-    .withUrlParam("useSSL", "false");
-
-@DynamicPropertySource
-static void mysqlProperties(DynamicPropertyRegistry registry) {
-    registry.add("spring.datasource.url", mysql::getJdbcUrl);
-    registry.add("spring.datasource.username", mysql::getUsername);
-    registry.add("spring.datasource.password", mysql::getPassword);
-}
+// MySQL
+static MySQLContainer<?> mysql = new MySQLContainer<>("mysql:8.0");
+// MongoDB — wire mongodb::getReplicaSetUrl into spring.data.mongodb.uri
+static MongoDBContainer mongo = new MongoDBContainer("mongo:6.0");
+// Kafka — wire kafka::getBootstrapServers into spring.kafka.bootstrap-servers
+static KafkaContainer kafka = new KafkaContainer(
+    DockerImageName.parse("confluentinc/cp-kafka:7.4.0"));
+// Redis — no module, use GenericContainer
+static GenericContainer<?> redis = new GenericContainer<>("redis:7.0-alpine")
+    .withExposedPorts(6379);
 ```
+
+TestContainers supports **hundreds** of technologies (Elasticsearch, RabbitMQ, LocalStack/AWS, etc.) — all "supported, similar pattern."
+
+**Awareness — senior-level extras** (know they exist, no need to memorize):
+- **Multiple containers on a shared `Network.newNetwork()`** with `withNetworkAliases(...)` so containers can talk to each other by DNS name.
+- **Wait strategies** — `Wait.forListeningPort()`, `Wait.forHttp("/health").forStatusCode(200)`, `Wait.forLogMessage(".*ready.*", 1)` — to ensure a container is ready before tests hit it. Modules like PostgreSQL/Kafka configure sensible defaults already.
+- For Kafka consumers in tests, set `auto-offset-reset=earliest` and a unique consumer `group-id` (e.g. `${random.uuid}`) so each run reads from the start without offset interference.
 
 ---
 
-### 2.6 MongoDB TestContainer
+### 2.6 Spring Boot 3.1+ @ServiceConnection
 
-```java
-@SpringBootTest
-@Testcontainers
-class ProductRepositoryMongoTest {
-
-    @Container
-    static MongoDBContainer mongodb = new MongoDBContainer("mongo:6.0")
-        .withExposedPorts(27017);
-
-    @DynamicPropertySource
-    static void mongoProperties(DynamicPropertyRegistry registry) {
-        // getReplicaSetUrl returns mongodb://host:port/test
-        registry.add("spring.data.mongodb.uri", mongodb::getReplicaSetUrl);
-    }
-
-    @Autowired
-    ProductRepository productRepository;
-
-    @Test
-    void shouldSaveAndRetrieveProduct() {
-        Product product = new Product(null, "Laptop", 999.99, "Electronics");
-        Product saved = productRepository.save(product);
-
-        assertThat(saved.getId()).isNotNull();
-
-        List<Product> electronics = productRepository.findByCategory("Electronics");
-        assertThat(electronics).hasSize(1);
-        assertThat(electronics.get(0).getName()).isEqualTo("Laptop");
-    }
-}
-```
-
----
-
-### 2.7 Kafka TestContainer
-
-```java
-@SpringBootTest
-@Testcontainers
-class OrderEventKafkaTest {
-
-    @Container
-    static KafkaContainer kafka = new KafkaContainer(
-        DockerImageName.parse("confluentinc/cp-kafka:7.4.0"));
-
-    @DynamicPropertySource
-    static void kafkaProperties(DynamicPropertyRegistry registry) {
-        registry.add("spring.kafka.bootstrap-servers", kafka::getBootstrapServers);
-        registry.add("spring.kafka.consumer.auto-offset-reset", () -> "earliest");
-    }
-
-    @Autowired
-    OrderEventProducer producer;
-
-    @Autowired
-    KafkaTemplate<String, String> kafkaTemplate;
-
-    // Capture consumed messages
-    @SpyBean
-    OrderEventConsumer consumer;
-
-    @Test
-    void shouldProduceAndConsumeOrderEvent() throws InterruptedException {
-        // Arrange
-        OrderCreatedEvent event = new OrderCreatedEvent(1L, "PENDING", Instant.now());
-
-        // Act
-        producer.publishOrderCreated(event);
-
-        // Assert — Kafka is async, must await
-        // Option 1: Thread.sleep (unreliable, avoid in production tests)
-        // Option 2: Awaitility (preferred)
-        await()
-            .atMost(Duration.ofSeconds(10))
-            .untilAsserted(() ->
-                verify(consumer, times(1)).handleOrderCreated(any(OrderCreatedEvent.class))
-            );
-    }
-
-    @Test
-    void shouldConsumeMessageDirectlyFromKafka() throws Exception {
-        // Produce a raw message
-        kafkaTemplate.send("orders", "key-1", "{\"orderId\":1,\"status\":\"CREATED\"}");
-
-        // Wait for consumer to process it
-        await()
-            .atMost(Duration.ofSeconds(15))
-            .untilAsserted(() ->
-                verify(consumer, atLeastOnce()).handleOrderCreated(any())
-            );
-    }
-}
-```
-
-**Kafka Consumer Configuration for Tests:**
-```java
-// application-test.properties (or in @DynamicPropertySource)
-spring.kafka.consumer.group-id=test-group-${random.uuid}  // Unique group per run
-spring.kafka.consumer.auto-offset-reset=earliest
-spring.kafka.consumer.enable-auto-commit=true
-```
-
----
-
-### 2.8 Redis TestContainer
-
-```java
-@SpringBootTest
-@Testcontainers
-class CacheIntegrationTest {
-
-    @Container
-    static GenericContainer<?> redis = new GenericContainer<>("redis:7.0-alpine")
-        .withExposedPorts(6379)
-        .waitingFor(Wait.forLogMessage(".*Ready to accept connections.*\\n", 1));
-
-    @DynamicPropertySource
-    static void redisProperties(DynamicPropertyRegistry registry) {
-        registry.add("spring.data.redis.host", redis::getHost);
-        registry.add("spring.data.redis.port",
-            () -> redis.getMappedPort(6379).toString());
-    }
-
-    @Autowired
-    ProductCacheService cacheService;
-
-    @Test
-    void shouldCacheAndRetrieveProduct() {
-        Product product = new Product(1L, "Laptop", 999.99);
-        cacheService.put("product:1", product);
-
-        Optional<Product> cached = cacheService.get("product:1");
-        assertThat(cached).isPresent();
-        assertThat(cached.get().getName()).isEqualTo("Laptop");
-    }
-
-    @Test
-    void shouldExpireAfterTTL() throws InterruptedException {
-        cacheService.putWithTTL("temp:key", "value", Duration.ofSeconds(1));
-        Thread.sleep(1500);  // Wait for expiry
-
-        Optional<String> expired = cacheService.get("temp:key");
-        assertThat(expired).isEmpty();
-    }
-}
-```
-
----
-
-### 2.9 Multiple Containers with Docker Network
-
-When your tests need multiple containers to communicate with each other (e.g., application container needs to talk to a database container):
-
-```java
-@SpringBootTest
-@Testcontainers
-class MultiContainerIntegrationTest {
-
-    // Create a shared Docker network
-    static Network network = Network.newNetwork();
-
-    @Container
-    static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:15")
-        .withNetwork(network)
-        .withNetworkAliases("postgres-test");  // DNS alias within the network
-
-    @Container
-    static GenericContainer<?> redis = new GenericContainer<>("redis:7.0")
-        .withNetwork(network)
-        .withNetworkAliases("redis-test")
-        .withExposedPorts(6379);
-
-    @Container
-    static KafkaContainer kafka = new KafkaContainer(
-        DockerImageName.parse("confluentinc/cp-kafka:7.4.0"))
-        .withNetwork(network);
-
-    @DynamicPropertySource
-    static void properties(DynamicPropertyRegistry registry) {
-        registry.add("spring.datasource.url", postgres::getJdbcUrl);
-        registry.add("spring.datasource.username", postgres::getUsername);
-        registry.add("spring.datasource.password", postgres::getPassword);
-        registry.add("spring.data.redis.host", redis::getHost);
-        registry.add("spring.data.redis.port",
-            () -> redis.getMappedPort(6379));
-        registry.add("spring.kafka.bootstrap-servers", kafka::getBootstrapServers);
-    }
-}
-```
-
----
-
-### 2.10 Wait Strategies
-
-TestContainers supports various strategies for waiting until a container is ready:
-
-```java
-// Wait for a specific log message
-.waitingFor(Wait.forLogMessage(".*database system is ready to accept connections.*", 1))
-
-// Wait for an HTTP endpoint to return a specific status
-.waitingFor(Wait.forHttp("/health")
-    .forStatusCode(200)
-    .withStartupTimeout(Duration.ofSeconds(60)))
-
-// Wait for a specific port to be open (TCP)
-.waitingFor(Wait.forListeningPort())
-
-// Wait for a specific port to be open
-.waitingFor(Wait.forListeningPorts(5432))
-
-// Custom strategy
-.waitingFor(new AbstractWaitStrategy() {
-    @Override
-    protected void waitUntilReady() {
-        // custom check logic
-    }
-})
-```
-
----
-
-### 2.11 Spring Boot 3.1+ @ServiceConnection
-
-Spring Boot 3.1 introduced `@ServiceConnection`, which eliminates the need for `@DynamicPropertySource`:
+Spring Boot 3.1 introduced `@ServiceConnection`, which eliminates the boilerplate `@DynamicPropertySource`. Spring detects the container type and wires the right properties automatically:
 
 ```java
 @SpringBootTest
 @Testcontainers
 class ModernSpringBootTest {
 
-    // Spring Boot 3.1+ automatically detects PostgreSQLContainer
-    // and configures spring.datasource.* properties
     @Container
-    @ServiceConnection
+    @ServiceConnection  // auto-configures spring.datasource.* — no @DynamicPropertySource
     static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:15");
-
-    // Same for Kafka
-    @Container
-    @ServiceConnection
-    static KafkaContainer kafka = new KafkaContainer(
-        DockerImageName.parse("confluentinc/cp-kafka:7.4.0"));
-
-    // Same for Redis
-    @Container
-    @ServiceConnection
-    static RedisContainer redis = new RedisContainer("redis:7.0");
 
     @Autowired
     UserRepository userRepository;
 
     @Test
     void contextLoads() {
-        // Full Spring Boot context with real PostgreSQL, Kafka, Redis
         assertThat(userRepository).isNotNull();
     }
 }
 ```
 
-**Even simpler with spring-boot-testcontainers:**
-```xml
-<dependency>
-    <groupId>org.springframework.boot</groupId>
-    <artifactId>spring-boot-testcontainers</artifactId>
-    <scope>test</scope>
-</dependency>
-```
+The same `@ServiceConnection` works for Kafka, Redis, MongoDB, etc. Add the `spring-boot-testcontainers` dependency (`org.springframework.boot`) to enable it.
 
 ---
 
-### 2.12 TestContainers with @DataJpaTest
+### 2.7 TestContainers with @DataJpaTest
 
 `@DataJpaTest` loads only the JPA layer (entities, repositories, JPA config), not the full Spring context. By default it uses an embedded H2 database. Override this to use TestContainers:
 
@@ -767,97 +448,28 @@ class OrderRepositorySliceTest {
 
 ---
 
-### 2.13 Flyway + TestContainers
+### 2.8 Flyway + TestContainers
 
-When you use Flyway for database migrations, they run automatically during the Spring Boot context startup — including in tests. TestContainers + Flyway means your integration tests always run against a freshly migrated, up-to-date schema:
-
-```java
-@SpringBootTest
-@Testcontainers
-class FlywayMigrationTest {
-
-    @Container
-    static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:15")
-        .withDatabaseName("myapp_test");
-
-    @DynamicPropertySource
-    static void props(DynamicPropertyRegistry registry) {
-        registry.add("spring.datasource.url", postgres::getJdbcUrl);
-        registry.add("spring.datasource.username", postgres::getUsername);
-        registry.add("spring.datasource.password", postgres::getPassword);
-        registry.add("spring.flyway.enabled", () -> "true");
-        // Flyway migration scripts in src/main/resources/db/migration
-        // are automatically applied when the context starts
-    }
-
-    @Autowired
-    DataSource dataSource;
-
-    @Test
-    void migrationsShouldRunSuccessfully() throws Exception {
-        try (Connection conn = dataSource.getConnection()) {
-            // Verify tables created by migrations exist
-            ResultSet rs = conn.getMetaData().getTables(
-                null, null, "users", new String[]{"TABLE"});
-            assertThat(rs.next()).isTrue();
-        }
-    }
-}
-```
+When you use Flyway, migrations in `src/main/resources/db/migration` run automatically as the Spring context starts — including in tests. Combined with TestContainers, every integration test runs against a fresh, fully migrated schema. You don't do anything special: start the container, point Spring at it (`@ServiceConnection`/`@DynamicPropertySource`), and Flyway migrates the empty container DB on startup.
 
 ---
 
-### 2.14 Singleton Container Pattern
+### 2.9 Singleton Container Pattern (awareness)
 
-For test suites with many test classes all needing the same database, starting a new container per class is wasteful. The Singleton pattern shares one container across the entire JVM:
+For large suites where many test classes need the same database, starting a container per class is wasteful. The **Singleton pattern** starts one container in a `static {}` block of an abstract base class and has every test class extend it, so the whole JVM run shares a single container:
 
 ```java
-// AbstractIntegrationTest.java — all integration tests extend this
 public abstract class AbstractIntegrationTest {
-
-    static final PostgreSQLContainer<?> POSTGRES;
-
-    static {
-        POSTGRES = new PostgreSQLContainer<>("postgres:15")
-            .withDatabaseName("integration_tests")
-            .withUsername("test")
-            .withPassword("test")
-            .withReuse(true);  // Reuse across JVM restarts in local dev
-        POSTGRES.start();  // Start once, shared forever
-    }
-
-    @DynamicPropertySource
-    static void overrideProps(DynamicPropertyRegistry registry) {
-        registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
-        registry.add("spring.datasource.username", POSTGRES::getUsername);
-        registry.add("spring.datasource.password", POSTGRES::getPassword);
-    }
-}
-
-// UserRepositoryTest.java
-@SpringBootTest
-class UserRepositoryTest extends AbstractIntegrationTest {
-    // Uses the shared POSTGRES container
-}
-
-// OrderRepositoryTest.java
-@SpringBootTest
-class OrderRepositoryTest extends AbstractIntegrationTest {
-    // Uses the same shared POSTGRES container — no second startup
+    static final PostgreSQLContainer<?> POSTGRES =
+        new PostgreSQLContainer<>("postgres:15").withReuse(true);
+    static { POSTGRES.start(); }  // Started once, shared by all subclasses
+    // + @DynamicPropertySource wiring the datasource
 }
 ```
 
----
+### 2.10 Log Consumer (awareness)
 
-### 2.15 Log Consumer (Debugging)
-
-Capture container logs for debugging failed tests:
-
-```java
-@Container
-static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:15")
-    .withLogConsumer(new Slf4jLogConsumer(LoggerFactory.getLogger("PostgreSQL")));
-```
+To debug a failing container, stream its logs into your test logger with `.withLogConsumer(new Slf4jLogConsumer(LoggerFactory.getLogger("PostgreSQL")))`.
 
 ---
 
@@ -955,40 +567,9 @@ class ProductServiceConsumerPactTest {
             .toPact();
     }
 
-    @Pact(consumer = "OrderService")
-    public RequestResponsePact getProductNotFound(PactDslWithProvider builder) {
-        return builder
-            .given("no product with ID 999 exists")
-            .uponReceiving("a GET request for non-existent product")
-                .path("/api/products/999")
-                .method("GET")
-            .willRespondWith()
-                .status(404)
-                .body(new PactDslJsonBody()
-                    .stringType("message", "Product not found"))
-            .toPact();
-    }
+    // (Additional @Pact methods follow the same shape for 404 / list responses.)
 
-    @Pact(consumer = "OrderService")
-    public RequestResponsePact getProductsByCategory(PactDslWithProvider builder) {
-        return builder
-            .given("products in category Electronics exist")
-            .uponReceiving("a GET request for products by category")
-                .path("/api/products")
-                .method("GET")
-                .query("category=Electronics")
-            .willRespondWith()
-                .status(200)
-                .body(new PactDslJsonArray()
-                    .object()
-                        .integerType("id")
-                        .stringType("name")
-                        .decimalType("price")
-                    .closeObject())
-            .toPact();
-    }
-
-    // Test 1: Consumer calls the mocked provider and verifies its own client code
+    // Test: Consumer calls the mocked provider and verifies its own client code
     @Test
     @PactTestFor(pactMethod = "getExistingProductById")
     void shouldFetchProductById(MockServer mockServer) {
@@ -1002,16 +583,6 @@ class ProductServiceConsumerPactTest {
         assertThat(product.getPrice()).isEqualByComparingTo(BigDecimal.valueOf(999.99));
         assertThat(product.isAvailable()).isTrue();
     }
-
-    @Test
-    @PactTestFor(pactMethod = "getProductNotFound")
-    void shouldThrowExceptionWhenProductNotFound(MockServer mockServer) {
-        ProductClient client = new ProductClient(mockServer.getUrl());
-
-        assertThatThrownBy(() -> client.getById(999L))
-            .isInstanceOf(ProductNotFoundException.class)
-            .hasMessageContaining("Product not found");
-    }
 }
 ```
 
@@ -1020,32 +591,7 @@ class ProductServiceConsumerPactTest {
 2. The mock server is configured with the expectations defined in `@Pact` methods
 3. Your `ProductClient` calls the mock server (not the real ProductService)
 4. Pact verifies that the client made the right call
-5. Pact generates a file: `target/pacts/OrderService-ProductService.json`
-
-**The generated pact file (JSON):**
-```json
-{
-  "consumer": { "name": "OrderService" },
-  "provider": { "name": "ProductService" },
-  "interactions": [
-    {
-      "description": "a GET request for product 1",
-      "providerStates": [
-        { "name": "a product with ID 1 exists" }
-      ],
-      "request": {
-        "method": "GET",
-        "path": "/api/products/1"
-      },
-      "response": {
-        "status": 200,
-        "headers": { "Content-Type": "application/json" },
-        "body": { "id": 1, "name": "Laptop", "price": 999.99 }
-      }
-    }
-  ]
-}
-```
+5. Pact generates a JSON file: `target/pacts/OrderService-ProductService.json` — it records the consumer, provider, provider states, and each request/response interaction. This file is the contract the provider later verifies against.
 
 ---
 
@@ -1087,151 +633,28 @@ class ProductServiceProviderPactTest {
         context.verifyInteraction();
     }
 
-    // Provider states: set up the data needed for each interaction
+    // Provider states: set up the data each interaction needs (one @State per "given")
     @State("a product with ID 1 exists")
     void productWithId1Exists() {
         productRepository.deleteAll();
         productRepository.save(new Product(1L, "Laptop", new BigDecimal("999.99"),
             "Electronics", true));
     }
-
-    @State("no product with ID 999 exists")
-    void noProductWithId999Exists() {
-        productRepository.deleteById(999L);  // Ensure it doesn't exist
-    }
-
-    @State("products in category Electronics exist")
-    void electronicsProductsExist() {
-        productRepository.deleteAll();
-        productRepository.saveAll(List.of(
-            new Product(1L, "Laptop", new BigDecimal("999.99"), "Electronics", true),
-            new Product(2L, "Mouse", new BigDecimal("29.99"), "Electronics", true)
-        ));
-    }
+    // ... one @State method per provider state declared by the consumer
 }
 ```
 
 ---
 
-### 3.6 Pact Broker
+### 3.6 Pact Broker (awareness)
 
-The Pact Broker is a central service that:
-- Stores pact files from consumers
-- Serves pacts to providers for verification
-- Records verification results
-- Provides "Can I Deploy?" — checks if consumer and provider versions are compatible
-
-**Running Pact Broker with Docker Compose:**
-```yaml
-version: '3'
-services:
-  pact-broker:
-    image: pactfoundation/pact-broker:latest
-    ports:
-      - "9292:9292"
-    environment:
-      PACT_BROKER_DATABASE_ADAPTER: sqlite
-      PACT_BROKER_DATABASE_NAME: /tmp/pact_broker.sqlite
-```
-
-**Publishing pacts to Pact Broker (Maven plugin):**
-```xml
-<plugin>
-    <groupId>au.com.dius.pact.provider</groupId>
-    <artifactId>maven</artifactId>
-    <version>4.6.7</version>
-    <configuration>
-        <pactBrokerUrl>http://localhost:9292</pactBrokerUrl>
-        <pactDirectory>target/pacts</pactDirectory>
-        <projectVersion>${project.version}</projectVersion>
-        <tags>
-            <tag>main</tag>
-        </tags>
-    </configuration>
-</plugin>
-```
-
-**Consumer test with Pact Broker:**
-```java
-@ExtendWith(PactConsumerTestExt.class)
-@PactTestFor(providerName = "ProductService")
-class ProductConsumerPactBrokerTest {
-
-    @Pact(consumer = "OrderService")
-    public RequestResponsePact getProduct(PactDslWithProvider builder) { ... }
-
-    @Test
-    @PactTestFor(pactMethod = "getProduct")
-    void test(MockServer mockServer) { ... }
-}
-// Run: mvn pact:publish to push pact to broker
-```
-
-**Provider test with Pact Broker:**
-```java
-@Provider("ProductService")
-@PactBroker(
-    url = "http://localhost:9292",
-    consumerVersionSelectors = @ConsumerVersionSelector(branch = "main")
-)
-@SpringBootTest(webEnvironment = RANDOM_PORT)
-class ProductProviderBrokerTest {
-    // Same structure as before, but pacts come from broker
-}
-```
-
-**Can I Deploy?**
-```bash
-# Check if OrderService version 1.2.0 is compatible with ProductService in production
-pact-broker can-i-deploy \
-  --pacticipant OrderService \
-  --version 1.2.0 \
-  --to-environment production
-```
+The **Pact Broker** is a central service that stores pact files from consumers, serves them to providers for verification, records verification results, and answers **"Can I Deploy?"** (is consumer version X compatible with the provider currently in production?). You run it as a container (`pactfoundation/pact-broker`), publish consumer pacts to it (`mvn pact:publish`), and point the provider test at it with `@PactBroker(url = "...")` instead of `@PactFolder`. In CI, `pact-broker can-i-deploy --pacticipant ... --version ... --to-environment production` gates deployments. As a junior, just know the broker decouples the teams and enables the deploy check — the full pipeline setup is a senior/platform concern.
 
 ---
 
-### 3.7 Message Contract Testing with Pact
+### 3.7 Message Contract Testing with Pact (awareness)
 
-For asynchronous messaging (Kafka, RabbitMQ):
-
-**Consumer test (message consumer):**
-```java
-@ExtendWith(PactConsumerTestExt.class)
-@PactTestFor(providerName = "OrderService", providerType = ProviderType.ASYNCH)
-class OrderEventConsumerPactTest {
-
-    @Pact(consumer = "NotificationService")
-    public MessagePact orderCreatedEvent(MessagePactBuilder builder) {
-        return builder
-            .given("an order was created")
-            .expectsToReceive("an order created event")
-            .withContent(new PactDslJsonBody()
-                .integerType("orderId", 12345)
-                .stringType("customerId", "CUST-001")
-                .stringType("status", "CREATED")
-                .decimalType("total", 199.99)
-                .stringType("createdAt"))
-            .toPact();
-    }
-
-    @Test
-    @PactTestFor(pactMethod = "orderCreatedEvent")
-    void shouldHandleOrderCreatedEvent(List<Message> messages) {
-        // Verify the consumer can handle the message
-        OrderEventHandler handler = new OrderEventHandler();
-
-        for (Message message : messages) {
-            handler.handleOrderCreated(
-                new String(message.contentsAsBytes())
-            );
-        }
-
-        // Verify handler processed it correctly
-        verify(notificationService).sendOrderConfirmation(any());
-    }
-}
-```
+Pact also supports **asynchronous message contracts** (Kafka, RabbitMQ): the consumer declares the message body it expects to receive via `MessagePactBuilder` (with `providerType = ProviderType.ASYNCH`), and the provider verifies the messages it produces match. The pattern mirrors the HTTP flow above, just for message payloads instead of request/response.
 
 ---
 
@@ -1374,124 +797,27 @@ class PaymentServiceIntegrationTest {
 
 ---
 
-### 4.4 WireMock Scenarios — Testing Retry Logic
+### 4.4 WireMock Scenarios — Testing Retry Logic (awareness)
 
-Scenarios model stateful behavior: first call fails, second call succeeds (simulating transient failures):
-
-```java
-@Test
-void shouldRetryOnTransientFailureAndSucceed() {
-    // First call: server error
-    wireMockServer.stubFor(
-        post(urlEqualTo("/api/payments"))
-            .inScenario("Payment Retry")
-            .whenScenarioStateIs(STARTED)
-            .willReturn(aResponse().withStatus(503))
-            .willSetStateTo("First retry")
-    );
-
-    // Second call: another server error
-    wireMockServer.stubFor(
-        post(urlEqualTo("/api/payments"))
-            .inScenario("Payment Retry")
-            .whenScenarioStateIs("First retry")
-            .willReturn(aResponse().withStatus(503))
-            .willSetStateTo("Second retry")
-    );
-
-    // Third call: success
-    wireMockServer.stubFor(
-        post(urlEqualTo("/api/payments"))
-            .inScenario("Payment Retry")
-            .whenScenarioStateIs("Second retry")
-            .willReturn(aResponse()
-                .withStatus(200)
-                .withBody("{\"transactionId\": \"TXN-OK\", \"status\": \"SUCCESS\"}"))
-    );
-
-    // PaymentClient has retry logic configured (max 3 retries)
-    PaymentResult result = paymentClient.processPayment(
-        new PaymentRequest("100.00", "USD", "token"));
-
-    assertThat(result.getStatus()).isEqualTo("SUCCESS");
-
-    // Verify exactly 3 calls were made (2 failures + 1 success)
-    wireMockServer.verify(3,
-        postRequestedFor(urlEqualTo("/api/payments")));
-}
-```
+WireMock **scenarios** model stateful behavior so you can test retry logic: register multiple stubs for the same URL using `.inScenario("Retry").whenScenarioStateIs(STARTED)...willSetStateTo("retried")`, so the first call returns 503, the next returns 200. Then `wireMockServer.verify(N, postRequestedFor(...))` confirms your client retried the expected number of times. (See Q27 for a concrete snippet.)
 
 ---
 
 ### 4.5 @AutoConfigureWireMock (Spring Boot)
 
-Spring Cloud Contract provides an annotation-based approach:
+Spring Cloud Contract offers `@AutoConfigureWireMock(port = 0)` for annotation-based setup. Stubs can be programmatic (inject `WireMockServer`) or file-based: stub mappings in `src/test/resources/mappings/` reference response bodies in `src/test/resources/__files/`.
 
 ```java
 @SpringBootTest
-@AutoConfigureWireMock(port = 0)  // port = 0 means random port
+@AutoConfigureWireMock(port = 0)  // random port, injected as ${wiremock.server.port}
 class ExternalApiTest {
-
-    // WireMock stub files go in:
-    // src/test/resources/__files/       (response body files)
-    // src/test/resources/mappings/      (stub configuration JSON files)
-
-    // Or use programmatic stubs with injected WireMockServer
-    @Autowired
-    WireMockServer wireMockServer;
-
-    @Value("${wiremock.server.port}")  // Injected when port = 0
-    int wireMockPort;
+    @Autowired WireMockServer wireMockServer;
 }
 ```
 
-**Stub mapping file (src/test/resources/mappings/product-stub.json):**
-```json
-{
-  "request": {
-    "method": "GET",
-    "url": "/api/products/1"
-  },
-  "response": {
-    "status": 200,
-    "headers": { "Content-Type": "application/json" },
-    "bodyFileName": "product-1.json"
-  }
-}
-```
+### 4.6 WireMock Response Templating (awareness)
 
-**Response body file (src/test/resources/__files/product-1.json):**
-```json
-{
-  "id": 1,
-  "name": "Laptop",
-  "price": 999.99,
-  "category": "Electronics"
-}
-```
-
----
-
-### 4.6 WireMock Response Templating
-
-Generate dynamic responses based on request content:
-
-```java
-wireMockServer.stubFor(
-    get(urlPathMatching("/api/products/([0-9]+)"))
-        .willReturn(aResponse()
-            .withStatus(200)
-            .withHeader("Content-Type", "application/json")
-            .withTransformers("response-template")  // Enable Handlebars templating
-            .withBody("""
-                {
-                    "id": {{request.pathSegments.[2]}},
-                    "requestedAt": "{{now}}",
-                    "requestId": "{{randomValue type='UUID'}}"
-                }
-                """))
-);
-```
+WireMock can generate **dynamic responses** from the request using Handlebars templating — enable with `.withTransformers("response-template")`, then reference helpers like `{{request.pathSegments.[2]}}`, `{{now}}`, or `{{randomValue type='UUID'}}` in the body.
 
 ---
 
@@ -1624,36 +950,7 @@ class OrderApiRestAssuredTest {
             .body("errors[0].field", notNullValue());
     }
 
-    @Test
-    void shouldCancelOrder() {
-        Order order = orderRepository.save(
-            new Order("CUST-001", "PENDING", BigDecimal.valueOf(100.00)));
-
-        given()
-        .when()
-            .put("/orders/{id}/cancel", order.getId())
-        .then()
-            .statusCode(200)
-            .body("status", equalTo("CANCELLED"));
-    }
-
-    @Test
-    void shouldGetAllOrdersForCustomer() {
-        orderRepository.saveAll(List.of(
-            new Order("CUST-001", "PENDING", BigDecimal.valueOf(50.00)),
-            new Order("CUST-001", "COMPLETED", BigDecimal.valueOf(75.00)),
-            new Order("CUST-002", "PENDING", BigDecimal.valueOf(25.00))
-        ));
-
-        given()
-            .queryParam("customerId", "CUST-001")
-        .when()
-            .get("/orders")
-        .then()
-            .statusCode(200)
-            .body("", hasSize(2))  // Only CUST-001's orders
-            .body("customerId", everyItem(equalTo("CUST-001")));
-    }
+    // (PUT /cancel, list-by-customer, etc. follow the same given/when/then shape.)
 
     @Test
     void shouldValidateResponseAgainstJsonSchema() {
@@ -1881,90 +1178,39 @@ public class OrderStepDefinitions {
 
     // Shared state between steps (use ThreadLocal in parallel execution)
     private ResponseEntity<?> lastResponse;
-    private Long createdOrderId;
-    private String authToken;
 
-    @Given("I am authenticated as a customer with email {string}")
-    public void authenticateAsCustomer(String email) {
-        // Get JWT token for this user
-        authToken = authService.getTokenForEmail(email);
-    }
-
+    // A @Given seeds data (note the DataTable maps to the Gherkin table)
     @Given("the product catalog has the following products:")
     public void setupProducts(DataTable dataTable) {
-        List<Map<String, String>> rows = dataTable.asMaps();
-        for (Map<String, String> row : rows) {
+        for (Map<String, String> row : dataTable.asMaps()) {
             productRepository.save(new Product(
-                Long.parseLong(row.get("id")),
-                row.get("name"),
-                new BigDecimal(row.get("price")),
-                Integer.parseInt(row.get("stock"))
-            ));
+                Long.parseLong(row.get("id")), row.get("name"),
+                new BigDecimal(row.get("price")), Integer.parseInt(row.get("stock"))));
         }
     }
 
+    // A @When performs the action under test
     @When("I create an order with the following items:")
     public void createOrderWithItems(DataTable dataTable) {
-        List<Map<String, String>> rows = dataTable.asMaps();
-        List<OrderItem> items = rows.stream()
+        List<OrderItem> items = dataTable.asMaps().stream()
             .map(row -> new OrderItem(
                 Long.parseLong(row.get("productId")),
                 Integer.parseInt(row.get("quantity"))))
             .collect(Collectors.toList());
 
-        CreateOrderRequest request = new CreateOrderRequest(items);
-
-        lastResponse = restTemplate.exchange(
+        lastResponse = restTemplate.postForEntity(
             "http://localhost:" + port + "/api/orders",
-            HttpMethod.POST,
-            new HttpEntity<>(request, authHeaders()),
-            OrderResponse.class);
+            new CreateOrderRequest(items), OrderResponse.class);
     }
 
-    @Then("the order should be created successfully")
-    public void verifyOrderCreated() {
-        assertThat(lastResponse.getStatusCode()).isEqualTo(HttpStatus.CREATED);
-        OrderResponse order = (OrderResponse) lastResponse.getBody();
-        createdOrderId = order.getId();
-        assertThat(createdOrderId).isNotNull();
-    }
-
-    @Then("the order total should be {double}")
-    public void verifyOrderTotal(double expectedTotal) {
-        OrderResponse order = (OrderResponse) lastResponse.getBody();
-        assertThat(order.getTotal().doubleValue())
-            .isEqualByComparingTo(expectedTotal);
-    }
-
+    // A @Then asserts the outcome
     @Then("the order status should be {string}")
     public void verifyOrderStatus(String expectedStatus) {
         OrderResponse order = (OrderResponse) lastResponse.getBody();
         assertThat(order.getStatus()).isEqualTo(expectedStatus);
     }
 
-    @Given("I have a pending order with ID {string}")
-    public void createPendingOrder(String orderId) {
-        // Create order in DB with specific ID or reference
-        Order order = new Order("CUST-001", "PENDING", BigDecimal.valueOf(100.0));
-        order.setExternalId(orderId);
-        orderRepository.save(order);
-    }
-
-    @When("I cancel order {string}")
-    public void cancelOrder(String orderId) {
-        lastResponse = restTemplate.exchange(
-            "http://localhost:" + port + "/api/orders/" + orderId + "/cancel",
-            HttpMethod.PUT,
-            new HttpEntity<>(authHeaders()),
-            OrderResponse.class);
-    }
-
-    private HttpHeaders authHeaders() {
-        HttpHeaders headers = new HttpHeaders();
-        headers.setBearerAuth(authToken);
-        headers.setContentType(MediaType.APPLICATION_JSON);
-        return headers;
-    }
+    // ... remaining steps (auth, totals, cancel) follow the same Given/When/Then pattern
 }
 ```
 
@@ -2035,43 +1281,16 @@ class OrderControllerTest {
     }
 
     @Test
-    void shouldReturn404WhenOrderNotFound() throws Exception {
-        when(orderService.findById(999L))
-            .thenThrow(new OrderNotFoundException("Order not found"));
-
-        mockMvc.perform(get("/api/orders/999"))
-            .andExpect(status().isNotFound())
-            .andExpect(jsonPath("$.message").value("Order not found"));
-    }
-
-    @Test
     void shouldReturn400WhenRequestBodyInvalid() throws Exception {
-        String invalidBody = """
-            {"customerId": "", "items": []}
-            """;
-
         mockMvc.perform(post("/api/orders")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(invalidBody))
+                .content("""
+                    {"customerId": "", "items": []}
+                    """))
             .andExpect(status().isBadRequest())
             .andExpect(jsonPath("$.errors").isArray());
     }
-
-    @Test
-    void shouldReturn201WhenOrderCreated() throws Exception {
-        CreateOrderRequest request = new CreateOrderRequest("CUST-001",
-            List.of(new OrderItemDto(1L, 2)));
-        Order created = new Order(42L, "CUST-001", "PENDING", BigDecimal.valueOf(199.98));
-
-        when(orderService.createOrder(any())).thenReturn(created);
-
-        mockMvc.perform(post("/api/orders")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(request)))
-            .andExpect(status().isCreated())
-            .andExpect(header().string("Location", containsString("/api/orders/42")))
-            .andExpect(jsonPath("$.id").value(42));
-    }
+    // (404-when-not-found and 201-when-created follow the same mock-and-perform shape.)
 }
 ```
 
@@ -2123,27 +1342,6 @@ class OrderRepositoryTest {
         assertThat(result).hasSize(1);
         assertThat(result.get(0).getCustomerId()).isEqualTo("CUST-001");
         assertThat(result.get(0).getStatus()).isEqualTo("PENDING");
-    }
-
-    @Test
-    void shouldCalculateTotalRevenueForDateRange() {
-        LocalDate start = LocalDate.of(2024, 1, 1);
-        LocalDate end = LocalDate.of(2024, 1, 31);
-
-        entityManager.persistAndFlush(
-            new Order(null, "CUST-001", "COMPLETED", BigDecimal.valueOf(100),
-                LocalDate.of(2024, 1, 15)));
-        entityManager.persistAndFlush(
-            new Order(null, "CUST-002", "COMPLETED", BigDecimal.valueOf(200),
-                LocalDate.of(2024, 1, 20)));
-        entityManager.persistAndFlush(
-            new Order(null, "CUST-003", "COMPLETED", BigDecimal.valueOf(300),
-                LocalDate.of(2024, 2, 1)));  // Out of range
-
-        BigDecimal revenue = orderRepository
-            .calculateRevenueForDateRange(start, end);
-
-        assertThat(revenue).isEqualByComparingTo(BigDecimal.valueOf(300)); // 100 + 200
     }
 
     @Test
@@ -2294,70 +1492,31 @@ VALUES
 
 ### 8.2 Test Builder Pattern (Object Mother / Test Data Builder)
 
+A fluent builder gives tests readable, default-filled objects so each test only sets the fields it cares about:
+
 ```java
-// OrderTestBuilder.java — fluent builder for test data
+// OrderTestBuilder.java — fluent builder for test data (sensible defaults)
 public class OrderTestBuilder {
-    private Long id = null;
     private String customerId = "CUST-DEFAULT";
     private String status = "PENDING";
-    private BigDecimal total = BigDecimal.valueOf(100.00);
     private List<OrderItem> items = new ArrayList<>();
-    private LocalDateTime createdAt = LocalDateTime.now();
 
-    public static OrderTestBuilder anOrder() {
-        return new OrderTestBuilder();
-    }
+    public static OrderTestBuilder anOrder() { return new OrderTestBuilder(); }
 
-    public OrderTestBuilder withId(Long id) {
-        this.id = id;
-        return this;
-    }
-
-    public OrderTestBuilder forCustomer(String customerId) {
-        this.customerId = customerId;
-        return this;
-    }
-
-    public OrderTestBuilder withStatus(String status) {
-        this.status = status;
-        return this;
-    }
-
-    public OrderTestBuilder withTotal(double total) {
-        this.total = BigDecimal.valueOf(total);
-        return this;
-    }
-
+    public OrderTestBuilder forCustomer(String c) { this.customerId = c; return this; }
+    public OrderTestBuilder completed()          { this.status = "COMPLETED"; return this; }
     public OrderTestBuilder withItem(Long productId, int qty, double price) {
         this.items.add(new OrderItem(productId, qty, BigDecimal.valueOf(price)));
         return this;
     }
-
-    public OrderTestBuilder pending() {
-        this.status = "PENDING";
-        return this;
-    }
-
-    public OrderTestBuilder completed() {
-        this.status = "COMPLETED";
-        return this;
-    }
-
-    public Order build() {
-        return new Order(id, customerId, status, total, items, createdAt);
-    }
-
-    public Order buildAndSave(OrderRepository repo) {
-        return repo.save(build());
-    }
+    public Order build() { return new Order(null, customerId, status, items); }
+    public Order buildAndSave(OrderRepository repo) { return repo.save(build()); }
 }
 
-// Usage in tests:
+// Usage in tests — only specify what matters:
 Order order = anOrder()
     .forCustomer("CUST-001")
     .withItem(1L, 2, 49.99)
-    .withItem(2L, 1, 19.99)
-    .pending()
     .build();
 ```
 
@@ -2393,51 +1552,18 @@ void cleanup() {}
 
 ---
 
-### 8.4 ArchUnit — Architecture Fitness Tests
+### 8.4 ArchUnit — Architecture Fitness Tests (awareness)
 
-ArchUnit lets you write automated tests for your architecture rules:
-
-```xml
-<dependency>
-    <groupId>com.tngtech.archunit</groupId>
-    <artifactId>archunit-junit5</artifactId>
-    <version>1.2.1</version>
-    <scope>test</scope>
-</dependency>
-```
+ArchUnit (`com.tngtech.archunit:archunit-junit5`) lets you write JUnit tests that assert **architecture rules** — e.g. "services must not depend on controllers", "repositories are only accessed by services", "no circular package dependencies". Rules read fluently and fail the build when violated:
 
 ```java
-@AnalyzeClasses(packages = "com.example.orderservice")
-class ArchitectureTest {
-
-    @ArchTest
-    static final ArchRule servicesShouldNotDependOnControllers =
-        noClasses()
-            .that().resideInAPackage("..service..")
-            .should().dependOnClassesThat()
-            .resideInAPackage("..controller..");
-
-    @ArchTest
-    static final ArchRule repositoriesShouldOnlyBeUsedByServices =
-        classes()
-            .that().resideInAPackage("..repository..")
-            .should().onlyBeAccessed()
-            .byAnyPackage("..service..", "..repository..");
-
-    @ArchTest
-    static final ArchRule servicesShouldBeAnnotated =
-        classes()
-            .that().resideInAPackage("..service..")
-            .and().haveSimpleNameEndingWith("Service")
-            .should().beAnnotatedWith(Service.class);
-
-    @ArchTest
-    static final ArchRule noCircularDependencies =
-        slices()
-            .matching("com.example.orderservice.(*)..")
-            .should().beFreeOfCycles();
-}
+@ArchTest
+static final ArchRule servicesShouldNotDependOnControllers =
+    noClasses().that().resideInAPackage("..service..")
+        .should().dependOnClassesThat().resideInAPackage("..controller..");
 ```
+
+Useful on larger teams to keep layering clean; a junior just needs to know such automated architecture checks exist.
 
 ---
 
@@ -2490,25 +1616,10 @@ class OrderEventProcessingTest {
                 assertThat(order.get().getStatus()).isEqualTo("PROCESSING");
             });
     }
-
-    @Test
-    void shouldSendEmailAfterOrderCompleted() {
-        // Arrange
-        Order order = createOrder();
-
-        // Act: trigger async email sending
-        orderService.completeOrder(order.getId());
-
-        // Assert: check that email was eventually sent (async)
-        await()
-            .atMost(Duration.ofSeconds(10))
-            .until(() -> emailRepository.findByOrderId(order.getId()).isPresent());
-
-        Email email = emailRepository.findByOrderId(order.getId()).get();
-        assertThat(email.getSubject()).contains("Order Confirmed");
-    }
 }
 ```
+
+`await()` polls your assertion until it passes or the timeout elapses — far more reliable than guessing a `Thread.sleep()` duration. Use `.until(...)` for a boolean condition or `.untilAsserted(...)` to retry assertions.
 
 ---
 
@@ -2540,22 +1651,7 @@ class ReportServiceTest {
         assertThat(report.getOrderId()).isEqualTo(1L);
         assertThat(report.getStatus()).isEqualTo("DONE");
     }
-
-    @Test
-    void shouldGenerateMultipleReportsConcurrently() throws Exception {
-        List<CompletableFuture<Report>> futures = IntStream.rangeClosed(1, 5)
-            .mapToObj(i -> reportService.generateReport((long) i))
-            .collect(Collectors.toList());
-
-        CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]))
-            .get(30, TimeUnit.SECONDS);
-
-        List<Report> reports = futures.stream()
-            .map(CompletableFuture::join)
-            .collect(Collectors.toList());
-
-        assertThat(reports).hasSize(5);
-    }
+    // (For many concurrent futures, combine with CompletableFuture.allOf(...).get(timeout).)
 }
 ```
 
@@ -2908,20 +2004,9 @@ class ConsumerTest {
 
 ---
 
-**Q18: What is the testing honeycomb vs. testing pyramid? Which applies to microservices?**
+**Q18: Testing honeycomb vs. pyramid — which applies to microservices?**
 
-The **pyramid** (Cohn, 2009) was designed for monolithic applications:
-- Many unit tests at the base
-- Fewer integration tests in the middle
-- Very few E2E tests at the top
-
-The **honeycomb** (Spotify, for microservices):
-- Unit tests still exist, but are fewer (services are small)
-- Integration tests are the dominant layer (test the service with real infrastructure)
-- Contract tests replace many E2E tests
-- Very few E2E tests remain
-
-For microservices, the honeycomb is more appropriate because mocking all the interactions between microservices in unit tests creates brittle, inaccurate tests. Integration tests with TestContainers give more confidence in a microservices context.
+See Q1 and Q2: the **pyramid** (Cohn, monoliths) is unit-heavy; the **honeycomb** (Spotify, microservices) makes integration tests the dominant layer with contract tests replacing many E2E tests, because heavily mocked unit tests in small services give false confidence.
 
 ---
 
@@ -2950,27 +2035,7 @@ assertThat(result).isNotNull();
 
 **Q20: What is the Singleton container pattern in TestContainers?**
 
-The Singleton pattern shares one container across multiple test classes in the same JVM run. Instead of each `@SpringBootTest` class starting its own container, all test classes use a single, shared container:
-
-```java
-// Abstract base class
-public abstract class AbstractIntegrationTest {
-    static final PostgreSQLContainer<?> POSTGRES;
-
-    static {
-        POSTGRES = new PostgreSQLContainer<>("postgres:15").withReuse(true);
-        POSTGRES.start();  // Only starts if not already running
-    }
-
-    @DynamicPropertySource
-    static void overrideProps(DynamicPropertyRegistry reg) {
-        reg.add("spring.datasource.url", POSTGRES::getJdbcUrl);
-        // ...
-    }
-}
-```
-
-This is the most efficient approach for large test suites — one container startup for the entire test run.
+One container shared across all test classes in a JVM run (see section 2.9): an abstract base class starts the container once in a `static {}` block and every test class extends it. It's the most efficient option for large suites — a single container startup for the whole run.
 
 ---
 

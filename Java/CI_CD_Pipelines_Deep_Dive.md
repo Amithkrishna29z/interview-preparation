@@ -1,24 +1,5 @@
 # CI/CD Pipelines — Deep Dive for Full Stack Java Developer Interviews
 
-## Table of Contents
-
-1. [CI/CD Fundamentals](#1-cicd-fundamentals)
-2. [GitHub Actions — Deep Dive](#2-github-actions--deep-dive)
-3. [Jenkins Pipeline](#3-jenkins-pipeline)
-4. [GitLab CI](#4-gitlab-ci)
-5. [Branch Strategies](#5-branch-strategies)
-6. [Deployment Strategies](#6-deployment-strategies)
-7. [Quality Gates in CI](#7-quality-gates-in-ci)
-8. [Secrets Management](#8-secrets-management)
-9. [Docker in CI/CD](#9-docker-in-cicd)
-10. [Deployment to Kubernetes](#10-deployment-to-kubernetes)
-11. [Environment Promotion](#11-environment-promotion)
-12. [Monitoring Post-Deployment](#12-monitoring-post-deployment)
-13. [Interview Questions & Answers](#13-interview-questions--answers)
-14. [Quick Reference Cheat Sheet](#14-quick-reference-cheat-sheet)
-
----
-
 ## 1. CI/CD Fundamentals
 
 ### 1.1 Precise Definitions
@@ -68,11 +49,7 @@ Continuous Deployment
 | Mean Time to Recovery | Hours or days | Minutes |
 | Developer confidence | Low (fear of breaking things) | High (tests catch regressions) |
 
-**Reduced integration risk:** When developers integrate small, frequent changes instead of large batches, merge conflicts and logic conflicts are smaller and easier to resolve.
-
-**Faster feedback:** A developer finds out within 5 minutes if their commit broke tests, rather than discovering it 3 weeks later during a release.
-
-**Repeatable deployments:** The same pipeline script deploys to dev, staging, and production. No snowflake manual steps that differ between environments.
+In short: integrating small, frequent changes keeps conflicts tiny; developers learn within minutes if a commit broke tests; and the same pipeline script deploys to every environment with no snowflake manual steps.
 
 ---
 
@@ -222,50 +199,23 @@ jobs:
 
 ### 2.3 Triggers in Depth
 
+The common triggers a junior will use: `push` and `pull_request` (optionally filtered by `branches`, `tags`, or `paths`), `schedule` (cron), and `workflow_dispatch` (manual run).
+
 ```yaml
 on:
-  # Push to specific branches or tags
   push:
-    branches:
-      - main
-      - 'release/**'        # Glob pattern
-    branches-ignore:
-      - 'dependabot/**'
-    tags:
-      - 'v*'                # Any tag starting with v
-    paths:
-      - 'src/**'            # Only trigger if these paths changed
-      - 'pom.xml'
-    paths-ignore:
-      - '**.md'             # Ignore markdown changes
-
-  # Pull request events
+    branches: [main, 'release/**']
+    paths: ['src/**', 'pom.xml']     # Only trigger if these changed
+    paths-ignore: ['**.md']
   pull_request:
     branches: [main]
-    types: [opened, synchronize, reopened]  # PR event types
-
-  # Scheduled (cron syntax)
+    types: [opened, synchronize, reopened]
   schedule:
-    - cron: '0 0 * * *'    # Daily at midnight UTC
-
-  # Manual trigger with inputs
-  workflow_dispatch:
-    inputs:
-      version:
-        description: 'Version to deploy'
-        required: true
-        type: string
-
-  # Called by another workflow
-  workflow_call:
-    inputs:
-      image-tag:
-        required: true
-        type: string
-    secrets:
-      ECR_ROLE_ARN:
-        required: true
+    - cron: '0 0 * * *'              # Daily at midnight UTC
+  workflow_dispatch:                 # Manual run from the UI
 ```
+
+Awareness: `workflow_call` lets one workflow be called by another (reusable workflows, see 2.9).
 
 ---
 
@@ -320,35 +270,20 @@ jobs:
 
 ### 2.5 Contexts
 
+Contexts expose runtime info via `${{ ... }}`. The ones you use most: `github.sha`, `github.ref_name` (branch), `github.event_name`, `secrets.*`, `matrix.*`, and `steps.<id>.outputs.*`.
+
 ```yaml
 steps:
-  - name: Show context values
+  - name: Use common contexts
     run: |
-      echo "Repo: ${{ github.repository }}"
-      echo "Branch: ${{ github.ref_name }}"
-      echo "Commit SHA: ${{ github.sha }}"
-      echo "Event: ${{ github.event_name }}"
-      echo "Actor: ${{ github.actor }}"
-      echo "Run ID: ${{ github.run_id }}"
-      echo "Workflow: ${{ github.workflow }}"
+      echo "Branch: ${{ github.ref_name }}, SHA: ${{ github.sha }}"
 
-  - name: Use secret
-    run: aws configure set aws_access_key_id ${{ secrets.AWS_ACCESS_KEY_ID }}
-
-  - name: Reference matrix value
-    run: echo "Java version ${{ matrix.java }}"
-
-  - name: Reference step output
+  - name: Set a step output
     id: get-version
     run: echo "version=1.2.3" >> $GITHUB_OUTPUT
 
-  - name: Use previous step output
+  - name: Read previous step output
     run: echo "Version is ${{ steps.get-version.outputs.version }}"
-
-  - name: Use env context
-    env:
-      MY_VAR: "hello"
-    run: echo "${{ env.MY_VAR }}"
 ```
 
 ---
@@ -648,81 +583,23 @@ ENTRYPOINT ["java", "org.springframework.boot.loader.JarLauncher"]
 
 ### 2.8 OIDC for AWS Authentication (No Long-Lived Keys)
 
-Traditional approach (bad — long-lived access keys in secrets):
-```yaml
-# BAD: Static access keys can be leaked, don't rotate automatically
-- uses: aws-actions/configure-aws-credentials@v4
-  with:
-    aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-    aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-```
+Awareness: instead of storing static AWS access keys as secrets (which can leak and don't rotate), the best practice is OIDC. GitHub exchanges a short-lived token with AWS STS to assume an IAM role; the credentials expire in ~1 hour. You configure an IAM role with a trust policy that allows your repo once in AWS, then reference the role in the workflow.
 
-OIDC approach (best practice — short-lived tokens):
 ```yaml
-# GOOD: GitHub gets a short-lived token from AWS STS
+# GOOD: short-lived credentials via OIDC, no static keys
 - uses: aws-actions/configure-aws-credentials@v4
   with:
     role-to-assume: arn:aws:iam::123456789:role/github-actions-role
     aws-region: us-east-1
-    # GitHub exchanges its OIDC token for AWS credentials
-    # Credentials are valid for ~1 hour only
-```
-
-**AWS IAM role trust policy (configured once in AWS):**
-```json
-{
-  "Version": "2012-10-17",
-  "Statement": [{
-    "Effect": "Allow",
-    "Principal": {
-      "Federated": "arn:aws:iam::123456789:oidc-provider/token.actions.githubusercontent.com"
-    },
-    "Action": "sts:AssumeRoleWithWebIdentity",
-    "Condition": {
-      "StringEquals": {
-        "token.actions.githubusercontent.com:aud": "sts.amazonaws.com"
-      },
-      "StringLike": {
-        "token.actions.githubusercontent.com:sub": "repo:myorg/myrepo:*"
-      }
-    }
-  }]
-}
 ```
 
 ---
 
 ### 2.9 Reusable Workflows and Composite Actions
 
-**Reusable workflow** (called by other workflows):
+Awareness (a DRY technique you'll meet but rarely author as a junior): a **reusable workflow** (defined with `on: workflow_call`) can be invoked from other workflows so deploy/build logic lives in one place. A **composite action** bundles several steps into a single reusable `uses:` step. Call a reusable workflow like this:
+
 ```yaml
-# .github/workflows/deploy-reusable.yml
-name: Reusable Deploy Workflow
-
-on:
-  workflow_call:
-    inputs:
-      environment:
-        required: true
-        type: string
-      image-tag:
-        required: true
-        type: string
-    secrets:
-      AWS_ROLE_ARN:
-        required: true
-
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Deploy ${{ inputs.image-tag }} to ${{ inputs.environment }}
-        run: echo "Deploying..."
-```
-
-**Calling a reusable workflow:**
-```yaml
-# .github/workflows/ci.yml
 jobs:
   deploy-staging:
     uses: ./.github/workflows/deploy-reusable.yml
@@ -731,29 +608,6 @@ jobs:
       image-tag: ${{ github.sha }}
     secrets:
       AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
-```
-
-**Composite action** (reusable multi-step unit):
-```yaml
-# .github/actions/setup-and-build/action.yml
-name: Setup and Build
-description: Sets up Java and builds the project
-
-inputs:
-  java-version:
-    description: Java version
-    default: '21'
-
-runs:
-  using: composite
-  steps:
-    - uses: actions/setup-java@v4
-      with:
-        java-version: ${{ inputs.java-version }}
-        distribution: temurin
-        cache: maven
-    - run: mvn clean package -DskipTests
-      shell: bash
 ```
 
 ---
@@ -780,22 +634,7 @@ jobs:
 
 ### 2.11 Self-Hosted vs GitHub-Hosted Runners
 
-| | GitHub-Hosted | Self-Hosted |
-|---|---|---|
-| **Cost** | Included (2000 min/month free) | Your infrastructure cost |
-| **Maintenance** | Zero | You patch, update, secure |
-| **Network access** | Public internet only | Can access private VPCs |
-| **Performance** | Standard (2-core, 7GB RAM) | Your choice (can be beefy) |
-| **Ephemeral** | Yes (fresh VM each run) | Configurable |
-| **Use case** | Most CI workloads | Private resources, GPU, speed |
-
-```yaml
-# Self-hosted runner
-runs-on: self-hosted
-
-# Self-hosted with labels
-runs-on: [self-hosted, linux, x64, production]
-```
+Awareness (this is DevOps infra, not a junior responsibility): GitHub-hosted runners are fresh, zero-maintenance VMs included in your plan and cover most CI work. Self-hosted runners are machines you own and maintain — used when you need to reach private VPC resources, beefier hardware, or faster builds. You target one with `runs-on: self-hosted` (optionally with labels like `[self-hosted, linux, x64]`).
 
 ---
 
@@ -1007,82 +846,18 @@ pipeline {
 
 ### 3.3 Jenkins Shared Libraries
 
-Shared libraries allow reusing pipeline code across multiple Jenkinsfiles.
+Awareness: shared libraries let you reuse pipeline code across many Jenkinsfiles. You put logic in a library repo's `vars/` folder (e.g. `buildSpringBoot.groovy`), then each project's Jenkinsfile shrinks to a couple of lines that call it:
 
-**Repository structure:**
-```
-jenkins-shared-library/
-├── vars/
-│   ├── buildSpringBoot.groovy    # Global variable (callable as buildSpringBoot())
-│   └── deployToK8s.groovy
-├── src/
-│   └── com/company/
-│       └── BuildUtils.groovy     # Class-style utilities
-└── resources/
-    └── deploy-template.sh
-```
-
-**vars/buildSpringBoot.groovy:**
-```groovy
-def call(Map config = [:]) {
-    def javaVersion = config.javaVersion ?: '21'
-    def skipTests = config.skipTests ?: false
-
-    pipeline {
-        agent any
-        tools { jdk "JDK${javaVersion}" }
-        stages {
-            stage('Build') {
-                steps {
-                    sh "mvn clean ${skipTests ? 'package -DskipTests' : 'verify'}"
-                }
-            }
-        }
-    }
-}
-```
-
-**Using in Jenkinsfile:**
 ```groovy
 @Library('jenkins-shared-library@main') _
-
-buildSpringBoot(
-    javaVersion: '21',
-    skipTests: false
-)
+buildSpringBoot(javaVersion: '21', skipTests: false)
 ```
 
 ---
 
 ### 3.4 Multibranch Pipeline
 
-Jenkins Multibranch Pipeline automatically discovers branches and creates a pipeline job for each. It reads the Jenkinsfile from each branch.
-
-```groovy
-// In Jenkinsfile — branch-specific logic
-pipeline {
-    agent any
-    stages {
-        stage('Deploy') {
-            when {
-                anyOf {
-                    branch 'main'
-                    branch 'develop'
-                }
-            }
-            steps {
-                script {
-                    if (env.BRANCH_NAME == 'main') {
-                        deployToProduction()
-                    } else if (env.BRANCH_NAME == 'develop') {
-                        deployToDev()
-                    }
-                }
-            }
-        }
-    }
-}
-```
+Awareness: a Jenkins Multibranch Pipeline auto-discovers branches and creates a pipeline job per branch, reading the `Jenkinsfile` from each. Combine it with `when { branch 'main' }` blocks for branch-specific deploy logic.
 
 ---
 
@@ -1090,175 +865,57 @@ pipeline {
 
 ### 4.1 .gitlab-ci.yml Structure
 
+GitLab CI uses a single `.gitlab-ci.yml`: you declare ordered `stages`, then jobs that each name a `stage`, an `image`, and a `script`. The shape is the same build → test → package → deploy idea as GitHub Actions/Jenkins.
+
 ```yaml
-# .gitlab-ci.yml
+stages: [build, test, package, deploy]
 
-# Define pipeline stages in order
-stages:
-  - build
-  - test
-  - scan
-  - package
-  - deploy
-
-# Global variables (available in all jobs)
 variables:
-  MAVEN_OPTS: "-Dmaven.repo.local=$CI_PROJECT_DIR/.m2"
   DOCKER_IMAGE: $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA
-
-# Global cache (inherited by all jobs unless overridden)
 cache:
-  paths:
-    - .m2/
+  paths: [.m2/]
 
-# ─────────────────────────────────────────────
-# BUILD STAGE
-# ─────────────────────────────────────────────
 build:
   stage: build
   image: maven:3.9-eclipse-temurin-21
   script:
     - mvn clean compile --batch-mode -q
-  artifacts:
-    paths:
-      - target/classes/
-    expire_in: 1 hour
 
-# ─────────────────────────────────────────────
-# TEST STAGE (parallel jobs)
-# ─────────────────────────────────────────────
 unit-tests:
   stage: test
   image: maven:3.9-eclipse-temurin-21
   script:
     - mvn test --batch-mode
   artifacts:
-    when: always    # Upload even if tests fail (to see results)
+    when: always
     reports:
       junit: target/surefire-reports/TEST-*.xml
-      coverage_report:
-        coverage_format: jacoco
-        path: target/site/jacoco/jacoco.xml
   coverage: '/Total.*?([0-9]{1,3})%/'    # Regex to extract coverage %
 
-integration-tests:
-  stage: test
-  image: maven:3.9-eclipse-temurin-21
-  services:
-    - postgres:15    # Spin up a Postgres container for integration tests
-  variables:
-    POSTGRES_DB: testdb
-    POSTGRES_USER: test
-    POSTGRES_PASSWORD: test
-    SPRING_DATASOURCE_URL: jdbc:postgresql://postgres/testdb
-  script:
-    - mvn verify -Pintegration-tests --batch-mode
-
-# ─────────────────────────────────────────────
-# SCAN STAGE
-# ─────────────────────────────────────────────
-sonarqube:
-  stage: scan
-  image: maven:3.9-eclipse-temurin-21
-  script:
-    - mvn sonar:sonar
-        -Dsonar.projectKey=$CI_PROJECT_NAME
-        -Dsonar.host.url=$SONAR_URL
-        -Dsonar.login=$SONAR_TOKEN
-  allow_failure: false
-
-# ─────────────────────────────────────────────
-# PACKAGE STAGE
-# ─────────────────────────────────────────────
 docker-build:
   stage: package
   image: docker:24
-  services:
-    - docker:24-dind    # Docker-in-Docker
-  variables:
-    DOCKER_TLS_CERTDIR: "/certs"
+  services: [docker:24-dind]    # Docker-in-Docker
   before_script:
     - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
   script:
     - docker build -t $DOCKER_IMAGE .
     - docker push $DOCKER_IMAGE
-    # Also tag as 'latest' for main branch
-    - |
-      if [ "$CI_COMMIT_BRANCH" == "main" ]; then
-        docker tag $DOCKER_IMAGE $CI_REGISTRY_IMAGE:latest
-        docker push $CI_REGISTRY_IMAGE:latest
-      fi
-  only:
-    - main
-    - tags
-
-# ─────────────────────────────────────────────
-# DEPLOY STAGE
-# ─────────────────────────────────────────────
-deploy-staging:
-  stage: deploy
-  image: bitnami/kubectl:latest
-  environment:
-    name: staging
-    url: https://staging.myapp.com
-  before_script:
-    - kubectl config set-cluster k8s --server=$K8S_SERVER
-    - kubectl config set-credentials admin --token=$K8S_TOKEN
-    - kubectl config set-context default --cluster=k8s --user=admin
-    - kubectl config use-context default
-  script:
-    - kubectl set image deployment/springboot-app
-        springboot-app=$DOCKER_IMAGE
-        --namespace staging
-    - kubectl rollout status deployment/springboot-app --namespace staging
-  only:
-    - main
+  only: [main, tags]
 
 deploy-production:
   stage: deploy
   image: bitnami/kubectl:latest
-  environment:
-    name: production
-    url: https://myapp.com
+  environment: { name: production, url: https://myapp.com }
   script:
     - kubectl set image deployment/springboot-app springboot-app=$DOCKER_IMAGE --namespace production
-  when: manual           # Manual trigger — must click "play" in GitLab UI
-  only:
-    - main
+  when: manual           # Click "play" in GitLab UI to deploy
+  only: [main]
 ```
 
 ### 4.2 Include and Extend for DRY Configuration
 
-```yaml
-# .gitlab-ci.yml — main file
-include:
-  - local: '.gitlab/ci/build.yml'
-  - local: '.gitlab/ci/test.yml'
-  - template: Security/SAST.gitlab-ci.yml    # GitLab built-in template
-
-# Using 'extends' to inherit from a base job
-.deploy-base:          # Jobs starting with '.' are hidden (not run directly)
-  image: bitnami/kubectl:latest
-  before_script:
-    - kubectl config use-context $K8S_CONTEXT
-  script:
-    - kubectl set image deployment/app app=$DOCKER_IMAGE --namespace $NAMESPACE
-
-deploy-staging:
-  extends: .deploy-base
-  variables:
-    NAMESPACE: staging
-    K8S_CONTEXT: staging-context
-  environment: staging
-
-deploy-production:
-  extends: .deploy-base
-  variables:
-    NAMESPACE: production
-    K8S_CONTEXT: production-context
-  environment: production
-  when: manual
-```
+Awareness: GitLab keeps config DRY with `include` (pull in other YAML files or built-in templates like `Security/SAST.gitlab-ci.yml`) and `extends` (inherit from a hidden base job whose name starts with `.`). This is the GitLab equivalent of reusable workflows / shared libraries.
 
 ---
 
@@ -1483,21 +1140,7 @@ After switch:
 5. Keep blue running for quick rollback
 6. After confidence, decommission blue (or it becomes the next idle env)
 
-**AWS implementation:**
-```yaml
-# ALB weighted routing: switch 100% traffic to green
-aws elbv2 modify-rule \
-  --rule-arn $RULE_ARN \
-  --actions '[{
-    "Type": "forward",
-    "ForwardConfig": {
-      "TargetGroups": [
-        {"TargetGroupArn": "$BLUE_TG_ARN", "Weight": 0},
-        {"TargetGroupArn": "$GREEN_TG_ARN", "Weight": 100}
-      ]
-    }
-  }]'
-```
+Awareness: in practice the LB cutover is a weighted-routing change (e.g. an AWS ALB rule sending 100% to the green target group). Junior-level: understand the flip, not the full CLI config.
 
 **Pros:** Instant rollback (flip LB back), no mixed versions, test in production-like env before cutover
 **Cons:** Double the infrastructure cost, stateful apps (sessions, DB) are complex
@@ -1518,66 +1161,7 @@ If healthy: 20% → 50% → 100% (gradual rollout)
 If bad:     0% → rollback canary
 ```
 
-**Kubernetes canary with two deployments:**
-```yaml
-# v1: main deployment (19 replicas = 95%)
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: springboot-app-stable
-spec:
-  replicas: 19
-  selector:
-    matchLabels:
-      app: springboot-app
-      version: stable
-
----
-# v2: canary deployment (1 replica = 5%)
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: springboot-app-canary
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: springboot-app
-      version: canary
-
----
-# Service selects both (no version label)
-apiVersion: v1
-kind: Service
-metadata:
-  name: springboot-app
-spec:
-  selector:
-    app: springboot-app    # Matches both stable and canary pods
-```
-
-**Argo Rollouts canary (more sophisticated):**
-```yaml
-apiVersion: argoproj.io/v1alpha1
-kind: Rollout
-metadata:
-  name: springboot-app
-spec:
-  strategy:
-    canary:
-      steps:
-        - setWeight: 5      # 5% traffic to new version
-        - pause: {duration: 5m}
-        - setWeight: 20
-        - pause: {duration: 10m}
-        - setWeight: 50
-        - pause: {duration: 10m}
-        - setWeight: 100
-      analysis:             # Automatic rollback on metric degradation
-        templates:
-          - templateName: success-rate
-        startingStep: 1
-```
+Awareness of implementation: a basic canary runs two Kubernetes Deployments (stable with most replicas, canary with a few) behind one Service so traffic splits by replica ratio. Tools like **Argo Rollouts** do it properly — declaring weight steps (5% → 20% → 50% → 100%) with pauses and automatic rollback when success-rate metrics drop. You don't need to author these configs as a junior; know what they achieve.
 
 **Pros:** Low blast radius, real-traffic testing, gradual confidence building, automatic rollback
 **Cons:** Requires sophisticated monitoring, API backward compatibility needed, complex routing
@@ -1798,28 +1382,14 @@ application-local.properties
 
 ### 8.3 HashiCorp Vault
 
-```yaml
-# GitHub Actions: fetch secret from Vault
-- name: Import Secrets from Vault
-  uses: hashicorp/vault-action@v2
-  with:
-    url: https://vault.company.com
-    token: ${{ secrets.VAULT_TOKEN }}
-    secrets: |
-      secret/data/myapp/db password | DB_PASSWORD;
-      secret/data/myapp/api key | API_KEY
-
-- name: Use fetched secret
-  run: echo "DB password is set: ${{ env.DB_PASSWORD != '' }}"
-```
-
-**Why Vault:** Dynamic secrets (Vault generates DB credentials per-request that expire), audit log, fine-grained access policies, secret rotation.
+Awareness (enterprise/DevOps-scale secret management): HashiCorp Vault is a dedicated secrets store. A CI job (or the app) fetches secrets from it at runtime instead of storing them statically. Its selling points are dynamic secrets (e.g. short-lived DB credentials generated per request), audit logging, fine-grained access policies, and automatic rotation.
 
 ---
 
 ### 8.4 Kubernetes Secrets vs External Secrets Operator
 
-**Kubernetes Secrets (base64 encoded, not encrypted by default):**
+Awareness: a Kubernetes `Secret` holds credentials, but the values are only base64-encoded, **not** encrypted — so you don't want real production secrets committed to Git. The **External Secrets Operator** solves this by syncing secrets from a real store (Vault, AWS Secrets Manager) into K8s Secrets at runtime, so nothing sensitive lives in your manifests.
+
 ```yaml
 apiVersion: v1
 kind: Secret
@@ -1828,26 +1398,6 @@ metadata:
 type: Opaque
 data:
   password: cGFzc3dvcmQ=    # base64("password") — NOT encryption!
-```
-
-**External Secrets Operator (syncs from Vault/AWS Secrets Manager to K8s Secrets):**
-```yaml
-apiVersion: external-secrets.io/v1beta1
-kind: ExternalSecret
-metadata:
-  name: db-secret
-spec:
-  refreshInterval: 1h
-  secretStoreRef:
-    name: aws-secretsmanager
-    kind: ClusterSecretStore
-  target:
-    name: db-secret    # Creates a K8s Secret with this name
-  data:
-    - secretKey: password
-      remoteRef:
-        key: myapp/production/db
-        property: password
 ```
 
 ---
@@ -1913,70 +1463,23 @@ ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS org.springframework.boot.loader.JarLaun
     cache-to: type=gha,mode=max   # Write all layers to cache
 ```
 
-**Registry-based cache (persists between runs):**
-```yaml
-- uses: docker/build-push-action@v5
-  with:
-    cache-from: type=registry,ref=myrepo/myapp:buildcache
-    cache-to: type=registry,ref=myrepo/myapp:buildcache,mode=max
-```
+Awareness: you can also persist the layer cache in a registry instead of the GHA cache with `cache-from/cache-to: type=registry,ref=myrepo/myapp:buildcache`.
 
 ---
 
 ### 9.3 Kaniko for Rootless Builds in Kubernetes
 
-When running CI/CD inside Kubernetes (e.g., self-hosted GitHub Actions runners in K8s), Docker-in-Docker requires privileged mode which is a security risk. Kaniko builds images without requiring root or Docker daemon.
-
-```yaml
-# Kubernetes Job using Kaniko
-apiVersion: batch/v1
-kind: Job
-metadata:
-  name: build-springboot-app
-spec:
-  template:
-    spec:
-      containers:
-        - name: kaniko
-          image: gcr.io/kaniko-project/executor:latest
-          args:
-            - "--context=git://github.com/myorg/myapp"
-            - "--dockerfile=Dockerfile"
-            - "--destination=myrepo/myapp:latest"
-            - "--cache=true"              # Enable layer caching
-            - "--cache-repo=myrepo/cache"
-          volumeMounts:
-            - name: docker-config
-              mountPath: /kaniko/.docker
-      volumes:
-        - name: docker-config
-          secret:
-            secretName: registry-credentials
-      restartPolicy: Never
-```
+Awareness (a DevOps concern): when CI runs inside Kubernetes, Docker-in-Docker needs privileged mode, which is a security risk. **Kaniko** builds and pushes images without a Docker daemon or root, making it the safer choice for in-cluster builds.
 
 ---
 
 ### 9.4 Image Tagging Strategy
 
+Avoid `latest` (mutable — you can't tell what's running). Tag by Git short SHA for traceability (`$(git rev-parse --short HEAD)`), semantic version for releases (`1.2.3`), or a combination (`1.2.3-abc1234`, `${BRANCH_NAME}-${SHORT_SHA}`). See section 1.4 for the same guidance with examples.
+
 ```bash
-# Anti-pattern: 'latest' is mutable — you can't know what's running
-docker tag myapp:abc1234 myapp:latest   # Every push overwrites latest
-
-# Pattern 1: Git SHA (best for traceability)
-IMAGE_TAG=$(git rev-parse --short HEAD)
+IMAGE_TAG=$(git rev-parse --short HEAD)   # Best default: git SHA
 docker build -t myapp:${IMAGE_TAG} .
-
-# Pattern 2: Semantic version (for releases)
-IMAGE_TAG="1.2.3"
-docker build -t myapp:${IMAGE_TAG} .
-
-# Pattern 3: Version + SHA (best of both)
-IMAGE_TAG="1.2.3-abc1234"
-
-# Pattern 4: Branch + SHA (for multi-environment pipelines)
-IMAGE_TAG="${BRANCH_NAME}-${SHORT_SHA}"
-# e.g., "main-abc1234", "feature-auth-def5678"
 ```
 
 ---
@@ -2077,31 +1580,7 @@ helm upgrade --install springboot-app ./charts/springboot-app \
   --atomic               # Rollback automatically on failure
 ```
 
-**Helm values files per environment:**
-```yaml
-# values-production.yaml
-replicaCount: 3
-image:
-  repository: myrepo/springboot-app
-  tag: latest    # Overridden by --set in CI
-
-resources:
-  requests:
-    memory: 512Mi
-    cpu: 500m
-  limits:
-    memory: 1Gi
-    cpu: 1000m
-
-autoscaling:
-  enabled: true
-  minReplicas: 3
-  maxReplicas: 10
-
-ingress:
-  enabled: true
-  hostname: myapp.com
-```
+A per-environment values file (`values-production.yaml`) sets things like `replicaCount`, resource requests/limits, autoscaling, and ingress hostname; the image tag is overridden by `--set image.tag=...` in CI.
 
 ---
 
@@ -2117,42 +1596,7 @@ CI pipeline: build image → push to ECR → update image tag in Git manifest re
 ArgoCD detects Git change → pulls new manifest → applies to K8s cluster
 ```
 
-```yaml
-# ArgoCD Application manifest
-apiVersion: argoproj.io/v1alpha1
-kind: Application
-metadata:
-  name: springboot-app
-  namespace: argocd
-spec:
-  project: default
-  source:
-    repoURL: https://github.com/myorg/k8s-manifests
-    targetRevision: main
-    path: apps/springboot-app/production
-  destination:
-    server: https://kubernetes.default.svc
-    namespace: production
-  syncPolicy:
-    automated:
-      prune: true          # Remove resources deleted from Git
-      selfHeal: true       # Re-apply if someone manually changes K8s
-    syncOptions:
-      - CreateNamespace=true
-```
-
-**CI pipeline step to update the manifest:**
-```bash
-# In GitHub Actions — update image tag in manifest repo
-git clone https://github.com/myorg/k8s-manifests
-cd k8s-manifests
-# Update image tag using yq or sed
-yq -i ".image.tag = \"${IMAGE_TAG}\"" apps/springboot-app/production/values.yaml
-git add .
-git commit -m "ci: update springboot-app image to ${IMAGE_TAG}"
-git push
-# ArgoCD detects this push and auto-deploys
-```
+Awareness (GitOps is a senior/DevOps topic — know the concept): with ArgoCD, an `Application` manifest points at a Git repo of K8s manifests with `syncPolicy.automated` (prune + selfHeal). The CI pipeline just commits the new image tag to that manifest repo (e.g. `yq -i ".image.tag = ..."`), and ArgoCD reconciles the cluster to match. Key benefit: the pipeline needs no cluster credentials, and drift is auto-corrected.
 
 ---
 
@@ -2188,8 +1632,10 @@ git push
 
 ### 11.2 Environment-Specific Configuration
 
+Only configuration differs per environment, injected at runtime — never baked into the image. The usual mechanisms: Spring profiles (`SPRING_PROFILES_ACTIVE`), Kubernetes ConfigMaps for non-sensitive values, Secrets for credentials, and Helm values files (`values-dev.yaml`, `values-production.yaml`) for replica counts and resource limits. (See Q22 for the full breakdown.)
+
 ```yaml
-# Kubernetes ConfigMap per environment
+# Kubernetes ConfigMap per environment (non-sensitive config)
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -2200,25 +1646,8 @@ data:
     spring:
       datasource:
         url: jdbc:postgresql://prod-db.internal:5432/myapp
-      redis:
-        host: prod-redis.internal
     logging:
-      level:
-        root: WARN
-```
-
-```yaml
-# Helm: different values per environment
-# deploy with: helm upgrade ... -f values-production.yaml
-# values-dev.yaml
-replicaCount: 1
-database:
-  url: jdbc:postgresql://dev-db:5432/myapp_dev
-
-# values-production.yaml
-replicaCount: 3
-database:
-  url: jdbc:postgresql://prod-db.internal:5432/myapp_prod
+      level: { root: WARN }
 ```
 
 ---
@@ -2257,26 +1686,7 @@ echo "All smoke tests passed."
 
 ### 12.2 Automatic Rollback on Metric Degradation
 
-```yaml
-# Argo Rollouts: auto-rollback on error rate spike
-apiVersion: argoproj.io/v1alpha1
-kind: AnalysisTemplate
-metadata:
-  name: success-rate
-spec:
-  metrics:
-    - name: success-rate
-      interval: 1m
-      successCondition: result[0] >= 0.95    # 95% success rate
-      failureLimit: 3                         # Fail after 3 consecutive bad readings
-      provider:
-        prometheus:
-          address: http://prometheus:9090
-          query: |
-            sum(rate(http_requests_total{job="springboot-app",status!~"5.."}[5m]))
-            /
-            sum(rate(http_requests_total{job="springboot-app"}[5m]))
-```
+Awareness: advanced setups (e.g. Argo Rollouts `AnalysisTemplate`) query Prometheus for a metric like success rate (`>= 0.95`) and auto-roll-back after a few consecutive bad readings. At junior level, the equivalent is a smoke test that triggers `kubectl rollout undo` on failure:
 
 **Kubernetes deployment rollback in CI:**
 ```bash
@@ -2349,15 +1759,9 @@ We also use secret scanning on the repository — GitHub's built-in scanner plus
 
 ---
 
-### Q6: What is GitOps? What tools support it?
+### Q6: What is GitOps? What tools support it? (senior-level — awareness)
 
-**A:** GitOps is a deployment practice where the desired state of your infrastructure and application is declared in Git, and an automated agent continuously reconciles the live cluster to match that desired state. Git is the single source of truth. Changes happen by making PRs to the Git repo, not by running `kubectl apply` manually.
-
-The flow: a developer merges a change → CI builds and pushes the Docker image → CI commits the new image tag to the "manifests repo" → the GitOps agent (running inside the cluster) detects the change and applies it.
-
-The key difference from traditional push-based CD: the CI pipeline does not need cluster credentials. The cluster pulls from Git, rather than the pipeline pushing to the cluster. This improves security and makes the system self-healing — if someone manually changes a K8s resource, the GitOps agent reverts it to what Git says it should be.
-
-Tools: **ArgoCD** (most popular, excellent UI, multi-cluster), **Flux CD** (CNCF graduated, GitOps toolkit approach), Rancher Fleet, Jenkins X.
+**A:** GitOps declares the desired state of infrastructure and apps in Git, and an agent in the cluster continuously reconciles the live cluster to match it. Git is the single source of truth; you change things via PRs, not manual `kubectl apply`. The flow: developer merges → CI builds/pushes the image → CI commits the new image tag to a manifests repo → the agent detects it and applies it. The key difference from push-based CD is that the pipeline needs no cluster credentials (the cluster pulls), which is more secure and self-healing. Tools: **ArgoCD** (most popular) and **Flux CD**.
 
 ---
 
@@ -2373,17 +1777,16 @@ Feature flags are the enabler: you can deploy unfinished code to production with
 
 ### Q8: How do you prevent a bad deploy from reaching production?
 
-**A:** It's a layered defence:
+**A:** A layered defence:
 
-1. **Automated tests in CI** — unit tests, integration tests, coverage gates. Don't let untested code reach the build stage.
-2. **SonarQube quality gate** — code quality, security hotspots, vulnerability checks must pass.
-3. **Container vulnerability scanning** — Trivy scans the Docker image and fails the pipeline on CRITICAL/HIGH CVEs.
-4. **Branch protection** — the `main` branch requires PRs with passing status checks and at least one reviewer approval before merging.
-5. **Deploy to staging first** — the same image that passed CI is deployed to staging before production. Integration tests and smoke tests run there.
-6. **Environment approval** — production deployment requires explicit human approval via GitHub Environments.
-7. **Canary or rolling deployment** — even if something slips through, only a fraction of traffic hits the new version initially.
-8. **Post-deploy smoke test** — the pipeline checks the health endpoint immediately after deployment and rolls back automatically if it fails.
-9. **Monitoring and alerting** — Prometheus/Grafana watches error rate and latency. A spike triggers a PagerDuty alert, and Argo Rollouts can auto-rollback if configured.
+1. **Automated tests in CI** — unit/integration tests and coverage gates block untested code.
+2. **SonarQube quality gate** and **container scanning** (Trivy fails on CRITICAL/HIGH CVEs).
+3. **Branch protection** — `main` requires PRs with passing checks and a reviewer approval.
+4. **Deploy to staging first** — the same image runs integration and smoke tests before production.
+5. **Environment approval** — production requires explicit human approval via GitHub Environments.
+6. **Canary or rolling deployment** — only a fraction of traffic hits a new version initially.
+7. **Post-deploy smoke test** — checks the health endpoint and auto-rolls-back on failure.
+8. **Monitoring and alerting** — Prometheus/Grafana watch error rate and latency; spikes alert the team.
 
 ---
 
@@ -2413,38 +1816,21 @@ In Jenkins, `post { failure { ... } }` blocks send notifications and can trigger
 
 ### Q11: What is SAST vs DAST?
 
-**A:** SAST (Static Application Security Testing) analyzes source code, bytecode, or binaries without running the application. It finds vulnerabilities at rest: insecure API usage, SQL injection patterns, hardcoded credentials, known-vulnerable library versions (CVEs). Tools: OWASP Dependency Check, Snyk, SpotBugs, SonarQube Security. Runs early in the pipeline (build/scan stage), fast, no running app needed.
-
-DAST (Dynamic Application Security Testing) tests a running application by sending it HTTP requests that simulate attacks: XSS payloads, SQL injection, broken auth, insecure headers. It can find runtime vulnerabilities SAST cannot (e.g., a SQL injection vulnerability in a dynamically constructed query). Tools: OWASP ZAP, Burp Suite. Runs late in the pipeline (after deployment to staging), slower, requires a deployed app.
-
-Best practice: use both. SAST for early, cheap feedback in CI. DAST against staging for runtime validation.
+**A:** SAST (Static Application Security Testing) analyzes source code/bytecode without running the app — finding insecure API usage, SQL injection patterns, hardcoded credentials, and known-vulnerable libraries (CVEs). It runs early and fast (build/scan stage). Tools: OWASP Dependency Check, Snyk, SpotBugs, SonarQube. DAST (Dynamic Application Security Testing) tests a running app by sending attack-like HTTP requests (XSS, injection, broken auth), catching runtime issues SAST can't. It runs late (against staging) and is slower. Tools: OWASP ZAP, Burp Suite. Best practice: use both.
 
 ---
 
 ### Q12: How do you test a Docker image in CI?
 
-**A:** Several levels:
-
-1. **Build verification** — if `docker build` succeeds, the image is syntactically valid. Failing builds immediately fail the pipeline.
-2. **Container structure tests** (Google's `container-structure-test`): verify the image has the right files, environment variables, exposed ports, and that the entrypoint command runs.
-3. **Trivy vulnerability scan** — scan for OS package CVEs and application dependency CVEs in the image.
-4. **Smoke test against a running container:**
+**A:** Several levels: **build verification** (a successful `docker build` means the image is valid); **Trivy vulnerability scan** for OS and dependency CVEs; a **smoke test against a running container**; and **integration tests** (Docker Compose spinning up the app plus Postgres/Redis). The smoke test in CI:
 
 ```bash
-# Start the container in CI
 docker run -d --name test-app -p 8080:8080 myapp:abc1234
-
-# Wait for startup
 sleep 10
-
-# Hit the health endpoint
 HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/actuator/health)
 docker stop test-app
-
 [ "$HTTP_STATUS" = "200" ] || exit 1
 ```
-
-5. **Integration tests against a running container** using Docker Compose in CI — spin up the app + dependencies (Postgres, Redis) and run a suite of API-level tests.
 
 ---
 
@@ -2491,53 +1877,21 @@ Practical shift-left practices: IDE plugins (SonarLint), pre-commit hooks (check
 
 ---
 
-### Q17: How would you set up CI/CD for a microservices architecture with 15 services?
+### Q17: How would you set up CI/CD for a microservices architecture with 15 services? (senior-level — awareness)
 
-**A:** You avoid a monorepo pipeline that rebuilds all 15 services on every commit. Instead:
-
-1. **Path-based triggers** — each service's pipeline only runs when files in its directory change:
-```yaml
-on:
-  push:
-    paths:
-      - 'services/user-service/**'
-      - 'shared-libs/**'
-```
-
-2. **Shared pipeline templates** — use GitHub Actions reusable workflows or Jenkins shared libraries. Each service's Jenkinsfile is 10 lines that call the shared `buildSpringBoot()` function. Build logic lives in one place.
-
-3. **Independent deployments** — each service has its own pipeline, its own ECR repository, and deploys independently. No "big bang" releases.
-
-4. **Shared integration tests** — a separate pipeline that runs after multiple services are deployed to staging, testing cross-service interactions.
-
-5. **Dependency tracking** — if `shared-lib` changes, trigger tests for all services that depend on it.
+**A:** Avoid one monorepo pipeline that rebuilds all 15 services on every commit. Instead: use **path-based triggers** so each service's pipeline runs only when its directory changes; use **shared pipeline templates** (reusable workflows / Jenkins shared libraries) so build logic lives in one place; give each service an **independent pipeline and registry** so it deploys on its own (no big-bang releases); and run **cross-service integration tests** in a separate pipeline against staging.
 
 ---
 
-### Q18: What is a self-healing pipeline?
+### Q18: What is a self-healing pipeline? (senior-level — awareness)
 
-**A:** A pipeline that automatically detects and recovers from deployment failures without human intervention.
-
-Implementation:
-- Readiness probes in Kubernetes prevent bad pods from receiving traffic
-- `kubectl rollout status --timeout=300s` fails the pipeline if pods don't become ready
-- The pipeline step catches this failure and runs `kubectl rollout undo`
-- Argo Rollouts with analysis can automatically roll back if error rates exceed thresholds
-- Alerts are sent so humans are aware, but the service was never down
-
-The key is: the pipeline knows the definition of "success" (all pods healthy, smoke tests pass, error rate below threshold) and if that definition isn't met, it returns to the last known-good state automatically.
+**A:** A pipeline that detects and recovers from deployment failures without human intervention. The pieces: Kubernetes readiness probes keep traffic off bad pods; `kubectl rollout status --timeout=...` fails the pipeline if pods don't become ready; the pipeline catches that and runs `kubectl rollout undo`; and tools like Argo Rollouts auto-roll-back on metric degradation. The system knows its definition of "success" and returns to the last known-good state automatically when it isn't met.
 
 ---
 
 ### Q19: What is the difference between `docker build` caching and GitHub Actions caching?
 
-**A:** They're different cache systems serving different purposes.
-
-**Docker layer cache:** Docker caches each layer of a Dockerfile. If a layer's input (the instruction + files it depends on) hasn't changed, Docker reuses the cached layer. In CI, this means: if only your Java source changes, Docker doesn't re-download your Maven dependencies (assuming you structured your Dockerfile to `COPY pom.xml` and `RUN mvn dependency:go-offline` before copying `src/`).
-
-**GitHub Actions cache (`actions/cache`):** Stores arbitrary files between workflow runs. Used for Maven's `~/.m2` directory, npm's `node_modules`, etc. The cache is keyed by a hash (e.g., `hashFiles('**/pom.xml')`). If the key matches, the directory is restored before the build step, saving the download time.
-
-They complement each other: Actions cache saves the Maven dependencies download; Docker layer cache saves the `mvn dependency:go-offline` step in the Dockerfile.
+**A:** Different cache systems that complement each other. **Docker layer cache** reuses a Dockerfile layer when its inputs haven't changed — so if only your Java source changes, Docker skips re-downloading Maven deps (provided you `COPY pom.xml` + `RUN mvn dependency:go-offline` before copying `src/`). **GitHub Actions cache (`actions/cache`)** stores arbitrary files (like `~/.m2` or `node_modules`) between runs, keyed by a hash such as `hashFiles('**/pom.xml')`, restoring them before the build to save the download.
 
 ---
 
@@ -2581,17 +1935,7 @@ For Spring Boot: map readiness to `/actuator/health/readiness` and liveness to `
 
 ### Q22: How do you manage environment-specific configuration across dev, staging, and production?
 
-**A:** Several levels:
-
-1. **Spring profiles** — `application-dev.yml`, `application-prod.yml`. Set `SPRING_PROFILES_ACTIVE=production` as an environment variable in the container. The profile file has non-sensitive config like timeouts, pool sizes, log levels.
-
-2. **Kubernetes ConfigMaps** — for non-sensitive config that differs per environment. The same Docker image reads from the ConfigMap at runtime.
-
-3. **Kubernetes Secrets / External Secrets Operator** — for credentials, API keys, database passwords. Never in config files.
-
-4. **Helm values files** — `values-dev.yaml`, `values-staging.yaml`, `values-production.yaml` control replica counts, resource limits, ingress hostnames, etc. In CI: `helm upgrade ... -f values-${ENVIRONMENT}.yaml`.
-
-The rule: the Docker image contains no environment-specific config. All environment differences are injected at runtime via environment variables and mounted config files.
+**A:** Four levels: **Spring profiles** (`application-prod.yml`, selected via `SPRING_PROFILES_ACTIVE`) for non-sensitive config like timeouts and log levels; **Kubernetes ConfigMaps** for non-sensitive per-environment values; **Kubernetes Secrets / External Secrets Operator** for credentials (never in config files); and **Helm values files** (`values-production.yaml`) for replica counts, resource limits, and ingress hostnames, applied with `helm upgrade ... -f values-${ENVIRONMENT}.yaml`. The rule: the Docker image holds no environment-specific config — all differences are injected at runtime.
 
 ---
 
@@ -2609,16 +1953,7 @@ How to handle:
 
 ### Q24: What is the purpose of a `post` section in a Jenkinsfile?
 
-**A:** The `post` section in a Declarative Jenkinsfile defines steps that always run at the end of a pipeline, regardless of success or failure. It's structured by condition:
-
-- `always`: Runs no matter what (cleanup, publish test results)
-- `success`: Runs only on success (deploy notification, artifact promotion)
-- `failure`: Runs only on failure (alert team, create incident ticket)
-- `unstable`: Runs when tests pass with warnings (coverage below threshold)
-- `aborted`: Runs if manually cancelled
-- `changed`: Runs if the build result changed from the previous run (e.g., first failure or first recovery)
-
-It's the equivalent of a `finally` block in Java, combined with conditional notification logic.
+**A:** The `post` section runs steps at the end of a pipeline, structured by condition: `always` (cleanup, publish results), `success`, `failure` (alert the team), `unstable` (tests passed with warnings), `aborted`, and `changed` (result differs from the previous run). It's the equivalent of a Java `finally` block plus conditional notification logic.
 
 ---
 
@@ -2687,20 +2022,3 @@ kubectl logs deployment/app --namespace ns
 | Need instant rollback, cost ok | Blue-Green |
 | High traffic, risky change | Canary |
 | Decouple deploy from release | Feature Flags |
-
-### Pipeline Stage Ownership
-
-| Stage | Owner | Typical Tools |
-|-------|-------|--------------|
-| Source | SCM | GitHub, GitLab, Bitbucket |
-| Build | Developer | Maven, Gradle |
-| Unit Test | Developer | JUnit 5, Mockito |
-| Code Quality | Developer + Architect | SonarQube, Checkstyle |
-| SAST | Security team | OWASP Dep Check, Snyk |
-| Package | DevOps | Docker, Maven |
-| Container Scan | Security | Trivy |
-| Deploy Staging | DevOps | kubectl, Helm, ArgoCD |
-| Integration Test | QA | RestAssured, Cucumber |
-| Deploy Production | DevOps + Approval | kubectl, Helm, ArgoCD |
-| Smoke Test | QA/DevOps | curl, k6, Postman |
-| Monitor | DevOps | Prometheus, Grafana |

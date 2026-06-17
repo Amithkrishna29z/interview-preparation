@@ -1,20 +1,5 @@
 # Microservices: Saga Pattern, CQRS, and Event Sourcing
 
-## Table of Contents
-1. [Distributed Transactions Problem](#1-distributed-transactions-problem)
-2. [BASE vs ACID](#2-base-vs-acid)
-3. [Saga Pattern — Complete Deep Dive](#3-saga-pattern--complete-deep-dive)
-4. [CQRS (Command Query Responsibility Segregation)](#4-cqrs-command-query-responsibility-segregation)
-5. [Event Sourcing — Complete Deep Dive](#5-event-sourcing--complete-deep-dive)
-6. [Event Sourcing + CQRS Together](#6-event-sourcing--cqrs-together)
-7. [When to Use What](#7-when-to-use-what)
-8. [Spring + Axon Framework Complete Example](#8-spring--axon-framework-complete-example)
-9. [Kafka for Saga and Event Sourcing](#9-kafka-for-saga-and-event-sourcing)
-10. [Interview Questions & Answers](#10-interview-questions--answers)
-11. [Quick Reference Cheat Sheet](#11-quick-reference-cheat-sheet)
-
----
-
 ## 1. Distributed Transactions Problem
 
 ### 1.1 Monolith vs Microservices Transaction Model
@@ -68,28 +53,11 @@ If ANY said NO:
 ```
 
 **Problems with 2PC:**
+- **Blocking protocol** — participants hold locks from Phase 1 until Phase 2. If the coordinator crashes in between, they are stuck holding locks in an uncertain state.
+- **Coordinator is a SPOF** and a performance bottleneck — all participants wait for the slowest, and lock contention kills throughput.
+- **Not cloud-native** — many modern databases (DynamoDB, MongoDB Atlas) and third-party APIs do not support the XA transactions 2PC requires.
 
-| Problem | Description |
-|---|---|
-| Blocking protocol | Participants hold locks from Phase 1 until they hear back in Phase 2. If coordinator crashes after Phase 1 completes, participants are stuck forever holding locks. |
-| Coordinator SPOF | If the coordinator crashes between Phase 1 and Phase 2, participants are in an uncertain state — they voted YES but never received COMMIT or ROLLBACK. |
-| Performance impact | Lock contention across multiple databases degrades throughput significantly. All participants must wait for the slowest one. |
-| Network partitions | A network partition during Phase 2 leaves some participants committed and others not — the exact inconsistency you were trying to prevent. |
-| Not cloud-native | Most modern databases (DynamoDB, MongoDB Atlas) do not support XA transactions required by 2PC. |
-
-**When 2PC is acceptable:**
-- All participants support XA transactions (e.g., two PostgreSQL instances)
-- Transaction duration is very short (milliseconds)
-- The number of participants is small (2–3)
-- You control all the infrastructure (no SaaS databases)
-- Consistency is absolutely non-negotiable (banking ledgers, financial transfers)
-
-**When to avoid 2PC:**
-- Participants include third-party APIs (payment gateways, shipping APIs)
-- High-throughput systems where lock contention would be catastrophic
-- Participants use different database technologies
-- Services are deployed across different data centers or cloud regions
-- Any participant may be temporarily unavailable (lock would be held indefinitely)
+2PC is only acceptable for very short transactions, few participants (2–3), all on XA-capable databases you fully control, where consistency is non-negotiable (e.g., banking ledgers). Avoid it across independently deployed microservices, third-party APIs, or different DB technologies.
 
 > **Common junior mistake:** Reaching for 2PC (or a "distributed transaction") to keep microservices in sync. Across independently deployed services this blocks resources and stalls on any slow/dead participant. Use a Saga (local transactions + compensations) instead.
 
@@ -339,59 +307,12 @@ public class InventoryService {
 }
 
 // ============ PAYMENT SERVICE ============
-
-@Service
-@Slf4j
-public class PaymentService {
-
-    @Autowired
-    private PaymentRepository paymentRepository;
-
-    @Autowired
-    private KafkaTemplate<String, Object> kafkaTemplate;
-
-    @KafkaListener(topics = "inventory-events", groupId = "payment-service")
-    @Transactional
-    public void onStockReserved(StockReservedEvent event) {
-        try {
-            // Attempt to charge the customer
-            String txId = processPayment(event.orderId());
-            paymentRepository.save(new Payment(event.orderId(), txId, PaymentStatus.SUCCESS));
-
-            kafkaTemplate.send("payment-events", event.orderId(),
-                new PaymentProcessedEvent(event.orderId(), txId, BigDecimal.TEN)
-            );
-        } catch (PaymentException ex) {
-            kafkaTemplate.send("payment-events", event.orderId(),
-                new PaymentFailedEvent(event.orderId(), ex.getMessage())
-            );
-        }
-    }
-}
+// Listens for StockReservedEvent, charges the customer, and publishes
+// PaymentProcessedEvent on success or PaymentFailedEvent on failure.
+// (Same shape as the services above: @KafkaListener in, kafkaTemplate.send out.)
 ```
 
-**Kafka Configuration:**
-```java
-@Configuration
-public class KafkaConfig {
-
-    @Bean
-    public ProducerFactory<String, Object> producerFactory() {
-        Map<String, Object> config = new HashMap<>();
-        config.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, "localhost:9092");
-        config.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
-        config.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, JsonSerializer.class);
-        // Enable idempotent producer (exactly-once within a producer session)
-        config.put(ProducerConfig.ENABLE_IDEMPOTENCE_CONFIG, true);
-        return new DefaultKafkaProducerFactory<>(config);
-    }
-
-    @Bean
-    public KafkaTemplate<String, Object> kafkaTemplate() {
-        return new KafkaTemplate<>(producerFactory());
-    }
-}
-```
+(Standard Spring Kafka `ProducerFactory`/`KafkaTemplate` config is assumed — see section 9.2 for a producer config example.)
 
 **Choreography Pros and Cons:**
 
@@ -522,16 +443,13 @@ public class OrderSagaOrchestrator {
 
     private void handleInventoryReply(OrderSaga saga, SagaReply reply) {
         if (reply.success()) {
-            saga.setState(SagaState.INVENTORY_RESERVED);
-            sagaRepository.save(saga);
-            // Move to next step
-            kafkaTemplate.send("payment-commands", saga.getOrderId(),
-                new ProcessPaymentCommand(saga.getSagaId(), saga.getOrderId(), reply.amount())
-            );
+            // Move forward: persist new state, then send the next command
             saga.setState(SagaState.PROCESSING_PAYMENT);
             sagaRepository.save(saga);
+            kafkaTemplate.send("payment-commands", saga.getOrderId(),
+                new ProcessPaymentCommand(saga.getSagaId(), saga.getOrderId(), reply.amount()));
         } else {
-            // No compensation needed — nothing was done yet
+            // Nothing done yet — no compensation needed, just cancel
             saga.setState(SagaState.CANCELLED);
             saga.setFailureReason("Inventory reservation failed: " + reply.reason());
             sagaRepository.save(saga);
@@ -539,56 +457,13 @@ public class OrderSagaOrchestrator {
         }
     }
 
-    private void handlePaymentReply(OrderSaga saga, SagaReply reply) {
-        if (reply.success()) {
-            saga.setState(SagaState.PAYMENT_PROCESSED);
-            sagaRepository.save(saga);
-            kafkaTemplate.send("shipping-commands", saga.getOrderId(),
-                new ScheduleShipmentCommand(saga.getSagaId(), saga.getOrderId())
-            );
-            saga.setState(SagaState.SCHEDULING_SHIPMENT);
-            sagaRepository.save(saga);
-        } else {
-            // Payment failed — must compensate inventory
-            saga.setState(SagaState.COMPENSATING_INVENTORY);
-            saga.setFailureReason("Payment failed: " + reply.reason());
-            sagaRepository.save(saga);
-            kafkaTemplate.send("inventory-commands", saga.getOrderId(),
-                new ReleaseStockCommand(saga.getSagaId(), saga.getOrderId())
-            );
-        }
-    }
-
-    private void handleShipmentReply(OrderSaga saga, SagaReply reply) {
-        if (reply.success()) {
-            saga.setState(SagaState.COMPLETED);
-            sagaRepository.save(saga);
-            notifyOrderConfirmed(saga);
-        } else {
-            // Shipment failed — compensate payment and inventory
-            saga.setState(SagaState.COMPENSATING_PAYMENT);
-            sagaRepository.save(saga);
-            kafkaTemplate.send("payment-commands", saga.getOrderId(),
-                new RefundPaymentCommand(saga.getSagaId(), saga.getOrderId())
-            );
-        }
-    }
-
-    private void handleInventoryCompensationReply(OrderSaga saga, SagaReply reply) {
-        // Stock released — saga is now cancelled
-        saga.setState(SagaState.CANCELLED);
-        sagaRepository.save(saga);
-        notifyOrderCancelled(saga);
-    }
-
-    private void handlePaymentCompensationReply(OrderSaga saga, SagaReply reply) {
-        // Payment refunded — now release stock
-        saga.setState(SagaState.COMPENSATING_INVENTORY);
-        sagaRepository.save(saga);
-        kafkaTemplate.send("inventory-commands", saga.getOrderId(),
-            new ReleaseStockCommand(saga.getSagaId(), saga.getOrderId())
-        );
-    }
+    // Remaining handlers follow the same shape:
+    //  - On success: advance state + send the next forward command.
+    //  - On failure: switch to a COMPENSATING_* state and send a compensating
+    //    command (ReleaseStockCommand, RefundPaymentCommand) in reverse order,
+    //    ending at CANCELLED once all completed steps are undone.
+    // handlePaymentReply, handleShipmentReply, handleInventoryCompensationReply,
+    // handlePaymentCompensationReply are omitted here for brevity.
 }
 ```
 
@@ -701,91 +576,47 @@ public void onStockReserved(StockReservedEvent event) {
 
 ### 3.7 Implementing Saga with Axon Framework
 
-Axon Framework is a Java framework specifically designed for CQRS, Event Sourcing, and Sagas. It provides first-class support for all three patterns.
+Axon Framework is a Java framework with first-class support for CQRS, Event Sourcing, and Sagas. Instead of hand-building an orchestrator + state table, you annotate a saga class and Axon handles state persistence and routing.
 
-**Key Axon Saga Annotations:**
-
-| Annotation | Purpose |
-|---|---|
-| `@Saga` | Marks a class as a saga |
-| `@StartSaga` | Method that creates a new saga instance |
-| `@EndSaga` | Method that ends the saga (cleanup) |
-| `@SagaEventHandler` | Method that handles events within the saga |
-| `@Autowired` | Inject resources (use field injection in Axon sagas) |
+**Key Axon saga annotations:** `@Saga` (marks the class), `@StartSaga` (the initiating event handler), `@SagaEventHandler(associationProperty = "orderId")` (handles each event, matched by association key), and `@EndSaga` (completes the saga).
 
 ```java
-// ============ AXON SAGA ============
-
 @Saga
-@Slf4j
 public class OrderProcessingSaga {
 
     @Autowired
     private transient CommandGateway commandGateway;
-
-    private String orderId;
-    private String productId;
+    private String orderId, productId;
     private int quantity;
 
     @StartSaga
     @SagaEventHandler(associationProperty = "orderId")
     public void handle(OrderCreatedEvent event) {
         this.orderId = event.getOrderId();
-        this.productId = event.getProductId();
-        this.quantity = event.getQuantity();
-
-        log.info("Saga started for order: {}", orderId);
-
-        // Associate this saga with the orderId for future events
-        SagaLifecycle.associateWith("orderId", orderId);
-
-        // Send command to inventory service
-        commandGateway.send(new ReserveStockCommand(orderId, productId, quantity));
+        SagaLifecycle.associateWith("orderId", orderId);  // route future events here
+        commandGateway.send(new ReserveStockCommand(orderId, event.getProductId(), event.getQuantity()));
     }
 
     @SagaEventHandler(associationProperty = "orderId")
-    public void handle(StockReservedEvent event) {
-        log.info("Stock reserved for order: {}", orderId);
+    public void handle(StockReservedEvent event) {           // next forward step
         commandGateway.send(new ProcessPaymentCommand(orderId, event.getAmount()));
     }
 
     @SagaEventHandler(associationProperty = "orderId")
-    public void handle(StockReservationFailedEvent event) {
-        log.info("Stock reservation failed for order: {}. Cancelling.", orderId);
-        commandGateway.send(new CancelOrderCommand(orderId, event.getReason()));
-        SagaLifecycle.end(); // End the saga
-    }
-
-    @SagaEventHandler(associationProperty = "orderId")
-    public void handle(PaymentProcessedEvent event) {
-        log.info("Payment processed for order: {}", orderId);
-        commandGateway.send(new ScheduleShipmentCommand(orderId));
-    }
-
-    @SagaEventHandler(associationProperty = "orderId")
-    public void handle(PaymentFailedEvent event) {
-        log.info("Payment failed for order: {}. Compensating inventory.", orderId);
+    public void handle(PaymentFailedEvent event) {           // compensation step
         commandGateway.send(new ReleaseStockCommand(orderId, productId, quantity));
-    }
-
-    @SagaEventHandler(associationProperty = "orderId")
-    public void handle(StockReleasedEvent event) {
-        log.info("Stock released for order: {}. Cancelling order.", orderId);
-        commandGateway.send(new CancelOrderCommand(orderId, "Payment failed"));
-        SagaLifecycle.end();
     }
 
     @EndSaga
     @SagaEventHandler(associationProperty = "orderId")
-    public void handle(ShipmentScheduledEvent event) {
-        log.info("Saga completed successfully for order: {}", orderId);
+    public void handle(ShipmentScheduledEvent event) {       // happy path completion
         commandGateway.send(new ConfirmOrderCommand(orderId));
-        // @EndSaga automatically ends the saga after this method
     }
+    // (Other event handlers — payment success, stock-released compensation, etc. — follow the same shape.)
 }
 ```
 
-Axon automatically persists saga state between events. If the application restarts, the saga resumes from where it left off.
+Axon automatically persists saga state between events, so the saga resumes from where it left off after a restart.
 
 ---
 
@@ -921,33 +752,7 @@ public class OutboxPollingPublisher {
 }
 ```
 
-**Debezium CDC approach** (production-grade):
-
-```yaml
-# Debezium connector config (register via REST API to Kafka Connect)
-{
-  "name": "order-outbox-connector",
-  "config": {
-    "connector.class": "io.debezium.connector.postgresql.PostgresConnector",
-    "database.hostname": "localhost",
-    "database.port": "5432",
-    "database.user": "debezium",
-    "database.password": "dbz",
-    "database.dbname": "orders_db",
-    "table.include.list": "public.outbox",
-    "transforms": "outbox",
-    "transforms.outbox.type": "io.debezium.transforms.outbox.EventRouter",
-    "transforms.outbox.table.field.event.id": "id",
-    "transforms.outbox.table.field.event.key": "aggregate_id",
-    "transforms.outbox.table.field.event.type": "event_type",
-    "transforms.outbox.table.field.event.payload": "payload",
-    "transforms.outbox.route.by.field": "aggregate_type",
-    "transforms.outbox.route.topic.replacement": "order.${routedByValue}.events"
-  }
-}
-```
-
-Debezium reads from PostgreSQL's WAL (Write-Ahead Log) — zero polling overhead, sub-second latency.
+**Debezium CDC approach** (production-grade, awareness): Instead of polling, a Debezium connector reads PostgreSQL's WAL (Write-Ahead Log) and publishes outbox rows to Kafka via its built-in `EventRouter` transform — zero polling overhead and sub-second latency. You register it as a Kafka Connect connector (JSON config pointing at the `outbox` table and mapping its columns to event key/type/payload). The polling publisher above is the simpler equivalent when you don't have Kafka Connect.
 
 ---
 
@@ -1102,98 +907,33 @@ Event Handler (projector)
                          (updates read model)
 ```
 
+The pieces are the same as Simple CQRS, plus a **projector** that syncs the read store. The write-side command handler saves to PostgreSQL and publishes a domain event; a projector listens and updates the read store; the query side reads from there.
+
 ```java
-// ============ WRITE SIDE — Command Handler ============
-
-@Service
-@Transactional
-public class ProductCommandService {
-
-    @Autowired private ProductRepository productRepository;
-    @Autowired private ApplicationEventPublisher eventPublisher;
-
-    public String createProduct(CreateProductCommand cmd) {
-        Product product = new Product(UUID.randomUUID().toString(),
-            cmd.name(), cmd.description(), cmd.price(), cmd.stock());
-        productRepository.save(product);
-
-        // Publish domain event to update read models
-        eventPublisher.publishEvent(
-            new ProductCreatedEvent(product.getId(), product.getName(),
-                product.getDescription(), product.getPrice(), product.getStock())
-        );
-        return product.getId();
-    }
-}
-
-// ============ PROJECTOR — Updates Read Model ============
-
+// PROJECTOR — keeps the denormalized read model (Elasticsearch) in sync
 @Component
-@Slf4j
 public class ProductReadModelProjector {
 
-    @Autowired private ElasticsearchOperations elasticsearchOperations;
+    @Autowired private ElasticsearchOperations elasticsearch;
 
     @EventListener
     public void on(ProductCreatedEvent event) {
-        ProductDocument doc = new ProductDocument(
+        // ProductDocument is denormalized: it also stores categoryName, brandName,
+        // averageRating, reviewCount, etc. so queries need no joins.
+        elasticsearch.save(new ProductDocument(
             event.productId(), event.name(), event.description(),
-            event.price(), event.stock()
-        );
-        elasticsearchOperations.save(doc);
-        log.info("Read model updated for product: {}", event.productId());
+            event.price(), event.stock()));
     }
 
     @EventListener
     public void on(ProductPriceUpdatedEvent event) {
-        ProductDocument doc = elasticsearchOperations.get(event.productId(), ProductDocument.class);
-        if (doc != null) {
-            doc.setPrice(event.newPrice());
-            elasticsearchOperations.save(doc);
-        }
-    }
-}
-
-// ============ ELASTICSEARCH DOCUMENT ============
-
-@Document(indexName = "products")
-public class ProductDocument {
-    @Id
-    private String id;
-    private String name;
-    private String description;
-    private BigDecimal price;
-    private int stock;
-    // Additional denormalized fields for efficient querying
-    private String categoryName;    // Denormalized from Category entity
-    private String brandName;       // Denormalized from Brand entity
-    private double averageRating;   // Denormalized from Reviews
-    private int reviewCount;
-}
-
-// ============ READ SIDE — Query Handler ============
-
-@Service
-@Transactional(readOnly = true)
-public class ProductQueryService {
-
-    @Autowired private ProductSearchRepository searchRepository; // ES repository
-
-    public Page<ProductDocument> searchProducts(SearchProductsQuery query) {
-        // Full-text search on name + description, filtered by price range
-        // No joins needed — all data is denormalized in the document
-        return searchRepository.findByNameContainingOrDescriptionContaining(
-            query.searchTerm(), query.searchTerm(),
-            PageRequest.of(query.page(), query.size())
-        );
-    }
-
-    public ProductDocument getProduct(String productId) {
-        return searchRepository.findById(productId)
-            .orElseThrow(() -> new ProductNotFoundException(productId));
+        ProductDocument doc = elasticsearch.get(event.productId(), ProductDocument.class);
+        if (doc != null) { doc.setPrice(event.newPrice()); elasticsearch.save(doc); }
     }
 }
 ```
+
+The read side then queries Elasticsearch directly (`ProductSearchRepository`) — full-text search with no joins, since everything is denormalized into the document.
 
 ---
 
@@ -1344,119 +1084,19 @@ CREATE TABLE snapshots (
 );
 ```
 
-**Optimistic concurrency control:**
-```java
-// When saving events, pass the expected version
-// DB unique constraint on (aggregate_id, version) prevents concurrent writes
+**Optimistic concurrency control:** A `PostgresEventStore` (JdbcTemplate) implements two operations:
+- `saveEvents(aggregateId, events, expectedVersion)` — inserts each event with an incrementing `version`. The `UNIQUE(aggregate_id, version)` constraint means a concurrent write at the same version throws `DuplicateKeyException`, which you translate to an `OptimisticConcurrencyException` so the caller can reload and retry.
+- `loadEvents(aggregateId[, fromVersion])` — selects events ordered by `version`, deserializing each `payload` back into its `DomainEvent` class.
 
-@Repository
-public class PostgresEventStore implements EventStore {
-
-    @Autowired private JdbcTemplate jdbc;
-    @Autowired private ObjectMapper objectMapper;
-
-    @Override
-    @Transactional
-    public void saveEvents(String aggregateId, String aggregateType,
-                           List<DomainEvent> events, int expectedVersion) {
-        int version = expectedVersion;
-        for (DomainEvent event : events) {
-            version++;
-            try {
-                jdbc.update(
-                    "INSERT INTO events (aggregate_id, aggregate_type, event_type, payload, version, occurred_at) " +
-                    "VALUES (?, ?, ?, ?::jsonb, ?, ?)",
-                    aggregateId, aggregateType, event.getClass().getSimpleName(),
-                    objectMapper.writeValueAsString(event), version, Instant.now()
-                );
-            } catch (DuplicateKeyException e) {
-                // version conflict — another process saved events concurrently
-                throw new OptimisticConcurrencyException(
-                    "Aggregate " + aggregateId + " was modified concurrently at version " + version
-                );
-            } catch (JsonProcessingException e) {
-                throw new RuntimeException("Failed to serialize event", e);
-            }
-        }
-    }
-
-    @Override
-    public List<DomainEvent> loadEvents(String aggregateId) {
-        return jdbc.query(
-            "SELECT event_type, payload FROM events WHERE aggregate_id = ? ORDER BY version ASC",
-            (rs, rowNum) -> deserializeEvent(rs.getString("event_type"), rs.getString("payload")),
-            aggregateId
-        );
-    }
-
-    @Override
-    public List<DomainEvent> loadEvents(String aggregateId, int fromVersion) {
-        return jdbc.query(
-            "SELECT event_type, payload FROM events WHERE aggregate_id = ? AND version > ? ORDER BY version ASC",
-            (rs, rowNum) -> deserializeEvent(rs.getString("event_type"), rs.getString("payload")),
-            aggregateId, fromVersion
-        );
-    }
-
-    private DomainEvent deserializeEvent(String eventType, String payload) {
-        try {
-            Class<?> eventClass = Class.forName("com.example.events." + eventType);
-            return (DomainEvent) objectMapper.readValue(payload, eventClass);
-        } catch (Exception e) {
-            throw new RuntimeException("Failed to deserialize event: " + eventType, e);
-        }
-    }
-}
-```
+This is the event-sourcing equivalent of JPA's `@Version` optimistic locking.
 
 ---
 
 ### 5.4 Java Aggregate Implementation
 
+A base `AggregateRoot` provides the machinery: `raiseEvent(event)` applies the event to update state *and* stages it in an `uncommittedEvents` list for persistence; `replayEvents(events)` rebuilds state from the stored log by dispatching each event to the matching `apply(...)` method (Axon does this dispatch for you; a hand-rolled version uses reflection). The aggregate below shows the important part — business methods raise events, and **state changes happen only inside `apply()` methods**.
+
 ```java
-// ============ AGGREGATE BASE CLASS ============
-
-public abstract class AggregateRoot {
-    protected String id;
-    protected int version = 0;                        // Current version (from event store)
-    private final List<DomainEvent> uncommittedEvents = new ArrayList<>();
-
-    // Called by subclasses to "raise" an event
-    protected void raiseEvent(DomainEvent event) {
-        applyEvent(event);                            // Apply to update state
-        uncommittedEvents.add(event);                 // Stage for persistence
-    }
-
-    // Dispatch event to the correct apply() overload
-    private void applyEvent(DomainEvent event) {
-        try {
-            Method applyMethod = this.getClass().getDeclaredMethod("apply", event.getClass());
-            applyMethod.setAccessible(true);
-            applyMethod.invoke(this, event);
-        } catch (NoSuchMethodException e) {
-            // No apply method for this event type — state unchanged
-        } catch (Exception e) {
-            throw new RuntimeException("Failed to apply event", e);
-        }
-    }
-
-    // Rebuild state from stored events (called by repository)
-    public void replayEvents(List<DomainEvent> events) {
-        for (DomainEvent event : events) {
-            applyEvent(event);
-            version++;
-        }
-    }
-
-    public List<DomainEvent> getUncommittedEvents() {
-        return Collections.unmodifiableList(uncommittedEvents);
-    }
-
-    public void markEventsAsCommitted() {
-        uncommittedEvents.clear();
-    }
-}
-
 // ============ BANK ACCOUNT AGGREGATE ============
 
 public class BankAccount extends AggregateRoot {
@@ -1528,56 +1168,11 @@ public class BankAccount extends AggregateRoot {
         this.status = AccountStatus.CLOSED;
     }
 }
-
-// ============ AGGREGATE REPOSITORY ============
-
-@Repository
-public class BankAccountRepository {
-
-    @Autowired private EventStore eventStore;
-    @Autowired private SnapshotStore snapshotStore;
-    @Autowired private ApplicationEventPublisher eventPublisher;
-
-    public BankAccount load(String accountId) {
-        BankAccount account = new BankAccount();
-
-        // Try loading from snapshot first (optimization)
-        Optional<Snapshot> snapshot = snapshotStore.findLatest(accountId);
-        int fromVersion = 0;
-
-        if (snapshot.isPresent()) {
-            account = snapshot.get().restoreAggregate(BankAccount.class);
-            fromVersion = snapshot.get().getVersion();
-        }
-
-        // Load only events AFTER the snapshot
-        List<DomainEvent> events = eventStore.loadEvents(accountId, fromVersion);
-        account.replayEvents(events);
-
-        return account;
-    }
-
-    @Transactional
-    public void save(BankAccount account) {
-        List<DomainEvent> uncommitted = account.getUncommittedEvents();
-        if (uncommitted.isEmpty()) return;
-
-        // Save events to event store (optimistic concurrency check built into saveEvents)
-        eventStore.saveEvents(account.getId(), "BankAccount",
-            uncommitted, account.getVersion() - uncommitted.size());
-
-        // Publish events so projectors/sagas can react
-        uncommitted.forEach(eventPublisher::publishEvent);
-
-        account.markEventsAsCommitted();
-
-        // Optionally create snapshot every 50 events
-        if (account.getVersion() % 50 == 0) {
-            snapshotStore.save(new Snapshot(account));
-        }
-    }
-}
 ```
+
+The aggregate **repository** ties it together:
+- `load(id)` — optionally restore the latest snapshot, then `replayEvents()` for events after the snapshot version to rebuild current state.
+- `save(account)` — call `eventStore.saveEvents(...)` with the uncommitted events (optimistic concurrency check built in), publish them so projectors/sagas react, clear the uncommitted list, and optionally take a snapshot every N events.
 
 > **Common junior mistake:** Mutating state directly (e.g., `this.balance = newBalance` inside `withdraw()`). In event sourcing, business methods only raise events; state changes happen ONLY inside `apply()`. Skip this and replaying the event log will no longer reproduce the correct state.
 
@@ -1615,147 +1210,31 @@ public class AccountBalanceProjection {
         });
     }
 
-    @EventListener
-    @Transactional
-    public void on(MoneyWithdrawnEvent event) {
-        readModelRepository.findById(event.accountId()).ifPresent(model -> {
-            model.setBalance(event.newBalance());
-            model.setLastTransactionAt(Instant.now());
-            readModelRepository.save(model);
-        });
-    }
-}
-
-// ============ TRANSACTION HISTORY PROJECTION ============
-
-@Component
-public class TransactionHistoryProjection {
-
-    @Autowired private TransactionHistoryRepository historyRepository;
-
-    @EventListener
-    public void on(MoneyDepositedEvent event) {
-        historyRepository.save(new TransactionRecord(
-            UUID.randomUUID().toString(),
-            event.accountId(), "DEPOSIT", event.amount(), event.newBalance(), Instant.now()
-        ));
-    }
-
-    @EventListener
-    public void on(MoneyWithdrawnEvent event) {
-        historyRepository.save(new TransactionRecord(
-            UUID.randomUUID().toString(),
-            event.accountId(), "WITHDRAWAL", event.amount(), event.newBalance(), Instant.now()
-        ));
-    }
+    // on(MoneyWithdrawnEvent) is identical: update balance + lastTransactionAt.
 }
 ```
 
-**Catch-up subscription (rebuild projection from scratch):**
-```java
-@Component
-public class ProjectionRebuildService {
+The same events can feed **multiple projections** — e.g. a separate `TransactionHistoryProjection` that appends a `TransactionRecord` (DEPOSIT/WITHDRAWAL) per event to power a statement view.
 
-    @Autowired private EventStore eventStore;
-    @Autowired private AccountBalanceProjection projection;
-
-    public void rebuildAccountBalanceProjection() {
-        // Clear existing read model
-        // Then replay all historical events
-        eventStore.streamAllEvents("BankAccount", event -> {
-            if (event instanceof AccountOpenedEvent e)   projection.on(e);
-            else if (event instanceof MoneyDepositedEvent e) projection.on(e);
-            else if (event instanceof MoneyWithdrawnEvent e) projection.on(e);
-        });
-    }
-}
-```
+**Catch-up subscription (rebuild a projection from scratch):** because every event is preserved, you can always rebuild a read model by clearing it and replaying the full history — e.g. `eventStore.streamAllEvents("BankAccount", projection::apply)`. This is also how you add a brand-new projection after the fact.
 
 ---
 
 ### 5.6 Snapshots
 
-```java
-@Entity
-@Table(name = "snapshots")
-public class Snapshot {
-    @Id
-    private String aggregateId;
-    private String aggregateType;
-    @Column(columnDefinition = "jsonb")
-    private String state;
-    private int version;
-    private Instant createdAt;
+A snapshot stores an aggregate's serialized state at a given version (a `snapshots` table: `aggregateId`, `aggregateType`, `state` JSON, `version`). Loading then becomes: restore the latest snapshot (say version 950), load only events after it (951–1000), and replay just those 50 instead of all 1000 — a big speedup for long-lived aggregates.
 
-    public <T extends AggregateRoot> T restoreAggregate(Class<T> type) {
-        try {
-            ObjectMapper mapper = new ObjectMapper();
-            return mapper.readValue(state, type);
-        } catch (JsonProcessingException e) {
-            throw new RuntimeException("Failed to restore aggregate from snapshot", e);
-        }
-    }
-}
-
-// Loading strategy with snapshot:
-// 1. Load latest snapshot (e.g., at version 950)
-// 2. Load events with version > 950 (e.g., events 951–1000)
-// 3. Replay only 50 events instead of 1000
-// Result: dramatically faster aggregate loading for long-lived aggregates
-
-// Snapshot trigger strategies:
-// Every N events: if (account.getVersion() % 100 == 0) takeSnapshot()
-// On-demand: manual trigger via admin endpoint
-// Time-based: every 24 hours for active aggregates
-// Size-based: if event count > threshold
-```
+Snapshot trigger strategies: every N events (`version % 100 == 0`), on-demand via an admin endpoint, time-based (every 24h), or size-based once the event count crosses a threshold.
 
 ---
 
 ### 5.7 Event Versioning
 
-Over time, events evolve. New fields are added, old fields are removed, or the event structure changes entirely. Since old events are immutable and stored forever, you need strategies for handling schema changes.
+Over time, events evolve. Since old events are immutable and stored forever, you need strategies for schema changes. The key rule: **never modify events already in the store** — add new fields or transform on read.
 
-**Strategy 1 — Additive changes (safe, no migration needed):**
-```java
-// v1 — original event
-public record UserRegisteredEvent(String userId, String email) {}
-
-// v2 — added optional field (backward compatible)
-public record UserRegisteredEvent(String userId, String email, 
-    @JsonProperty(defaultValue = "") String phoneNumber) {}
-// Old events read fine: phoneNumber will be null/empty
-```
-
-**Strategy 2 — Upcaster for structural changes:**
-```java
-// Old event (v1)
-// { "userId": "123", "fullName": "John Doe" }
-
-// New event (v2) — fullName split into firstName + lastName
-// { "userId": "123", "firstName": "John", "lastName": "Doe" }
-
-@Component
-public class UserRegisteredEventUpcaster {
-
-    // Called during deserialization when version = 1
-    public UserRegisteredEventV2 upcast(UserRegisteredEventV1 v1) {
-        String[] parts = v1.fullName().split(" ", 2);
-        return new UserRegisteredEventV2(
-            v1.userId(),
-            parts.length > 0 ? parts[0] : v1.fullName(),
-            parts.length > 1 ? parts[1] : ""
-        );
-    }
-}
-```
-
-**Strategy 3 — Event versioning in the schema:**
-```sql
--- Store version number in the event metadata
-INSERT INTO events (aggregate_id, event_type, payload, schema_version, ...)
-VALUES ('123', 'UserRegisteredEvent', '{"userId":"123","fullName":"John Doe"}', 1, ...);
-```
+- **Additive changes** (safest, no migration): add an optional field with a default. Old events deserialize fine with the field null/empty.
+- **Upcasters**: when structure changes (e.g. `fullName` split into `firstName`/`lastName`), an upcaster transforms an old `...V1` event into the new `...V2` shape during deserialization.
+- **Schema version in metadata**: store a `schema_version` column on each event so the loader knows which upcaster (if any) to apply.
 
 **Event versioning strategies summary:**
 
@@ -1851,68 +1330,7 @@ Event Sourcing and CQRS are naturally complementary. Event Sourcing generates a 
    Returns: AccountBalanceDto(accountId="ACC-1", balance=1100.00)
 ```
 
-**Spring Boot + Axon Framework wiring:**
-```java
-@SpringBootApplication
-@EnableAxon
-public class BankingApplication {
-    public static void main(String[] args) {
-        SpringApplication.run(BankingApplication.class, args);
-    }
-}
-
-@Aggregate
-public class BankAccountAggregate {
-
-    @AggregateIdentifier
-    private String accountId;
-    private BigDecimal balance;
-
-    @CommandHandler
-    public BankAccountAggregate(OpenAccountCommand cmd) {
-        AggregateLifecycle.apply(new AccountOpenedEvent(
-            cmd.getAccountId(), cmd.getHolderId(), cmd.getInitialDeposit()
-        ));
-    }
-
-    @CommandHandler
-    public void handle(DepositMoneyCommand cmd) {
-        AggregateLifecycle.apply(new MoneyDepositedEvent(
-            accountId, cmd.getAmount(), balance.add(cmd.getAmount())
-        ));
-    }
-
-    @EventSourcingHandler
-    public void on(AccountOpenedEvent event) {
-        this.accountId = event.getAccountId();
-        this.balance = event.getInitialDeposit();
-    }
-
-    @EventSourcingHandler
-    public void on(MoneyDepositedEvent event) {
-        this.balance = event.getNewBalance();
-    }
-}
-
-@Component
-public class AccountBalanceProjector {
-
-    @Autowired private AccountBalanceRepository repository;
-
-    @EventHandler
-    public void on(AccountOpenedEvent event) {
-        repository.save(new AccountBalanceView(event.getAccountId(), event.getInitialDeposit()));
-    }
-
-    @EventHandler
-    public void on(MoneyDepositedEvent event) {
-        repository.findById(event.getAccountId()).ifPresent(view -> {
-            view.setBalance(event.getNewBalance());
-            repository.save(view);
-        });
-    }
-}
-```
+**In Axon**, this maps cleanly onto annotations: an `@Aggregate` class with `@CommandHandler` methods that call `AggregateLifecycle.apply(event)` (command side) and `@EventSourcingHandler` methods that mutate aggregate state on replay; plus a separate `@Component` projector with `@EventHandler` methods that update the read-model views (query side). See section 8 for the full Axon example.
 
 ---
 
@@ -2030,234 +1448,38 @@ public class AccountBalanceProjector {
 
 ### 8.2 Complete Order Processing with Axon
 
+A full Axon order flow wires together five kinds of components (the saga is already shown in 3.7, so here is just the gist of the rest):
+
 ```java
-// ============ COMMANDS ============
-
-public class CreateOrderCommand {
-    @TargetAggregateIdentifier
-    private final String orderId;
-    private final String customerId;
-    private final String productId;
-    private final int quantity;
-    private final BigDecimal amount;
-    // constructor, getters
-}
-
-public class ConfirmOrderCommand {
-    @TargetAggregateIdentifier
-    private final String orderId;
-}
-
-public class CancelOrderCommand {
-    @TargetAggregateIdentifier
-    private final String orderId;
-    private final String reason;
-}
-
-// ============ EVENTS ============
-
-public class OrderCreatedEvent {
-    private final String orderId;
-    private final String customerId;
-    private final String productId;
-    private final int quantity;
-    private final BigDecimal amount;
-}
-
-public class OrderConfirmedEvent {
-    private final String orderId;
-}
-
-public class OrderCancelledEvent {
-    private final String orderId;
-    private final String reason;
-}
-
-// ============ AGGREGATE ============
-
+// AGGREGATE — command side: @CommandHandler validates + applies events,
+// @EventSourcingHandler rebuilds state. State changes ONLY via events.
 @Aggregate
 public class OrderAggregate {
 
-    @AggregateIdentifier
-    private String orderId;
+    @AggregateIdentifier private String orderId;
     private OrderStatus status;
-
-    protected OrderAggregate() {} // Required by Axon
+    protected OrderAggregate() {}                 // required by Axon
 
     @CommandHandler
     public OrderAggregate(CreateOrderCommand cmd) {
-        // Validate
         if (cmd.getQuantity() <= 0) throw new IllegalArgumentException("Quantity must be positive");
-
-        // Apply event — do NOT modify state directly here
-        AggregateLifecycle.apply(new OrderCreatedEvent(
-            cmd.getOrderId(), cmd.getCustomerId(),
-            cmd.getProductId(), cmd.getQuantity(), cmd.getAmount()
-        ));
+        AggregateLifecycle.apply(new OrderCreatedEvent(cmd.getOrderId(), cmd.getProductId(), cmd.getQuantity()));
     }
 
-    @CommandHandler
-    public void handle(ConfirmOrderCommand cmd) {
-        if (status != OrderStatus.PENDING) {
-            throw new IllegalStateException("Order cannot be confirmed in state: " + status);
-        }
-        AggregateLifecycle.apply(new OrderConfirmedEvent(orderId));
-    }
-
-    @CommandHandler
-    public void handle(CancelOrderCommand cmd) {
-        if (status == OrderStatus.CANCELLED) {
-            throw new IllegalStateException("Order is already cancelled");
-        }
-        AggregateLifecycle.apply(new OrderCancelledEvent(orderId, cmd.getReason()));
-    }
-
-    // State mutations ONLY in @EventSourcingHandler methods
     @EventSourcingHandler
-    public void on(OrderCreatedEvent event) {
+    public void on(OrderCreatedEvent event) {     // state mutation lives here
         this.orderId = event.getOrderId();
         this.status = OrderStatus.PENDING;
     }
-
-    @EventSourcingHandler
-    public void on(OrderConfirmedEvent event) {
-        this.status = OrderStatus.CONFIRMED;
-    }
-
-    @EventSourcingHandler
-    public void on(OrderCancelledEvent event) {
-        this.status = OrderStatus.CANCELLED;
-    }
-}
-
-// ============ SAGA ============
-
-@Saga
-@Slf4j
-public class OrderManagementSaga {
-
-    @Autowired
-    private transient CommandGateway commandGateway;
-
-    private String orderId;
-    private String productId;
-    private int quantity;
-
-    @StartSaga
-    @SagaEventHandler(associationProperty = "orderId")
-    public void handle(OrderCreatedEvent event) {
-        this.orderId = event.getOrderId();
-        this.productId = event.getProductId();
-        this.quantity = event.getQuantity();
-
-        SagaLifecycle.associateWith("orderId", orderId);
-        log.info("Saga started for order: {}", orderId);
-
-        commandGateway.send(new ReserveStockCommand(orderId, productId, quantity));
-    }
-
-    @SagaEventHandler(associationProperty = "orderId")
-    public void handle(StockReservedEvent event) {
-        log.info("Stock reserved. Initiating payment for order: {}", orderId);
-        commandGateway.send(new ProcessPaymentCommand(orderId, event.getAmount()));
-    }
-
-    @SagaEventHandler(associationProperty = "orderId")
-    public void handle(StockReservationFailedEvent event) {
-        commandGateway.send(new CancelOrderCommand(orderId, "Insufficient stock: " + event.getReason()));
-        SagaLifecycle.end();
-    }
-
-    @SagaEventHandler(associationProperty = "orderId")
-    public void handle(PaymentProcessedEvent event) {
-        commandGateway.send(new ConfirmOrderCommand(orderId));
-    }
-
-    @SagaEventHandler(associationProperty = "orderId")
-    public void handle(PaymentFailedEvent event) {
-        commandGateway.send(new ReleaseStockCommand(orderId, productId, quantity));
-    }
-
-    @SagaEventHandler(associationProperty = "orderId")
-    public void handle(StockReleasedEvent event) {
-        commandGateway.send(new CancelOrderCommand(orderId, "Payment failed"));
-        SagaLifecycle.end();
-    }
-
-    @EndSaga
-    @SagaEventHandler(associationProperty = "orderId")
-    public void handle(OrderConfirmedEvent event) {
-        log.info("Order saga completed successfully: {}", orderId);
-    }
-
-    @EndSaga
-    @SagaEventHandler(associationProperty = "orderId")
-    public void handle(OrderCancelledEvent event) {
-        log.info("Order saga cancelled: {} — Reason: {}", orderId, event.getReason());
-    }
-}
-
-// ============ PROJECTOR ============
-
-@Component
-public class OrderProjector {
-
-    @Autowired
-    private OrderSummaryRepository repository;
-
-    @EventHandler
-    public void on(OrderCreatedEvent event, @Timestamp Instant timestamp) {
-        repository.save(new OrderSummary(
-            event.getOrderId(), event.getCustomerId(),
-            event.getAmount(), "PENDING", timestamp
-        ));
-    }
-
-    @EventHandler
-    public void on(OrderConfirmedEvent event) {
-        repository.findById(event.getOrderId()).ifPresent(summary -> {
-            summary.setStatus("CONFIRMED");
-            repository.save(summary);
-        });
-    }
-
-    @EventHandler
-    public void on(OrderCancelledEvent event) {
-        repository.findById(event.getOrderId()).ifPresent(summary -> {
-            summary.setStatus("CANCELLED");
-            summary.setCancellationReason(event.getReason());
-            repository.save(summary);
-        });
-    }
-}
-
-// ============ REST CONTROLLER ============
-
-@RestController
-@RequestMapping("/api/orders")
-public class OrderController {
-
-    @Autowired private CommandGateway commandGateway;
-    @Autowired private QueryGateway queryGateway;
-
-    @PostMapping
-    public CompletableFuture<String> createOrder(@RequestBody CreateOrderRequest request) {
-        String orderId = UUID.randomUUID().toString();
-        return commandGateway.send(new CreateOrderCommand(
-            orderId, request.customerId(), request.productId(),
-            request.quantity(), request.amount()
-        ));
-    }
-
-    @GetMapping("/{orderId}")
-    public CompletableFuture<OrderSummary> getOrder(@PathVariable String orderId) {
-        return queryGateway.query(
-            new FindOrderQuery(orderId),
-            ResponseTypes.instanceOf(OrderSummary.class)
-        );
-    }
+    // handle(ConfirmOrderCommand)/handle(CancelOrderCommand) + their @EventSourcingHandlers follow the same shape.
 }
 ```
+
+The remaining pieces, omitted for brevity, all follow standard Axon patterns:
+- **Commands/Events** — plain classes; commands carry `@TargetAggregateIdentifier`, events are past-tense facts.
+- **Saga** (`OrderManagementSaga`) — orchestrates the cross-service steps; see 3.7.
+- **Projector** (`@Component` with `@EventHandler` methods) — builds an `OrderSummary` read model.
+- **REST controller** — injects `CommandGateway` (send commands) and `QueryGateway` (run queries), both returning `CompletableFuture`.
 
 ### 8.3 application.yml for Axon
 
@@ -2322,103 +1544,41 @@ Partition key = aggregateId → guarantees ordering within a partition
 
 ### 9.2 Kafka Topics as Event Streams
 
+Create an event-store topic with enough partitions (partition key = `aggregateId`, which guarantees ordering per aggregate), replicas for durability, and infinite retention so events are never expired:
+
 ```java
-@Configuration
-public class KafkaEventStoreConfig {
-
-    @Bean
-    public NewTopic bankAccountEventsTopic() {
-        return TopicBuilder.name("bank-account-events")
-            .partitions(12)       // Partition by aggregateId
-            .replicas(3)          // 3 replicas for durability
-            .config(TopicConfig.RETENTION_MS_CONFIG, "-1")  // Keep forever
-            .config(TopicConfig.CLEANUP_POLICY_CONFIG, "delete")  // Keep all events
-            .build();
-    }
-
-    @Bean
-    public ProducerFactory<String, Object> producerFactory() {
-        Map<String, Object> config = new HashMap<>();
-        config.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, "localhost:9092");
-        config.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
-        config.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, JsonSerializer.class);
-        // Idempotent producer: exactly-once within a producer session
-        config.put(ProducerConfig.ENABLE_IDEMPOTENCE_CONFIG, true);
-        config.put(ProducerConfig.ACKS_CONFIG, "all");
-        config.put(ProducerConfig.RETRIES_CONFIG, Integer.MAX_VALUE);
-        return new DefaultKafkaProducerFactory<>(config);
-    }
+@Bean
+public NewTopic bankAccountEventsTopic() {
+    return TopicBuilder.name("bank-account-events")
+        .partitions(12).replicas(3)
+        .config(TopicConfig.RETENTION_MS_CONFIG, "-1")        // keep forever
+        .config(TopicConfig.CLEANUP_POLICY_CONFIG, "delete")  // keep all events (not compacted)
+        .build();
 }
 ```
 
+The producer should be configured for durability/idempotence: `enable.idempotence=true`, `acks=all`, `retries=MAX_VALUE`, with `aggregateId` as the message key.
+
 ### 9.3 Consumer Groups for Projections
 
+Each independent projection uses its **own consumer group**, so all of them receive every event and track their own offset:
+
 ```java
-// Multiple independent projections from same Kafka topic
-// Each has its own consumer group — processes events independently
-
-@KafkaListener(
-    topics = "bank-account-events",
-    groupId = "balance-projection",       // Independent offset tracking
-    containerFactory = "kafkaListenerContainerFactory"
-)
+@KafkaListener(topics = "bank-account-events", groupId = "balance-projection")
 public void updateBalanceProjection(ConsumerRecord<String, String> record) {
-    // Deserialize and apply event to balance read model
+    // deserialize and apply event to the balance read model
 }
 
-@KafkaListener(
-    topics = "bank-account-events",
-    groupId = "fraud-detection",          // Same events, different consumer group
-    containerFactory = "kafkaListenerContainerFactory"
-)
+@KafkaListener(topics = "bank-account-events", groupId = "fraud-detection")
 public void detectFraud(ConsumerRecord<String, String> record) {
-    // Analyze events for suspicious patterns
+    // same events, different consumer group → independent processing
 }
-
-@KafkaListener(
-    topics = "bank-account-events",
-    groupId = "reporting-projection",     // Another independent consumer
-    containerFactory = "kafkaListenerContainerFactory"
-)
-public void updateReporting(ConsumerRecord<String, String> record) {
-    // Update reporting database
-}
+// e.g. add a "reporting-projection" group for a reporting DB, etc.
 ```
 
 ### 9.4 Exactly-Once with Kafka Transactions
 
-```java
-@Service
-public class ExactlyOnceEventPublisher {
-
-    @Autowired
-    private KafkaTemplate<String, Object> kafkaTemplate;
-
-    // Kafka transactions guarantee exactly-once delivery
-    // Requires transactional.id on the producer
-    @Transactional("kafkaTransactionManager")
-    public void publishEvents(String aggregateId, List<DomainEvent> events) {
-        for (DomainEvent event : events) {
-            kafkaTemplate.send(
-                topicFor(event),
-                aggregateId,   // Partition key — ensures ordering per aggregate
-                event
-            );
-        }
-        // If exception occurs here, Kafka transaction is aborted
-        // No events are visible to consumers
-    }
-}
-
-@Bean
-public ProducerFactory<String, Object> transactionalProducerFactory() {
-    Map<String, Object> config = new HashMap<>();
-    config.put(ProducerConfig.TRANSACTIONAL_ID_CONFIG, "order-service-tx-1");
-    config.put(ProducerConfig.ENABLE_IDEMPOTENCE_CONFIG, true);
-    // ... other config
-    return new DefaultKafkaProducerFactory<>(config);
-}
-```
+For exactly-once publishing, set a `transactional.id` on the producer and wrap the sends in `@Transactional("kafkaTransactionManager")`. If an exception is thrown mid-batch, the Kafka transaction is aborted and none of the events become visible to consumers — avoiding partially published event batches. (Even so, downstream consumers should remain idempotent.)
 
 ---
 
@@ -2608,7 +1768,7 @@ A: Each event has a `version` number within its aggregate stream (version 1, 2, 
 
 **Q29: What is the global sequence in the event store? Why is it important?**
 
-A: The global sequence (or global position) is a monotonically increasing number assigned to every event across all aggregates — not just within a single aggregate. It enables projectors to track exactly where they are in the global event stream. If a projector crashes and restarts, it reads its last checkpoint position from the global sequence and resumes from where it left off. Without a global sequence, a projector would have to scan all aggregate streams to find new events, which is very inefficient. Axon Server and EventStoreDB both provide this as a first-class feature.
+A: (Senior-level awareness.) A monotonically increasing number assigned to every event across all aggregates. It lets a projector checkpoint its position and resume after a crash without scanning every aggregate stream. Axon Server and EventStoreDB provide it natively.
 
 ---
 
@@ -2626,7 +1786,7 @@ A: `@EventSourcingHandler` (inside `@Aggregate`) rebuilds the aggregate's state 
 
 **Q32: What is log compaction in Kafka and how does it relate to event sourcing?**
 
-A: Log compaction retains only the most recent message for each key in a Kafka topic, discarding older ones. For event sourcing, this is generally NOT what you want — you need ALL events preserved. Use `cleanup.policy=delete` (keep events based on time/size retention) with `retention.ms=-1` (infinite) for event store topics. Log compaction is useful for maintaining a "latest state" topic (like a CQRS read model cache), where only the most recent state per aggregate ID matters, not the full history.
+A: Log compaction keeps only the latest message per key. For an event store you do NOT want this — you need all events, so use `cleanup.policy=delete` with `retention.ms=-1`. Compaction suits a "latest-state" topic (a read-model cache) where only the current state per key matters.
 
 ---
 
@@ -2644,13 +1804,13 @@ A: At-least-once delivery means a message is guaranteed to be delivered but may 
 
 **Q35: How does Axon Server differ from using Kafka directly for event distribution?**
 
-A: Axon Server is a purpose-built event store and message routing server for the Axon Framework. It provides: event store with global sequence, command routing (exactly-once delivery to one handler), event streaming with position tracking, saga persistence, query routing. Kafka is a general-purpose distributed log. Axon Server is better when building a full Axon CQRS/ES architecture — it provides all infrastructure out of the box. Kafka is better when you need cross-technology event distribution (non-Java consumers, external systems). In production, both are often used together: Axon Server for internal event sourcing, Kafka for external event publication.
+A: (Senior-level awareness.) Axon Server is a purpose-built event store + message router (event store with global sequence, command/query routing, saga persistence). Kafka is a general-purpose distributed log. Use Axon Server for a full Axon CQRS/ES stack; use Kafka for cross-technology/external event distribution. They are often used together.
 
 ---
 
 **Q36: What happens if a compensating transaction itself fails?**
 
-A: This is one of the hardest problems in distributed sagas. Options: (1) **Infinite retry** — compensating transactions should eventually succeed; design them to be retryable (idempotent, no expiring resources); (2) **Dead letter queue** — if compensation fails after N retries, send to a DLQ for manual intervention; (3) **Human escalation** — alert operations team; some compensations require manual action (e.g., manual bank transfer reversal); (4) **Compensation log** — record compensation attempts for audit purposes, even if they ultimately fail. The system acknowledges that perfect compensation may not always be achievable — business processes must account for this (refund via different mechanism, credit note, manual resolution).
+A: (Senior-level awareness.) One of the hardest saga problems. Mitigations: make compensations idempotent and retry until they succeed; after N retries, route to a dead-letter queue and escalate to humans (some reversals are manual); keep a compensation log for audit. Accept that perfect automated compensation isn't always possible — the business process must allow for credit notes or manual resolution.
 
 ---
 
@@ -2662,13 +1822,13 @@ A: Eventual consistency means that after a write operation, readers may temporar
 
 **Q38: What is a process manager and how is it different from a saga?**
 
-A: A process manager is a generalization of a saga that can handle more complex coordination scenarios. A saga is specifically about distributed transaction coordination with compensation. A process manager handles complex business workflows that may span days or weeks, involve human tasks, have branching logic, and are not strictly about atomicity/compensation. In practice, the terms are often used interchangeably. Axon calls them both "sagas." The distinction: saga = distributed transaction coordination; process manager = long-running business process orchestration (may include sagas as sub-processes).
+A: (Senior-level awareness.) Roughly: saga = distributed transaction coordination with compensation; process manager = a more general long-running workflow (days/weeks, human tasks, branching). The terms are often used interchangeably — Axon calls both "sagas."
 
 ---
 
 **Q39: How would you monitor sagas in production?**
 
-A: (1) **Saga state dashboard** — query the saga state table, show distribution by state (PENDING, PROCESSING, COMPLETED, CANCELLED, STUCK); (2) **Saga duration metrics** — track time from PENDING to COMPLETED, alert on sagas exceeding threshold; (3) **Failure rate tracking** — percentage of sagas entering compensation state; (4) **Dead letter queue monitoring** — alert on DLQ accumulation; (5) **Distributed tracing** — use correlation ID (saga ID) as the trace ID across all services; Zipkin/Jaeger shows the full saga flow as a single trace; (6) **Event lag monitoring** — Kafka consumer lag per consumer group; high lag means projectors are falling behind.
+A: (Senior-level awareness.) Key signals: a saga-state dashboard (count by state, flag STUCK), saga duration metrics with alerts, compensation/failure rate, dead-letter-queue accumulation, distributed tracing using the saga ID as correlation ID (Zipkin/Jaeger), and Kafka consumer lag per group (projectors falling behind).
 
 ---
 

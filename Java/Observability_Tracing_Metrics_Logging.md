@@ -6,23 +6,6 @@ Observability is the ability to understand what is happening inside a system by 
 
 ---
 
-## Table of Contents
-
-1. [The Three Pillars of Observability](#1-the-three-pillars-of-observability)
-2. [Logs — Deep Dive](#2-logs--deep-dive)
-3. [Metrics — Deep Dive](#3-metrics--deep-dive)
-4. [Distributed Tracing — Deep Dive](#4-distributed-tracing--deep-dive)
-5. [OpenTelemetry](#5-opentelemetry)
-6. [Spring Boot Actuator](#6-spring-boot-actuator)
-7. [Prometheus and Grafana](#7-prometheus-and-grafana)
-8. [Log Aggregation: ELK, EFK, Loki](#8-log-aggregation-elk-efk-loki)
-9. [Alerting and SLI/SLO/SLA](#9-alerting-and-slislosla)
-10. [Debugging a Slow Request in Microservices](#10-debugging-a-slow-request-in-microservices)
-11. [Interview Questions and Answers](#11-interview-questions-and-answers)
-12. [Quick Reference Cheat Sheet](#12-quick-reference-cheat-sheet)
-
----
-
 ## 1. The Three Pillars of Observability
 
 ### 1.1 What is Observability?
@@ -640,47 +623,15 @@ public class PaymentService {
 }
 ```
 
-> **Note:** `@Timed` requires an `AspectJ` weaving bean. Add `@EnableAspectJAutoProxy` and `TimedAspect` bean if not using Spring Boot AOP starter.
-
-```java
-@Configuration
-public class MetricsConfig {
-    @Bean
-    public TimedAspect timedAspect(MeterRegistry registry) {
-        return new TimedAspect(registry);
-    }
-}
-```
+> **Note:** `@Timed` needs a `TimedAspect` bean (`new TimedAspect(registry)`) registered when you're not relying on the Spring Boot AOP starter.
 
 ---
 
 ### 3.4 DistributionSummary and LongTaskTimer
 
-```java
-// DistributionSummary: measure distribution of arbitrary values (not time)
-DistributionSummary requestSizeSummary = DistributionSummary
-    .builder("http.request.size")
-    .description("HTTP request body size in bytes")
-    .baseUnit("bytes")
-    .publishPercentiles(0.5, 0.95, 0.99)
-    .register(registry);
-
-requestSizeSummary.record(request.getContentLength());
-
-// LongTaskTimer: for tasks that take minutes/hours (batch jobs, exports)
-// Unlike Timer, it tracks CURRENTLY RUNNING tasks
-LongTaskTimer batchJobTimer = LongTaskTimer
-    .builder("batch.job.active")
-    .description("Active batch processing jobs")
-    .register(registry);
-
-LongTaskTimer.Sample sample = batchJobTimer.start();
-try {
-    runNightlyBatchJob(); // Could take 30 minutes
-} finally {
-    sample.stop(); // Records total duration when complete
-}
-```
+Two more meter types worth knowing by name:
+- **DistributionSummary** — like a Timer but for arbitrary (non-time) values such as request body size or batch size: `DistributionSummary.builder("http.request.size").baseUnit("bytes")...record(size)`.
+- **LongTaskTimer** — for long-running tasks (batch jobs, exports that take minutes/hours); unlike Timer it tracks tasks *currently in progress*. Start a sample before the work and `sample.stop()` in `finally`.
 
 ---
 
@@ -720,85 +671,25 @@ traceId: 1a2b3c4d5e6f7890  (same across ALL services)
 
 **Context Propagation — How trace IDs travel across services:**
 
-When Service A calls Service B, it injects the trace context into the HTTP headers. Service B extracts the context and creates a child span.
+When Service A calls Service B, it injects the trace context into HTTP headers. Service B extracts it, reuses the same `traceId`, and creates a new child span. In Spring Boot this happens automatically — you rarely wire it by hand.
 
-```
-Service A (caller):                Service B (callee):
-─────────────────────────────────────────────────────
-1. Has active span                 1. Receives HTTP request
-   traceId=abc                     2. Extracts headers:
-   spanId=111                         traceparent: 00-abc-111-01
-                                   3. Creates child span:
-2. Makes HTTP call                    traceId=abc (SAME)
-   Injects headers:                   spanId=222 (NEW)
-   traceparent: 00-abc-111-01         parentSpanId=111
-                                   4. Processes request
-                                   5. Span ends, reported to collector
-```
-
-**W3C Trace Context standard headers (preferred):**
+The standard header is W3C `traceparent` (the older Zipkin format is `X-B3-*`):
 ```
 traceparent: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
              ^  ^traceId (32 hex chars)             ^spanId (16hex) ^flags
              version
-             
-tracestate: vendor1=opaqueValue,vendor2=opaqueValue
-```
-
-**B3 Propagation (Zipkin legacy):**
-```
-X-B3-TraceId: 4bf92f3577b34da6a3ce929d0e0e4736
-X-B3-SpanId:  00f067aa0ba902b7
-X-B3-ParentSpanId: b9c7c989f97918e1
-X-B3-Sampled: 1
 ```
 
 ---
 
 ### 4.2 Sampling Strategies
 
-Tracing every request at 100% is expensive. Sampling reduces this cost.
+Tracing every request at 100% is expensive, so production samples a fraction. As a junior, know the two approaches at an awareness level:
 
-**Head-based sampling (decide at trace start):**
-- The API gateway decides to sample or not when the first request arrives
-- Decision propagates downstream — all services either trace or don't
-- Simple, low overhead
-- Problem: you may miss rare, interesting failures if sampled out
+- **Head-based sampling**: the decision (trace or not) is made at the start of the request and propagated downstream. Simple and cheap, but can miss rare failures. This is what you set in Spring Boot: `management.tracing.sampling.probability: 0.1` (10%).
+- **Tail-based sampling**: the decision is deferred until the trace completes, so you can keep all errors/slow traces and sample the rest. More accurate but needs buffering — handled by the OTel Collector, Tempo, or Honeycomb, not the app.
 
-```yaml
-# Spring Boot: sample 10% of requests in production
-management:
-  tracing:
-    sampling:
-      probability: 0.1  # 10% sampling rate
-```
-
-**Tail-based sampling (decide after trace completes):**
-- Collect all spans, decide whether to keep the trace after the fact
-- Can keep 100% of errors, slow requests, and sample the rest
-- Requires buffering all spans — more complex, more expensive
-- Implemented in OpenTelemetry Collector, Tempo, Honeycomb
-
-**Priority sampling (common pattern):**
-```java
-// Always trace errors, sample normal requests
-@Component
-public class CustomSampler implements Sampler {
-    @Override
-    public SamplingResult shouldSample(Context parentContext, String traceId,
-            String name, SpanKind spanKind, Attributes attributes,
-            List<LinkData> parentLinks) {
-        // Always sample if it's a high-value operation
-        if (name.contains("checkout") || name.contains("payment")) {
-            return SamplingResult.recordAndSample();
-        }
-        // 10% for everything else
-        return Math.random() < 0.1
-            ? SamplingResult.recordAndSample()
-            : SamplingResult.drop();
-    }
-}
-```
+A common production setup is head-based at 10-20% with errors always sampled.
 
 ---
 
@@ -899,159 +790,45 @@ public class OrderService {
 }
 ```
 
-**Trace ID in logs:**
-```java
-// With Micrometer Tracing, traceId is automatically in MDC
-// Just use your logger normally — it appears in logs automatically
-@Slf4j
-@Service
-public class PaymentService {
-    public void processPayment(String orderId) {
-        // This log line will automatically include traceId and spanId
-        log.info("Processing payment for order {}", orderId);
-        // Output: INFO [payment-service,a1b2c3d4,e5f67890] Processing payment for order 456
-    }
-}
-```
+With Micrometer Tracing, the `traceId` is automatically placed in MDC, so a normal `log.info(...)` call already prints `[service,traceId,spanId]` — no extra wiring needed.
 
-**Propagating trace across async boundaries:**
-```java
-@Service
-public class AsyncOrderService {
-
-    @Autowired
-    private Tracer tracer;
-
-    @Async
-    public CompletableFuture<Void> processAsync(Order order) {
-        // PROBLEM: @Async starts a new thread — trace context is lost!
-        // SOLUTION: Use Micrometer's context propagation
-
-        // Micrometer 1.10+ handles this automatically with:
-        // @Bean TaskExecutor (wrapped with context-propagating wrapper)
-        log.info("Processing async for order {}", order.getId());
-        // This will have correct traceId if executor is configured properly
-        return CompletableFuture.completedFuture(null);
-    }
-}
-
-@Configuration
-public class AsyncConfig {
-    @Bean
-    public Executor asyncExecutor(ObservationRegistry registry) {
-        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
-        executor.setCorePoolSize(10);
-        executor.initialize();
-        // Wrap with context-propagating executor
-        return ContextExecutorService.wrap(
-            executor.getThreadPoolExecutor(),
-            ContextSnapshot::captureAll
-        );
-    }
-}
-```
+> **Awareness:** Across async boundaries (`@Async`, `CompletableFuture`, thread pools) the trace context is NOT inherited by default, because it lives in a ThreadLocal. Micrometer 1.10+ fixes this when you wrap your executor with a context-propagating wrapper (`ContextExecutorService` / `ContextSnapshot`). You usually only need to know this exists.
 
 ---
 
 ### 4.4 Zipkin
 
-**Architecture:**
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│  Services (instrumented with Brave/Micrometer)                      │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐             │
-│  │ Order Svc    │  │ Payment Svc  │  │Inventory Svc │             │
-│  │ (reporter)   │  │ (reporter)   │  │ (reporter)   │             │
-│  └──────┬───────┘  └──────┬───────┘  └──────┬───────┘             │
-│         │                 │                 │                      │
-│         └─────────────────┼─────────────────┘                      │
-│                           │ HTTP/Kafka (spans)                      │
-└───────────────────────────┼─────────────────────────────────────────┘
-                            ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│  Zipkin Server                                                      │
-│  ┌───────────────┐  ┌───────────────────────────────────────────┐  │
-│  │   Collector   │→ │   Storage                                 │  │
-│  │  (receives    │  │   - In-memory (dev)                       │  │
-│  │   spans)      │  │   - MySQL                                 │  │
-│  └───────────────┘  │   - Elasticsearch                         │  │
-│                     │   - Cassandra (high volume)               │  │
-│  ┌───────────────┐  └───────────────────────────────────────────┘  │
-│  │   Web UI      │  Port 9411                                       │
-│  │  (visualize)  │                                                  │
-│  └───────────────┘                                                  │
-└─────────────────────────────────────────────────────────────────────┘
-```
+Zipkin is a tracing backend: instrumented services report spans to a Zipkin **collector**, which stores them (in-memory for dev; MySQL/Elasticsearch/Cassandra for production) and shows them in a web UI on port 9411. The UI lets you search traces by service/duration/tags, view the span waterfall, and see a service dependency graph.
 
 **Running Zipkin with Docker:**
 ```bash
 # Quick start (in-memory storage)
 docker run -d -p 9411:9411 openzipkin/zipkin
-
-# With Elasticsearch storage
-docker run -d -p 9411:9411 \
-  -e STORAGE_TYPE=elasticsearch \
-  -e ES_HOSTS=elasticsearch:9200 \
-  openzipkin/zipkin
 ```
-
-**Zipkin UI features:**
-- Trace search by service, operation, duration, tags
-- Waterfall view showing span timeline
-- Dependency graph between services
-- Latency breakdown per span
 
 ---
 
 ### 4.5 Jaeger
 
-**Architecture:**
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│  Services                                                           │
-│  ┌──────────────┐  ┌──────────────┐                               │
-│  │ Service A    │  │ Service B    │                               │
-│  │ (OTel agent) │  │ (OTel agent) │                               │
-│  └──────┬───────┘  └──────┬───────┘                               │
-└─────────┼─────────────────┼───────────────────────────────────────┘
-          │ OTLP (gRPC)     │
-          ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│  Jaeger                                                             │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────────────────┐ │
-│  │  Collector   │→ │   Storage    │  │    Query + UI            │ │
-│  │  (port 4317) │  │(Elasticsearch│  │   (port 16686)           │ │
-│  │              │  │  /Cassandra) │  │                          │ │
-│  └──────────────┘  └──────────────┘  └──────────────────────────┘ │
-└─────────────────────────────────────────────────────────────────────┘
-```
+Jaeger (originally from Uber) is another tracing backend with the same collector → storage → UI shape, but it's more feature-rich, natively supports OpenTelemetry/OTLP, and offers adaptive sampling (auto-tuning sample rates by traffic). Its UI runs on port 16686.
 
 **Running Jaeger with Docker (all-in-one for dev):**
 ```bash
 docker run -d --name jaeger \
   -e COLLECTOR_OTLP_ENABLED=true \
-  -p 16686:16686 \   # Jaeger UI
-  -p 4317:4317 \     # OTLP gRPC receiver
-  -p 4318:4318 \     # OTLP HTTP receiver
-  -p 9411:9411 \     # Zipkin-compatible endpoint
+  -p 16686:16686 \
+  -p 4317:4317 \
   jaegertracing/all-in-one:latest
 ```
 
-**Jaeger vs Zipkin comparison:**
+**Jaeger vs Zipkin (the points an interviewer wants):**
 
-| Feature | Zipkin | Jaeger |
+| | Zipkin | Jaeger |
 |---|---|---|
 | Origin | Twitter | Uber |
-| Protocol | B3 propagation (native) | W3C / B3 / OTel |
-| Storage | MySQL, ES, Cassandra | ES, Cassandra, BadgerDB |
-| UI | Simple, clean | More feature-rich |
-| Sampling | Fixed / per-service | Adaptive sampling |
-| Architecture | Simpler | More components |
 | OTel compatibility | Via compatibility layer | Native |
-| Best for | Simpler setups | Large-scale, complex systems |
-
-**Adaptive sampling in Jaeger:**
-Jaeger can automatically adjust sampling rates per service based on traffic volume. High-traffic services get lower sample rates; low-traffic services keep higher rates.
+| Sampling | Fixed / per-service | Adaptive |
+| Best for | Simpler setups | Large-scale systems |
 
 ---
 
@@ -1106,105 +883,13 @@ java -javaagent:opentelemetry-javaagent.jar \
      -jar order-service.jar
 ```
 
-**What the Java agent auto-instruments:**
-- Spring MVC / Spring WebFlux
-- JDBC (all SQL queries become spans)
-- Redis (Lettuce, Jedis)
-- Kafka (producer and consumer)
-- gRPC
-- HTTP clients (OkHttp, Apache HttpClient, java.net.URL)
-- Scheduled tasks
+**What the Java agent auto-instruments:** Spring MVC/WebFlux, JDBC (SQL queries become spans), Redis, Kafka (producer and consumer), gRPC, HTTP clients, and scheduled tasks — with no code changes.
 
-**OTel Collector configuration (otel-collector-config.yaml):**
-```yaml
-receivers:
-  otlp:
-    protocols:
-      grpc:
-        endpoint: 0.0.0.0:4317
-      http:
-        endpoint: 0.0.0.0:4318
+> **Awareness (SRE-level):** In larger setups, services send telemetry to an **OTel Collector** (a YAML pipeline of receivers → processors → exporters) which fans data out to Jaeger, Prometheus, Loki, etc. You configure this once at the platform level; as a junior you just point your app's OTLP endpoint at it. See section 11 Q22 for why it's used.
 
-processors:
-  batch:
-    timeout: 1s
-    send_batch_size: 1024
-  memory_limiter:
-    check_interval: 1s
-    limit_mib: 512
-  resource:
-    attributes:
-      - action: insert
-        key: deployment.environment
-        value: production
+### 5.3 Manual OTel Instrumentation
 
-exporters:
-  jaeger:
-    endpoint: jaeger-collector:14250
-    tls:
-      insecure: true
-  prometheus:
-    endpoint: 0.0.0.0:8889
-  loki:
-    endpoint: http://loki:3100/loki/api/v1/push
-  logging:
-    loglevel: debug
-
-service:
-  pipelines:
-    traces:
-      receivers: [otlp]
-      processors: [memory_limiter, batch]
-      exporters: [jaeger]
-    metrics:
-      receivers: [otlp]
-      processors: [memory_limiter, batch]
-      exporters: [prometheus]
-    logs:
-      receivers: [otlp]
-      processors: [batch]
-      exporters: [loki]
-```
-
----
-
-### 5.3 Manual OTel Instrumentation in Spring Boot
-
-```java
-@Service
-public class OrderService {
-
-    // OTel API (vendor-neutral)
-    private final io.opentelemetry.api.trace.Tracer tracer;
-
-    public OrderService(OpenTelemetry openTelemetry) {
-        this.tracer = openTelemetry.getTracer("com.example.OrderService", "1.0.0");
-    }
-
-    public Order processOrder(CreateOrderRequest request) {
-        Span span = tracer.spanBuilder("processOrder")
-            .setSpanKind(SpanKind.INTERNAL)
-            .setAttribute("order.userId", request.getUserId())
-            .setAttribute("order.totalAmount", request.getTotal().doubleValue())
-            .startSpan();
-
-        try (Scope scope = span.makeCurrent()) {
-            // All log statements within this scope will have the traceId
-            Order order = doProcessOrder(request);
-            span.setAttribute("order.id", order.getId().toString());
-            span.setStatus(StatusCode.OK);
-            return order;
-
-        } catch (Exception e) {
-            span.recordException(e);  // Records exception as a span event
-            span.setStatus(StatusCode.ERROR, e.getMessage());
-            throw e;
-        } finally {
-            span.end();
-        }
-    }
-}
-```
+Manual instrumentation with the raw OTel API mirrors the Micrometer `Tracer` example in 4.3: build a span with `tracer.spanBuilder(...)`, set attributes, `makeCurrent()` in a try-with-resources, `recordException`/`setStatus(ERROR)` on failure, and always `span.end()` in `finally`. In Spring Boot you normally use Micrometer's `Tracer` (4.3) rather than the raw OTel API directly.
 
 ---
 
@@ -1487,140 +1172,51 @@ alerting:
 
 ### 7.2 PromQL — Essential Queries
 
-**Request rate (requests per second):**
-```promql
-# HTTP request rate for order-service over last 5 minutes
-rate(http_server_requests_seconds_count{application="order-service"}[5m])
+A junior should recognize these core patterns (a fuller list is in the cheat sheet). `rate()` gives per-second rate of a counter; `histogram_quantile()` derives percentiles from histogram buckets.
 
-# Total across all instances
+```promql
+# Request rate (RPS) for a service
 sum(rate(http_server_requests_seconds_count{application="order-service"}[5m]))
-```
 
-**Error rate (percentage of 5xx responses):**
-```promql
-# Error rate as a percentage
+# Error rate as a percentage (5xx / total)
 sum(rate(http_server_requests_seconds_count{status=~"5.."}[5m]))
-/
-sum(rate(http_server_requests_seconds_count[5m]))
-* 100
+/ sum(rate(http_server_requests_seconds_count[5m])) * 100
 
-# Errors per second by endpoint
-sum by (uri) (rate(http_server_requests_seconds_count{status=~"5.."}[5m]))
-```
-
-**Latency percentiles:**
-```promql
-# 95th percentile response time (requires publishPercentileHistogram: true)
+# p95 latency (requires percentiles-histogram enabled)
 histogram_quantile(0.95,
-  sum(rate(http_server_requests_seconds_bucket{application="order-service"}[5m]))
-  by (le, uri)
-)
+  sum(rate(http_server_requests_seconds_bucket[5m])) by (le))
 
-# p50, p95, p99 for a specific endpoint
-histogram_quantile(0.99,
-  sum(rate(http_server_requests_seconds_bucket{uri="/api/orders"}[5m]))
-  by (le)
-)
-```
-
-**JVM metrics:**
-```promql
-# JVM heap usage percentage
+# JVM heap usage %
 jvm_memory_used_bytes{area="heap"} / jvm_memory_max_bytes{area="heap"} * 100
 
-# GC pause time rate
-rate(jvm_gc_pause_seconds_sum[5m])
-
-# Thread count
-jvm_threads_live_threads
-
-# Non-heap (Metaspace, Code cache)
-jvm_memory_used_bytes{area="nonheap"}
+# DB pending connections — alarm if > 0 consistently
+hikaricp_connections_pending
 ```
 
-**Database connection pool (HikariCP):**
-```promql
-# Active connections
-hikaricp_connections_active{pool="HikariPool-1"}
-
-# Pending (waiting for connection — ALARM if > 0 consistently)
-hikaricp_connections_pending{pool="HikariPool-1"}
-
-# Connection acquisition time p99
-histogram_quantile(0.99,
-  sum(rate(hikaricp_connections_acquisition_seconds_bucket[5m]))
-  by (le)
-)
-```
-
-**Kafka consumer lag:**
-```promql
-# Consumer lag per topic/partition
-kafka_consumer_lag_records{topic="orders"}
-
-# Sum across all partitions
-sum by (group) (kafka_consumer_lag_records{topic="orders"})
-```
+> **Awareness:** There are many more queries (per-endpoint error breakdowns, GC pause rate, connection-acquisition p99, Kafka consumer lag, etc.). They follow the same `rate()` / `histogram_quantile()` / `sum by (...)` building blocks.
 
 ---
 
 ### 7.3 Prometheus Alerting Rules
 
-**alerting_rules.yml:**
+A Prometheus alerting rule pairs a PromQL `expr` with a `for:` duration (how long it must stay true before firing) and a severity label. Example:
+
 ```yaml
 groups:
   - name: spring-boot-alerts
     rules:
-      # Alert when error rate exceeds 5%
       - alert: HighErrorRate
         expr: |
           sum(rate(http_server_requests_seconds_count{status=~"5.."}[5m]))
-          /
-          sum(rate(http_server_requests_seconds_count[5m]))
-          * 100 > 5
-        for: 2m  # Must be true for 2 minutes before firing
+          / sum(rate(http_server_requests_seconds_count[5m])) * 100 > 5
+        for: 2m            # must be true for 2 minutes before firing
         labels:
           severity: critical
-          team: backend
         annotations:
           summary: "High error rate on {{ $labels.application }}"
-          description: "Error rate is {{ $value }}% for {{ $labels.application }}"
-          runbook_url: "https://wiki.example.com/runbooks/high-error-rate"
-
-      # Alert when p99 latency exceeds 2 seconds
-      - alert: HighLatency
-        expr: |
-          histogram_quantile(0.99,
-            sum(rate(http_server_requests_seconds_bucket[5m]))
-            by (le, application)
-          ) > 2.0
-        for: 5m
-        labels:
-          severity: warning
-        annotations:
-          summary: "High p99 latency for {{ $labels.application }}"
-          description: "p99 latency is {{ $value }}s"
-
-      # Alert when JVM heap > 80%
-      - alert: JvmHeapHigh
-        expr: |
-          jvm_memory_used_bytes{area="heap"}
-          / jvm_memory_max_bytes{area="heap"} * 100 > 80
-        for: 5m
-        labels:
-          severity: warning
-        annotations:
-          summary: "JVM heap usage high: {{ $value }}%"
-
-      # Alert when DB connection pool has pending connections
-      - alert: DbConnectionPoolExhausted
-        expr: hikaricp_connections_pending > 0
-        for: 1m
-        labels:
-          severity: critical
-        annotations:
-          summary: "DB connection pool exhausted — threads waiting for connections"
 ```
+
+The same pattern covers high latency (p99 > 2s), high JVM heap (> 80%), and DB pool exhaustion (`hikaricp_connections_pending > 0`).
 
 ---
 
@@ -1714,77 +1310,13 @@ groups:
                     └──────────────────┘
 ```
 
-**Logstash pipeline configuration:**
-```ruby
-# logstash.conf
-input {
-  beats {
-    port => 5044  # Filebeat connects here
-  }
-}
-
-filter {
-  # Parse JSON logs (if app logs are already JSON)
-  if [message] =~ /^\{/ {
-    json {
-      source => "message"
-    }
-  }
-
-  # Parse timestamp
-  date {
-    match => ["@timestamp", "ISO8601"]
-    target => "@timestamp"
-  }
-
-  # Add computed fields
-  mutate {
-    add_field => {
-      "log_level_numeric" => "%{level}"
-    }
-    rename => { "traceId" => "trace.id" }
-    rename => { "spanId" => "span.id" }
-  }
-
-  # Drop noisy health check logs
-  if [uri] == "/actuator/health" {
-    drop {}
-  }
-}
-
-output {
-  elasticsearch {
-    hosts => ["elasticsearch:9200"]
-    index => "app-logs-%{service}-%{+YYYY.MM.dd}"  # Daily indices
-  }
-}
-```
+A Logstash pipeline has three stages: `input` (e.g. Beats on port 5044), `filter` (parse the JSON message, fix the timestamp, rename `traceId`, drop noisy health-check lines), and `output` (write to Elasticsearch, typically into daily indices like `app-logs-{service}-YYYY.MM.dd`). The config is a Ruby-style DSL; the details are platform-team work, not something a junior writes from scratch.
 
 ---
 
 ### 8.2 EFK Stack (Kubernetes-Preferred)
 
-```
-Application Pods
-      │
-      ▼ stdout/stderr
-┌──────────────┐
-│  Fluent Bit  │  ← DaemonSet on each K8s node
-│  (log agent) │    Reads container logs
-│  Very light  │    (10MB RAM vs Logstash 500MB+)
-│  Rust-based  │
-└──────┬───────┘
-       │
-       ▼
-┌──────────────┐        ┌──────────────┐
-│   Fluentd    │ ──────▶│Elasticsearch │
-│ (aggregator) │        └──────────────┘
-│   Optional   │              │
-└──────────────┘              ▼
-                        ┌──────────────┐
-                        │    Kibana    │
-                        └──────────────┘
-```
+EFK swaps Logstash for **Fluentd/Fluent Bit**: a lightweight agent runs as a DaemonSet on each Kubernetes node, reads container stdout/stderr, and ships logs to Elasticsearch → Kibana. It's preferred in Kubernetes because the agent uses far less memory than Logstash.
 
 **Fluentd vs Logstash:**
 
@@ -1819,96 +1351,22 @@ Loki is "Prometheus but for logs" — designed for cost-effective log aggregatio
 Application → Promtail (agent) → Loki → Grafana
 ```
 
-**LogQL query examples:**
+**LogQL query examples:** filter by label first (fast, uses the index), then optionally by content:
 ```logql
-# Filter by label (fast — uses index)
+# Errors for a service in production
 {app="order-service", env="production"} |= "ERROR"
 
-# Filter by content (slower — scans log lines)
-{app="order-service"} |= "order created" | json
-
-# Extract fields and filter
-{app="order-service"}
-  | json
-  | orderId != ""
-  | level = "ERROR"
-
-# Count errors per minute
-sum by (app) (
-  count_over_time({app=~".*-service"} |= "ERROR" [1m])
-)
-
-# Query logs by traceId (crucial for debugging)
+# Find all logs for one request (crucial for debugging)
 {app="order-service"} | json | traceId = "a1b2c3d4e5f6"
 ```
 
-**Promtail configuration (ships logs from files/K8s to Loki):**
-```yaml
-server:
-  http_listen_port: 9080
-
-positions:
-  filename: /tmp/positions.yaml
-
-clients:
-  - url: http://loki:3100/loki/api/v1/push
-
-scrape_configs:
-  - job_name: kubernetes-pods
-    kubernetes_sd_configs:
-      - role: pod
-    pipeline_stages:
-      - json:
-          expressions:
-            level: level
-            traceId: traceId
-            service: service
-      - labels:
-          level:
-          service:
-```
+> **Awareness:** A **Promtail** agent (configured in YAML, similar to Prometheus scrape config) ships logs from files/Kubernetes pods to Loki and extracts labels like `level` and `service`. Platform-team setup, not junior code.
 
 ---
 
 ### 8.4 Cloud Logging Solutions
 
-**AWS CloudWatch Logs:**
-```java
-// Spring Boot → CloudWatch via CloudWatch Logs appender
-// Add dependency: com.github.maricn:logback-slack-appender or AWS SDK
-
-// application.yml
-logging:
-  config: classpath:logback-spring.xml
-
-// logback-spring.xml snippet for CloudWatch
-<appender name="CLOUDWATCH" class="ca.pjer.logback.AwsLogsAppender">
-    <logGroupName>/app/order-service</logGroupName>
-    <logStreamUuidPrefix>order-service-</logStreamUuidPrefix>
-    <awsRegion>us-east-1</awsRegion>
-    <maxBatchLogEvents>50</maxBatchLogEvents>
-    <maxFlushTimeMillis>3000</maxFlushTimeMillis>
-</appender>
-```
-
-**CloudWatch Insights query:**
-```sql
--- Find all errors in the last hour
-fields @timestamp, @message, level, traceId, service
-| filter level = "ERROR"
-| sort @timestamp desc
-| limit 100
-
--- Count errors by service
-stats count(*) as errorCount by service
-| filter level = "ERROR"
-| sort errorCount desc
-
--- Find slow requests
-fields @timestamp, uri, duration
-| filter duration > 1000
-| sort duration desc
-```
+Managed cloud platforms provide log aggregation without running ELK/Loki yourself: **AWS CloudWatch Logs** (ship via a Logback appender, query with CloudWatch Insights), GCP Cloud Logging, and Azure Monitor. They index your structured JSON fields (`level`, `traceId`, `service`) so you can filter errors, count by service, and find slow requests the same way. Useful when you don't want to operate the logging infrastructure.
 
 ---
 
@@ -1942,14 +1400,7 @@ fields @timestamp, uri, duration
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
-**Error budget calculation:**
-```
-Monthly error budget for 99.9% SLO:
-- Total minutes in a month: 30 days × 24h × 60min = 43,200 minutes
-- Allowed downtime: 43,200 × 0.001 = 43.2 minutes
-- If you've used 40 minutes this month, you have 3.2 minutes remaining
-- When error budget is exhausted → freeze new deployments
-```
+**Error budget** = `1 - SLO`. A 99.9% SLO allows ~43 minutes of downtime per month (43,200 min × 0.001); when the budget is exhausted, teams typically freeze new deployments. (The deeper SLO/error-budget math is an SRE concern — junior level just needs the concept.)
 
 **Alert on symptoms, not causes:**
 
@@ -1971,51 +1422,7 @@ GOOD (symptom-based alerting):
 
 ### 9.2 Alertmanager Configuration
 
-```yaml
-# alertmanager.yml
-global:
-  resolve_timeout: 5m
-  slack_api_url: 'https://hooks.slack.com/services/...'
-
-route:
-  group_by: ['alertname', 'application', 'severity']
-  group_wait: 30s        # Wait to batch alerts from same group
-  group_interval: 5m     # How long before sending new alerts in same group
-  repeat_interval: 4h    # Resend if still firing after 4 hours
-  receiver: 'slack-default'
-
-  routes:
-    # Critical alerts go to PagerDuty (pages on-call engineer)
-    - match:
-        severity: critical
-      receiver: pagerduty-critical
-      continue: true  # Also send to default receiver
-
-    # Database alerts go to DBA team
-    - match_re:
-        alertname: '^Db.*'
-      receiver: slack-dba-team
-
-receivers:
-  - name: 'slack-default'
-    slack_configs:
-      - channel: '#alerts'
-        title: '[{{ .Status | toUpper }}] {{ .GroupLabels.alertname }}'
-        text: '{{ range .Alerts }}{{ .Annotations.description }}{{ end }}'
-
-  - name: 'pagerduty-critical'
-    pagerduty_configs:
-      - service_key: '<pagerduty-integration-key>'
-        description: '{{ .GroupLabels.alertname }} - {{ .CommonAnnotations.summary }}'
-
-inhibit_rules:
-  # If a service is down, suppress all other alerts from it
-  - source_match:
-      alertname: ServiceDown
-    target_match_re:
-      alertname: '^(HighLatency|HighErrorRate)$'
-    equal: ['application']
-```
+Prometheus sends firing alerts to **Alertmanager**, which then groups related alerts, deduplicates, silences/inhibits noise (e.g. suppress latency alerts when the whole service is down), and routes by severity to receivers like Slack or PagerDuty (critical → page the on-call engineer). The config is a YAML `route` tree with per-team `receivers`. Writing it in detail is an SRE/platform task; a junior should know Alertmanager is the piece that turns alerts into notifications.
 
 ---
 
@@ -2302,7 +1709,7 @@ A: Kafka doesn't natively support header-based context propagation like HTTP. Op
 
 **Q24: What is a "Gauge" backed by a weakly-referenced object?**
 
-A: In Micrometer, when you create a Gauge by passing an object reference (e.g., `Gauge.builder("queue.size", queue, Queue::size).register(registry)`), Micrometer holds a **weak reference** to the object. If the object is garbage collected and you haven't kept a strong reference to it, the Gauge silently stops reporting (returns NaN). This is a common bug. Fix: either keep a strong reference to the monitored object in your component, or use `AtomicInteger`/`AtomicLong` fields which are owned by your component and naturally stay alive.
+A: Micrometer holds a **weak reference** to the object a Gauge measures. If that object is garbage collected (no strong reference kept), the Gauge silently stops reporting (returns NaN) — a common bug. Fix: keep a strong reference in your component, or back the Gauge with an `AtomicInteger`/`AtomicLong` field your component owns.
 
 ---
 
@@ -2326,37 +1733,13 @@ In Grafana, with both Loki (logs) and Tempo/Jaeger (traces) as data sources, you
 
 **Q27: What metrics would you put on a production dashboard for a Java microservice?**
 
-A: The essential dashboard for a Java microservice:
+A: The essentials:
+- **Service health (RED)**: request rate (RPS), error rate % (5xx/total), p50/p95/p99 latency — by endpoint.
+- **JVM**: heap usage %, GC pause rate/duration, live thread count.
+- **Database**: HikariCP active vs max connections, pending connections (alert if > 0), acquisition time p99.
+- **Kafka (if used)**: consumer lag, messages/sec. **Infra**: CPU and memory.
 
-**Service health (RED method):**
-- Request rate (RPS) by endpoint
-- Error rate % (5xx / total × 100)
-- p50, p95, p99 latency by endpoint
-
-**JVM health:**
-- Heap usage % (used / max)
-- GC pause rate and duration
-- Live thread count
-- Class loading rate
-
-**Database:**
-- HikariCP active connections / max connections
-- HikariCP pending (waiting) connections — alert if > 0 consistently
-- Connection acquisition time p99
-
-**Kafka (if applicable):**
-- Consumer lag per topic/partition
-- Messages processed per second
-
-**Infrastructure:**
-- CPU usage %
-- Memory usage
-
-**Alerting thresholds:**
-- Error rate > 1%: Warning; > 5%: Critical
-- p99 > 500ms: Warning; > 2s: Critical
-- Heap > 80%: Warning; > 95%: Critical
-- DB pending connections > 0 for 1 minute: Critical
+Typical alert thresholds: error rate > 1% warning / > 5% critical; p99 > 500ms warning / > 2s critical; heap > 80% warning / > 95% critical; DB pending > 0 for 1 min critical.
 
 ---
 
@@ -2410,24 +1793,7 @@ management:
 
 **Q30: What is context propagation across async threads?**
 
-A: When you use `@Async`, `CompletableFuture`, or thread pools, the new thread doesn't automatically inherit the trace context or MDC values from the calling thread (ThreadLocal is thread-specific). Solutions:
-
-1. **Micrometer context-propagating executor**: Wrap your ThreadPoolTaskExecutor with a context-propagating wrapper (available in Micrometer 1.10+). Automatically captures and restores context across async boundaries.
-
-2. **MDC propagation in @Async**: If using just MDC (not full tracing), save MDC before submitting to executor and restore it in the task:
-```java
-Map<String, String> mdcContext = MDC.getCopyOfContextMap();
-executor.execute(() -> {
-    MDC.setContextMap(mdcContext);
-    try {
-        doWork();
-    } finally {
-        MDC.clear();
-    }
-});
-```
-
-3. **OTel context propagation**: Use `Context.current()` from OTel API and pass it to async tasks explicitly.
+A: When you use `@Async`, `CompletableFuture`, or thread pools, the new thread doesn't inherit the trace context or MDC values from the calling thread (they live in ThreadLocals). Solutions: (1) wrap your `ThreadPoolTaskExecutor` with Micrometer's context-propagating wrapper (1.10+), which captures and restores context automatically; (2) for plain MDC, copy it with `MDC.getCopyOfContextMap()` before submitting and `MDC.setContextMap(...)` inside the task (clearing in `finally`); (3) with the OTel API, pass `Context.current()` to the async task explicitly.
 
 ---
 
@@ -2449,61 +1815,31 @@ span.event("db.fallback.triggered");   // event — another timestamped moment
 
 **Q32: What is the difference between a trace exporter and a trace reporter?**
 
-A: These terms are used interchangeably in most contexts but have subtle differences in the Brave/Zipkin model. In Brave, a **Reporter** (`AsyncReporter`) is the component that buffers spans in memory and sends them in batches to a **Sender** (HTTP, Kafka, gRPC). In OpenTelemetry, the equivalent is a **SpanExporter** — implementations include `OtlpGrpcSpanExporter` (sends via gRPC to OTel Collector or Jaeger), `ZipkinSpanExporter` (sends to Zipkin), and `JaegerGrpcSpanExporter`. The `BatchSpanProcessor` wraps the exporter and batches spans before sending. In interviews, "exporter" is the OTel term and "reporter" is the Zipkin/Brave term.
+A: Mostly the same idea under different vendors' terms. In Brave/Zipkin, a **Reporter** buffers spans and sends them in batches to a Sender. In OpenTelemetry, the equivalent is a **SpanExporter** (e.g. `OtlpGrpcSpanExporter`, `ZipkinSpanExporter`), wrapped by a `BatchSpanProcessor`. "Exporter" is the OTel term; "reporter" is the Zipkin/Brave term.
 
 ---
 
 **Q33: When would you choose Prometheus over a commercial APM (Datadog, New Relic)?**
 
-A: Choose Prometheus + Grafana (open-source stack) when:
-- Cost is a primary concern (Prometheus is free; Datadog can be very expensive at scale)
-- You need full control over data (no vendor lock-in, data stays on-premise)
-- Team has DevOps maturity to manage the infrastructure
-- You're in a Kubernetes environment (kube-prometheus-stack is well-integrated)
-- Custom metrics with complex cardinality requirements
-
-Choose commercial APM (Datadog, New Relic, Dynatrace) when:
-- Faster time-to-value is needed (APMs have better default dashboards and auto-discovery)
-- Integrated logs + metrics + traces in one tool without assembly
-- AI/ML anomaly detection is valued
-- Team doesn't want to manage monitoring infrastructure
-- Compliance/audit requirements that benefit from SaaS retention policies
+A: Choose **Prometheus + Grafana** (open-source) when cost matters, you want no vendor lock-in / on-prem data control, you're already in Kubernetes (kube-prometheus-stack), and the team can run the infrastructure. Choose a **commercial APM** (Datadog, New Relic, Dynatrace) when you want faster time-to-value, integrated logs+metrics+traces in one tool, built-in anomaly detection, and no infrastructure to manage.
 
 ---
 
-**Q34: How does Micrometer handle the cardinality problem differently than manual instrumentation?**
+**Q34: How does Micrometer help with the cardinality problem?**
 
-A: Micrometer's `MeterRegistry` by default has a `maximumAllowableTags` safeguard — if a meter exceeds a certain number of tag value combinations, new time series are rejected (not silently accepted and memory-exhausted). You can configure this limit:
-
-```java
-@Bean
-MeterRegistryCustomizer<PrometheusMeterRegistry> metricsCommonTags() {
-    return registry -> registry.config()
-        .meterFilter(MeterFilter.maximumAllowableTags(
-            "orders.created", "userId", 100, MeterFilter.deny()));
-        // Max 100 unique userId values; deny new ones after that
-}
-```
-
-Additionally, Micrometer's `MeterFilter` API allows you to deny certain meters, rename tags, add common tags, or replace unbounded tag values with a bucketed equivalent.
+A: Micrometer's `MeterFilter` API lets you guard against runaway cardinality: `MeterFilter.maximumAllowableTags(...)` caps the number of unique tag values for a meter and denies new ones past the limit, instead of silently exhausting memory. Filters can also deny meters, rename tags, add common tags, or bucket unbounded values.
 
 ---
 
 **Q35: What observability tools would you recommend for a new Spring Boot microservices project?**
 
-A: For a modern, cloud-native Spring Boot project in 2024:
+A: A solid open-source stack for a modern Spring Boot project:
+- **Metrics**: Spring Boot Actuator + Micrometer → Prometheus + Grafana
+- **Traces**: Spring Boot 3 + Micrometer Tracing (OTel bridge) → Jaeger or Grafana Tempo
+- **Logs**: structured JSON (logstash-logback-encoder) → Promtail → Grafana Loki
+- **Unified view**: Grafana ties all three pillars together with trace-to-log linking. On Kubernetes, kube-prometheus-stack bundles Prometheus + Grafana.
 
-**Traces**: Spring Boot 3 + Micrometer Tracing + OTel bridge → OTel Collector → Jaeger (or Grafana Tempo for Grafana-native experience)
-
-**Metrics**: Spring Boot Actuator + Micrometer → Prometheus + Grafana
-
-**Logs**: Structured JSON logging (logstash-logback-encoder) → Promtail → Grafana Loki → Grafana
-
-**Unified dashboards**: Grafana (all three pillars in one UI, with trace-to-log and log-to-trace linking)
-
-**For Kubernetes**: kube-prometheus-stack (Helm chart with Prometheus + Grafana pre-configured), Loki-stack, Jaeger operator.
-
-This stack is fully open-source, cloud-agnostic, integrates natively in Grafana (logs, metrics, traces all linkable), and has excellent Spring Boot support. If budget and operational overhead allow, Datadog or Honeycomb provide better out-of-the-box experience with less setup.
+It's fully open-source and cloud-agnostic. If budget and operational overhead allow, Datadog or Honeycomb give a better out-of-the-box experience with less setup.
 
 ---
 
@@ -2642,4 +1978,4 @@ try (Tracer.SpanInScope ws = tracer.withSpan(span.start())) {
 
 ---
 
-*This guide covers the full observability stack for Java/Spring Boot microservices interviews. Focus areas for senior positions: OTel architecture, custom instrumentation, cardinality management, SLI/SLO design, and the ability to walk through debugging a production incident using traces, metrics, and logs together.*
+*This guide covers the observability stack for Java/Spring Boot interviews. As a junior, focus on: the three pillars, Actuator + Micrometer + Prometheus basics, structured logging with traceId correlation, and walking through how you'd debug a slow request using traces, metrics, and logs together.*

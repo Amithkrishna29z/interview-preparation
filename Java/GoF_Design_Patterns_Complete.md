@@ -6,45 +6,6 @@ All 23 Gang of Four patterns with Java code, real-world use cases, Spring framew
 
 ---
 
-## Table of Contents
-
-**Creational** (how objects are *created*)
-1. [Singleton](#1-singleton)
-2. [Factory Method](#2-factory-method)
-3. [Abstract Factory](#3-abstract-factory)
-4. [Builder](#4-builder)
-5. [Prototype](#5-prototype)
-
-**Structural** (how objects are *composed/connected*)
-6. [Adapter](#6-adapter)
-7. [Bridge](#7-bridge)
-8. [Composite](#8-composite)
-9. [Decorator](#9-decorator)
-10. [Facade](#10-facade)
-11. [Flyweight](#11-flyweight)
-12. [Proxy](#12-proxy)
-
-**Behavioral** (how objects *talk and behave*)
-13. [Chain of Responsibility](#13-chain-of-responsibility)
-14. [Command](#14-command)
-15. [Interpreter](#15-interpreter)
-16. [Iterator](#16-iterator)
-17. [Mediator](#17-mediator)
-18. [Memento](#18-memento)
-19. [Observer](#19-observer)
-20. [State](#20-state)
-21. [Strategy](#21-strategy)
-22. [Template Method](#22-template-method)
-23. [Visitor](#23-visitor)
-
-**Reference**
-- [Patterns Summary Table](#patterns-summary-table)
-- [Commonly Confused Patterns](#commonly-confused-patterns)
-- [Interview Questions & Answers](#interview-questions--answers-30)
-- [Quick Reference Cheat Sheet](#quick-reference-cheat-sheet)
-
----
-
 ## CREATIONAL PATTERNS
 
 > **The big idea:** These 5 patterns are all about *how you create objects* — instead of calling `new` everywhere, you hide the creation logic so it's flexible and clean.
@@ -203,32 +164,11 @@ User user = new User.Builder("John", "john@example.com")
 ---
 
 ### 5. Prototype
-Clone existing objects instead of creating from scratch.
-
-> **Think of it like:** photocopying a form that's already filled in, then tweaking a couple of fields — far faster than writing a fresh form from a blank page every time. Useful when creating an object from scratch is expensive.
+*(Awareness — rarely asked)* Clone existing objects instead of creating from scratch. Useful when creating an object is expensive — like photocopying a filled-in form and tweaking a few fields. Prefer a copy constructor over the broken `Object.clone()` API.
 
 ```java
-public class DocumentTemplate implements Cloneable {
-    private String title;
-    private List<String> sections;
-
-    // Deep copy constructor (preferred over Cloneable)
-    public DocumentTemplate(DocumentTemplate other) {
-        this.title = other.title;
-        this.sections = new ArrayList<>(other.sections);  // deep copy
-    }
-
-    // Or static factory copy method
-    public DocumentTemplate copy() {
-        return new DocumentTemplate(this);
-    }
-}
-
-DocumentTemplate invoice = templateRepository.findByName("Invoice");
-DocumentTemplate newInvoice = invoice.copy();
-newInvoice.setTitle("Invoice #1234");
+public DocumentTemplate copy() { return new DocumentTemplate(this); }  // copy constructor
 ```
-**Java:** `Object.clone()` (avoid — broken API), prefer copy constructors.
 **Spring:** `@Scope("prototype")`.
 
 ---
@@ -275,39 +215,12 @@ public class LegacyPaymentAdapter implements PaymentGateway {
 ---
 
 ### 7. Bridge
-Separate abstraction from implementation so both can vary independently.
-
-> **Think of it like:** a TV and its remote. The remote (abstraction) and the TV brand (implementation) can each change on their own — a universal remote works with any TV. You avoid creating a separate class for every remote-×-TV combination.
+*(Awareness — rarely asked)* Separate an abstraction from its implementation so both can vary independently — like a universal remote (abstraction) that works with any TV brand (implementation), avoiding a class for every combination. The abstraction holds a reference to the implementation interface.
 
 ```java
-// Implementation interface
-public interface Renderer {
-    void renderCircle(float x, float y, float radius);
-}
-public class VectorRenderer implements Renderer {
-    public void renderCircle(float x, float y, float radius) {
-        System.out.printf("Drawing vector circle at %.1f,%.1f r=%.1f%n", x, y, radius);
-    }
-}
-public class RasterRenderer implements Renderer {
-    public void renderCircle(float x, float y, float radius) {
-        System.out.printf("Drawing raster pixels for circle at %.1f,%.1f%n", x, y);
-    }
-}
-
-// Abstraction
 public abstract class Shape {
     protected Renderer renderer;  // bridge to implementation
     public Shape(Renderer renderer) { this.renderer = renderer; }
-    public abstract void draw();
-}
-
-public class Circle extends Shape {
-    private float x, y, radius;
-    public Circle(float x, float y, float radius, Renderer renderer) {
-        super(renderer); this.x = x; this.y = y; this.radius = radius;
-    }
-    public void draw() { renderer.renderCircle(x, y, radius); }
 }
 ```
 **Java/Real-world:** JDBC (Java code = abstraction, driver = implementation), SLF4J (logging facade + multiple backends).
@@ -315,47 +228,11 @@ public class Circle extends Shape {
 ---
 
 ### 8. Composite
-Treat individual objects and compositions uniformly (tree structure).
-
-> **Think of it like:** folders and files on your computer. A folder can hold files *or* more folders, but you treat them the same way — asking either one for its "size" just works, no matter how deeply nested.
+*(Awareness — rarely asked)* Treat individual objects and compositions uniformly via a shared interface (tree structure) — like folders and files, where asking either for its "size" just works no matter how deeply nested. A `Directory` holds a list of `FileSystemItem` and both implement the same interface.
 
 ```java
-public interface FileSystemItem {
-    String getName();
-    long getSize();
-    void print(String indent);
-}
-
-public class File implements FileSystemItem {
-    private String name; private long size;
-    public File(String name, long size) { this.name = name; this.size = size; }
-    public String getName() { return name; }
-    public long getSize() { return size; }
-    public void print(String indent) { System.out.println(indent + name + " (" + size + "B)"); }
-}
-
-public class Directory implements FileSystemItem {
-    private String name;
-    private List<FileSystemItem> children = new ArrayList<>();
-
-    public Directory(String name) { this.name = name; }
-    public void add(FileSystemItem item) { children.add(item); }
-
-    public String getName() { return name; }
-    public long getSize() { return children.stream().mapToLong(FileSystemItem::getSize).sum(); }
-    public void print(String indent) {
-        System.out.println(indent + name + "/");
-        children.forEach(c -> c.print(indent + "  "));
-    }
-}
-
-// Client treats File and Directory identically
-FileSystemItem root = new Directory("root");
-((Directory)root).add(new File("readme.txt", 1024));
-Directory src = new Directory("src");
-src.add(new File("Main.java", 2048));
-((Directory)root).add(src);
-root.print("");
+public interface FileSystemItem { long getSize(); }
+// Directory.getSize() sums children; File.getSize() returns its own size — same call works on both.
 ```
 **Spring:** Spring Security FilterChain, UI component trees, expression trees.
 
@@ -440,43 +317,11 @@ public class HomeTheaterFacade {
 ---
 
 ### 11. Flyweight
-Share common state among many fine-grained objects to save memory.
-
-> **Think of it like:** the letter "a" in a long document. It appears thousands of times, but the *shape/font* of "a" is stored once and shared — only the *position* of each "a" differs. Shared part = intrinsic; unique part (position) = extrinsic.
+*(Awareness — rarely asked)* Share common (intrinsic) state among many fine-grained objects to save memory; each object holds only its unique (extrinsic) state. Like the letter "a" in a document: the font/shape is stored once and shared, only each position differs. A factory caches and reuses the shared part.
 
 ```java
-// Flyweight: intrinsic (shared) state
-public class TreeType {
-    private String name, color, texture;  // shared across all trees of this type
-    public TreeType(String name, String color, String texture) {
-        this.name = name; this.color = color; this.texture = texture;
-    }
-    public void draw(int x, int y) {
-        System.out.printf("Drawing %s tree at (%d,%d)%n", name, x, y);
-    }
-}
-
-// Factory manages the flyweight pool
-public class TreeTypeFactory {
-    private static Map<String, TreeType> cache = new HashMap<>();
-    public static TreeType get(String name, String color, String texture) {
-        String key = name + color + texture;
-        return cache.computeIfAbsent(key, k -> new TreeType(name, color, texture));
-    }
-}
-
-// Tree object stores extrinsic (unique per instance) state
-public class Tree {
-    private int x, y;  // extrinsic
-    private TreeType type;  // shared flyweight
-
-    public Tree(int x, int y, String typeName) {
-        this.x = x; this.y = y;
-        this.type = TreeTypeFactory.get(typeName, "green", "rough");
-    }
-    public void draw() { type.draw(x, y); }
-}
-// 1,000,000 trees but only a few TreeType objects
+TreeType type = TreeTypeFactory.get("Oak", "green", "rough");  // shared, reused for all Oaks
+// 1,000,000 Tree objects (x, y) but only a few TreeType objects.
 ```
 **Java:** `String` pool (`"hello" == "hello"` is true for literals), `Integer.valueOf()` cache (-128 to 127), `Character` cache.
 
@@ -539,75 +384,25 @@ Image proxy = (Image) Proxy.newProxyInstance(
 > **The big idea:** These 11 patterns are about *how objects communicate and divide responsibility* — who calls whom, who decides what, and how behavior changes over time.
 
 ### 13. Chain of Responsibility
-Pass request along a chain of handlers; each decides to handle or pass forward.
-
-> **Think of it like:** calling customer support. Level 1 tries to solve your problem; if they can't, they escalate to Level 2, then Level 3. Each level either handles it or passes it on — you don't need to know who finally fixes it.
+*(Awareness — rarely asked)* Pass a request along a chain of handlers; each handler either handles it or forwards it to the next. Like customer support escalation: L1 → L2 → L3. Each handler holds a `next` reference.
 
 ```java
 public abstract class LogHandler {
     protected LogHandler next;
     public LogHandler setNext(LogHandler next) { this.next = next; return next; }
-    public abstract void handle(String level, String message);
+    public abstract void handle(String level, String message);  // handle or delegate to next
 }
-
-public class ConsoleLogHandler extends LogHandler {
-    public void handle(String level, String message) {
-        if (level.equals("INFO")) System.out.println("Console: " + message);
-        else if (next != null) next.handle(level, message);
-    }
-}
-
-public class FileLogHandler extends LogHandler {
-    public void handle(String level, String message) {
-        if (level.equals("WARN")) System.out.println("File: " + message);
-        else if (next != null) next.handle(level, message);
-    }
-}
-
-public class EmailLogHandler extends LogHandler {
-    public void handle(String level, String message) {
-        if (level.equals("ERROR")) System.out.println("Email: " + message);
-        else if (next != null) next.handle(level, message);
-    }
-}
-
-// Build chain
-LogHandler chain = new ConsoleLogHandler();
-chain.setNext(new FileLogHandler()).setNext(new EmailLogHandler());
-chain.handle("ERROR", "System down!");
 ```
-**Spring:** Spring Security `FilterChain`, Servlet `FilterChain`, try-catch-rethrow chains, Spring MVC `HandlerInterceptor`.
+**Spring:** Spring Security `FilterChain`, Servlet `FilterChain`, Spring MVC `HandlerInterceptor`.
 
 ---
 
 ### 14. Command
-Encapsulate a request as an object (enables undo, queue, log).
-
-> **Think of it like:** a restaurant order slip. The waiter writes your request on paper (the command object) instead of cooking it directly. That slip can be queued, logged, re-done, or cancelled later — because the request is now a "thing" you can hold.
+*(Awareness — rarely asked)* Encapsulate a request as an object so it can be queued, logged, or undone — like a restaurant order slip that holds the request as a "thing." An invoker keeps a history stack of executed commands to support undo.
 
 ```java
 public interface Command { void execute(); void undo(); }
-
-public class InsertTextCommand implements Command {
-    private StringBuilder text;
-    private String insertedText;
-    private int position;
-
-    public InsertTextCommand(StringBuilder text, String insert, int pos) {
-        this.text = text; this.insertedText = insert; this.position = pos;
-    }
-    public void execute() { text.insert(position, insertedText); }
-    public void undo() { text.delete(position, position + insertedText.length()); }
-}
-
-// Invoker — manages command history
-public class TextEditor {
-    private StringBuilder content = new StringBuilder();
-    private Deque<Command> history = new ArrayDeque<>();
-
-    public void execute(Command cmd) { cmd.execute(); history.push(cmd); }
-    public void undo() { if (!history.isEmpty()) history.pop().undo(); }
-}
+// Invoker: execute() runs cmd and pushes to history; undo() pops and reverses the last command.
 ```
 **Java:** `Runnable` and `Callable` are command interfaces. `java.awt.event.ActionListener`.
 **Spring:** Spring Batch `Tasklet`, `@Async` tasks, message queue consumers.
@@ -615,60 +410,27 @@ public class TextEditor {
 ---
 
 ### 15. Interpreter
-Define a grammar and interpret sentences (less commonly asked).
-
-> **Think of it like:** a calculator reading "3 + 5". It understands the grammar (number, plus, number) and computes the result. Rarely needed by hand — frameworks (SpEL, regex engines) do it for you.
+*(Awareness — rarely asked)* Define a grammar and interpret sentences in it — like a calculator reading "3 + 5". Each grammar rule is a class with an `interpret()` method. Rarely written by hand; frameworks (SpEL, regex engines) do it for you.
 
 ```java
-// Expression interface
 public interface Expression { int interpret(Map<String, Integer> context); }
-
-public class NumberExpression implements Expression {
-    private int number;
-    public NumberExpression(int n) { this.number = n; }
-    public int interpret(Map<String, Integer> context) { return number; }
-}
-
-public class AddExpression implements Expression {
-    private Expression left, right;
-    public AddExpression(Expression l, Expression r) { left = l; right = r; }
-    public int interpret(Map<String, Integer> ctx) {
-        return left.interpret(ctx) + right.interpret(ctx);
-    }
-}
-// 3 + 5
-Expression expr = new AddExpression(new NumberExpression(3), new NumberExpression(5));
-System.out.println(expr.interpret(null));  // 8
+// AddExpression.interpret() = left.interpret() + right.interpret() — composed into a tree.
 ```
 **Spring:** SpEL (Spring Expression Language), SQL parsing, regex.
 
 ---
 
 ### 16. Iterator
-Sequential access to aggregate elements without exposing internal representation.
-
-> **Think of it like:** the "next channel" button on a TV remote. You move through channels one at a time without knowing or caring how they're stored inside the TV. Every Java `for (x : collection)` loop uses this pattern.
+*(Awareness — rarely asked)* Sequential access to aggregate elements without exposing internal representation — like a TV remote's "next channel" button. Implement `Iterable<T>` with `hasNext()`/`next()`; every Java `for (x : collection)` loop uses this.
 
 ```java
-// Custom iterator
-public class NumberRange implements Iterable<Integer> {
-    private int start, end;
-    public NumberRange(int start, int end) { this.start = start; this.end = end; }
-
-    public Iterator<Integer> iterator() {
-        return new Iterator<>() {
-            int current = start;
-            public boolean hasNext() { return current <= end; }
-            public Integer next() {
-                if (!hasNext()) throw new NoSuchElementException();
-                return current++;
-            }
-        };
-    }
+public Iterator<Integer> iterator() {
+    return new Iterator<>() {
+        int current = start;
+        public boolean hasNext() { return current <= end; }
+        public Integer next() { return current++; }
+    };
 }
-
-// Usage — works with enhanced for-each
-for (int n : new NumberRange(1, 5)) System.out.println(n);  // 1 2 3 4 5
 ```
 **Java:** `Iterator<T>`, `Iterable<T>`, all Collection iterators, `Scanner`.
 **External vs internal:** `iterator.next()` = external (caller controls); `forEach`, `stream()` = internal (collection controls).
@@ -676,78 +438,22 @@ for (int n : new NumberRange(1, 5)) System.out.println(n);  // 1 2 3 4 5
 ---
 
 ### 17. Mediator
-Reduce coupling by having components communicate through a central mediator.
-
-> **Think of it like:** an air-traffic controller. Planes never talk to each other directly — that would be chaos. They all talk to the controller, who coordinates everyone. Components stay simple because they only know the mediator.
+*(Awareness — rarely asked)* Reduce coupling by having components communicate through a central mediator instead of directly — like an air-traffic controller coordinating planes. Each component knows only the mediator, not the other components.
 
 ```java
-public interface ChatMediator {
-    void sendMessage(String message, User sender);
-    void addUser(User user);
-}
-
-public class ChatRoom implements ChatMediator {
-    private List<User> users = new ArrayList<>();
-
-    public void addUser(User user) { users.add(user); }
-
-    public void sendMessage(String message, User sender) {
-        users.stream()
-            .filter(u -> u != sender)
-            .forEach(u -> u.receive(message));
-    }
-}
-
-public class User {
-    private String name; private ChatMediator mediator;
-    public User(String name, ChatMediator m) { this.name = name; this.mediator = m; }
-    public void send(String msg) { mediator.sendMessage(name + ": " + msg, this); }
-    public void receive(String msg) { System.out.println(name + " received: " + msg); }
-}
+public interface ChatMediator { void sendMessage(String message, User sender); }
+// ChatRoom forwards each message to all other users — users never reference each other directly.
 ```
-**Spring:** `ApplicationEventPublisher` acts as mediator between publishers and listeners. Message brokers (Kafka, RabbitMQ) are distributed mediators. Spring MVC Controller mediates between View and Model.
+**Spring:** `ApplicationEventPublisher` mediates between publishers and listeners. Message brokers (Kafka, RabbitMQ) are distributed mediators. Spring MVC Controller mediates between View and Model.
 
 ---
 
 ### 18. Memento
-Capture and restore object state.
-
-> **Think of it like:** a save point in a video game. You snapshot your progress, keep playing, and if things go wrong you reload the snapshot. The snapshot keeps its details private — you can't peek inside, only restore it.
+*(Awareness — rarely asked)* Capture an object's state as a snapshot that can be restored later — like a video-game save point. The Originator creates/restores mementos; a Caretaker stores them in a history stack. The snapshot keeps its state private.
 
 ```java
-// Originator
-public class TextEditor {
-    private String content = "";
-
-    public void type(String text) { content += text; }
-    public String getContent() { return content; }
-
-    public Memento save() { return new Memento(content); }
-    public void restore(Memento m) { content = m.getState(); }
-
-    // Memento — inner class keeps state private
-    public static class Memento {
-        private final String state;
-        private Memento(String state) { this.state = state; }
-        private String getState() { return state; }
-    }
-}
-
-// Caretaker — manages history
-public class History {
-    private Deque<TextEditor.Memento> history = new ArrayDeque<>();
-    public void push(TextEditor.Memento m) { history.push(m); }
-    public TextEditor.Memento pop() { return history.pop(); }
-}
-
-TextEditor editor = new TextEditor();
-History history = new History();
-editor.type("Hello");
-history.push(editor.save());
-editor.type(" World");
-System.out.println(editor.getContent());  // "Hello World"
-editor.restore(history.pop());
-System.out.println(editor.getContent());  // "Hello"
+public Memento save() { return new Memento(content); }   // Originator snapshots state
+public void restore(Memento m) { content = m.getState(); } // and restores it later
 ```
 **Spring/Java:** `Serializable` (memento via serialization), git commits, database transaction savepoints, game save/load.
 
@@ -787,48 +493,11 @@ public class PriceAlertService implements StockObserver {
 ---
 
 ### 20. State
-Allow an object to alter its behavior when its internal state changes.
-
-> **Think of it like:** a traffic light. The *same* light behaves differently depending on its current state — red means stop, green means go — and each state knows which state comes next. The object's behavior changes as its state changes.
+*(Awareness — rarely asked)* Let an object alter its behavior when its internal state changes — like a traffic light where the same object behaves differently per state and each state knows the next one. The object delegates to a state object and swaps it on transitions.
 
 ```java
-public interface OrderState {
-    void confirm(Order order);
-    void ship(Order order);
-    void cancel(Order order);
-}
-
-public class PendingState implements OrderState {
-    public void confirm(Order order) {
-        System.out.println("Order confirmed");
-        order.setState(new ConfirmedState());
-    }
-    public void ship(Order order) { throw new IllegalStateException("Must confirm first"); }
-    public void cancel(Order order) {
-        System.out.println("Order cancelled");
-        order.setState(new CancelledState());
-    }
-}
-
-public class ConfirmedState implements OrderState {
-    public void confirm(Order order) { System.out.println("Already confirmed"); }
-    public void ship(Order order) {
-        System.out.println("Order shipped");
-        order.setState(new ShippedState());
-    }
-    public void cancel(Order order) {
-        System.out.println("Confirmed order cancelled");
-        order.setState(new CancelledState());
-    }
-}
-
-public class Order {
-    private OrderState state = new PendingState();
-    public void setState(OrderState s) { state = s; }
-    public void confirm() { state.confirm(this); }
-    public void ship() { state.ship(this); }
-    public void cancel() { state.cancel(this); }
-}
+public interface OrderState { void confirm(Order o); void ship(Order o); }
+// PendingState.confirm() does the work, then order.setState(new ConfirmedState()).
 ```
 **Spring State Machine:** `@EnableStateMachine`, `@State`, `@Transition` annotations.
 **vs Strategy:** State manages transitions and knows about other states; Strategy just switches algorithms.
@@ -911,47 +580,12 @@ public class SalesReport extends ReportGenerator {
 ---
 
 ### 23. Visitor
-Separate an algorithm from the object structure it operates on. Enables double dispatch.
-
-> **Think of it like:** a tax auditor visiting different businesses. Each business "accepts" the auditor and the auditor applies the right calculation for that business type — and you can introduce a *new* kind of auditor (a new operation) without changing the businesses at all.
+*(Awareness — rarely asked)* Separate an algorithm from the object structure it operates on, so you can add a new operation without modifying the classes — like a tax auditor (operation) visiting different business types. Each element has `accept(visitor)`; the visitor has a `visitX()` per type (double dispatch).
 
 ```java
-// Element interface
-public interface Shape {
-    void accept(ShapeVisitor visitor);
-}
-
-public class Circle implements Shape {
-    public double radius;
-    public Circle(double r) { radius = r; }
-    public void accept(ShapeVisitor visitor) { visitor.visitCircle(this); }
-}
-
-public class Rectangle implements Shape {
-    public double width, height;
-    public Rectangle(double w, double h) { width = w; height = h; }
-    public void accept(ShapeVisitor visitor) { visitor.visitRectangle(this); }
-}
-
-// Visitor interface
-public interface ShapeVisitor {
-    void visitCircle(Circle c);
-    void visitRectangle(Rectangle r);
-}
-
-// Concrete visitor — add new operation without modifying shapes
-public class AreaCalculator implements ShapeVisitor {
-    private double totalArea = 0;
-    public void visitCircle(Circle c) { totalArea += Math.PI * c.radius * c.radius; }
-    public void visitRectangle(Rectangle r) { totalArea += r.width * r.height; }
-    public double getTotalArea() { return totalArea; }
-}
-
-// Usage
-List<Shape> shapes = List.of(new Circle(5), new Rectangle(3, 4));
-AreaCalculator calc = new AreaCalculator();
-shapes.forEach(s -> s.accept(calc));
-System.out.println("Total area: " + calc.getTotalArea());
+public interface Shape { void accept(ShapeVisitor visitor); }       // element: accept()
+public interface ShapeVisitor { void visitCircle(Circle c); void visitRectangle(Rectangle r); }
+// Circle.accept() calls visitor.visitCircle(this) — a new visitor adds an op without touching shapes.
 ```
 **Real-world:** Java compiler AST traversal, XML/JSON parsers, Spring's `BeanDefinitionVisitor`.
 
@@ -987,33 +621,7 @@ System.out.println("Total area: " + calc.getTotalArea());
 
 ---
 
-## Commonly Confused Patterns
-
-### Adapter vs Facade vs Decorator
-- **Adapter**: makes *incompatible* interfaces work together (1:1 mapping to existing interface)
-- **Facade**: *simplifies* a complex subsystem with a new interface
-- **Decorator**: *adds behavior* to an existing interface without changing it
-
-### Strategy vs State vs Template Method
-- **Strategy**: swap entire algorithm; client chooses strategy; strategies are unaware of each other
-- **State**: behavior changes as object state changes; states know about other states and manage transitions
-- **Template Method**: fixes algorithm skeleton in base class; subclasses fill variable steps; uses inheritance
-
-### Observer vs Mediator
-- **Observer**: 1-to-many, objects subscribe directly to a subject
-- **Mediator**: M-to-M, objects communicate only through a central mediator; objects don't know about each other
-
-### Command vs Strategy
-- **Command**: encapsulates a *request* (what to do); supports undo, queuing, logging
-- **Strategy**: encapsulates an *algorithm* (how to do it); supports runtime switching
-
-### Proxy vs Decorator
-- **Proxy**: controls *access* (lazy init, security, caching, remote); often hides the target from client
-- **Decorator**: *adds behavior* transparently; client always knows they're using the enhanced version
-
----
-
-## Interview Questions & Answers (30+)
+## Interview Questions & Answers
 
 **Q1: What are design patterns? Why use them?**
 Design patterns are reusable solutions to commonly occurring design problems. They represent best practices distilled from experienced developers. They improve communication (shared vocabulary), reduce design time, and make code more maintainable. Drawback: overuse adds unnecessary complexity.
@@ -1030,44 +638,20 @@ Decorator adds new behavior to an object transparently (client knows it's decora
 **Q5: What is the difference between Strategy and Template Method?**
 Strategy uses composition (inject the algorithm as a dependency; runtime swapping). Template Method uses inheritance (algorithm skeleton in base class, steps in subclasses; compile-time fixation). Strategy is more flexible; Template Method is simpler.
 
-**Q6: What is the Composite pattern? Give a real-world example.**
-Composite treats individual objects and compositions uniformly via a common interface. Example: file system where both File and Directory implement FileSystemItem. Client code calls `getSize()` or `print()` without knowing if it's a file or directory. Spring Security FilterChain is a composite of filters.
-
-**Q7: What design patterns does Spring use internally?**
+**Q6: What design patterns does Spring use internally?**
 Proxy (`@Transactional`, `@Async`, `@Cacheable`), Template Method (`JdbcTemplate`), Observer (`@EventListener`), Factory Method (`BeanFactory`), Singleton (default bean scope), Decorator (Security filters), Chain of Responsibility (FilterChain), Facade (`JdbcTemplate`, Spring Data), Strategy (`Comparator`, auth providers), Mediator (`ApplicationEventPublisher`).
 
-**Q8: How does @Transactional use the Proxy pattern?**
+**Q7: How does @Transactional use the Proxy pattern?**
 At startup, `AnnotationAwareAspectJAutoProxyCreator` wraps each `@Transactional` bean in a CGLIB or JDK dynamic proxy. At runtime, the proxy intercepts the method call, starts a transaction, calls the real method, and commits or rolls back. The caller talks to the proxy, not the real object.
 
-**Q9: How does JdbcTemplate use Template Method?**
+**Q8: How does JdbcTemplate use Template Method?**
 `JdbcTemplate.query()` defines the algorithm: get connection, create statement, execute SQL, handle ResultSet, release resources, handle exceptions. You provide the variable parts: the SQL string and the `RowMapper` lambda. The template handles all boilerplate.
 
-**Q10: What is the Flyweight pattern? Where is it used in Java?**
-Flyweight shares common (intrinsic) state among many objects, with each object holding only unique (extrinsic) state. In Java: the String pool (literal strings are interned/shared), `Integer.valueOf()` caches -128 to 127, `Character` cache. Use when creating millions of similar objects.
-
-**Q11: What is the Chain of Responsibility? Where is it used in Spring Security?**
+**Q9: What is the Chain of Responsibility? Where is it used in Spring Security?**
 Each handler processes a request or passes it to the next handler. Spring Security's filter chain is exactly this: each `SecurityFilter` either handles the request (authentication, authorization, CSRF check) or passes to the next filter. Each filter is independent; the chain is configured declaratively.
 
-**Q12: What is the Command pattern? How does it support undo?**
-Command encapsulates a request as an object with `execute()` and `undo()` methods. Undo is implemented by keeping a history stack of executed commands. Calling `undo()` pops the last command and executes its reverse operation.
-
-**Q13: What is the difference between Observer and Mediator?**
-Observer: subject maintains a list of observers and notifies them directly (1-to-many coupling). Mediator: components communicate only through the mediator; they don't know about each other (M-to-M decoupling). `ApplicationEventPublisher` is a mediator; a simple event bus/callback is an observer.
-
-**Q14: What is the State pattern? How is it different from Strategy?**
-State changes an object's behavior based on its current state; states know about and manage transitions to other states. Strategy switches the algorithm at the client's request; strategies are unaware of each other. State represents what the object IS; Strategy represents how the object does something.
-
-**Q15: When should you NOT use a design pattern?**
+**Q10: When should you NOT use a design pattern?**
 When it adds unnecessary complexity for a simple problem. YAGNI (You Aren't Gonna Need It) — don't add abstraction for hypothetical future needs. A simple if-else often beats a full Strategy implementation for 2 cases. A direct constructor beats Builder for 1-2 required parameters.
-
-**Q16: What is the Visitor pattern? Why is double dispatch needed?**
-Visitor lets you add operations to an object hierarchy without modifying the classes. Double dispatch: when `shape.accept(visitor)` is called, Java dispatches based on the runtime type of `shape`. Inside `accept`, `visitor.visit(this)` dispatches based on the concrete type of `this` (Circle or Rectangle). Two runtime dispatch decisions = double dispatch.
-
-**Q17: What is the difference between Iterator and Visitor?**
-Iterator traverses a collection and accesses each element sequentially. Visitor traverses an object structure (often heterogeneous) and performs a specific operation on each element based on its type. Iterator is generic access; Visitor adds specific behavior per type.
-
-**Q18: What is the Memento pattern? Where is it used?**
-Memento captures an object's state as a snapshot that can be restored later — implementing undo functionality. The Originator creates/restores mementos; the Caretaker stores them. Used in: text editor undo, game save states, database transaction savepoints, git commits.
 
 ---
 

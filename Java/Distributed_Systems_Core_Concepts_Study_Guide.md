@@ -1,19 +1,6 @@
 # Distributed Systems Core Concepts — Study Guide
 
-> Deep-dive study notes covering the 7 most critical distributed systems topics for backend, cloud, and system design interviews.
-
----
-
-## Table of Contents
-1. [Load Balancing](#1-load-balancing)
-2. [CAP Theorem](#2-cap-theorem)
-3. [Eventual Consistency](#3-eventual-consistency)
-4. [Distributed Locks](#4-distributed-locks)
-5. [Database Sharding](#5-database-sharding)
-6. [Replication](#6-replication)
-7. [Message Queues](#7-message-queues)
-8. [How These Topics Connect](#how-these-topics-connect)
-9. [Quick Revision Cheat Sheet](#quick-revision-cheat-sheet)
+> Study notes covering the 7 most critical distributed systems topics for backend and system design interviews.
 
 ---
 
@@ -23,19 +10,14 @@
 
 **Easy Explanation:** A load balancer is a traffic cop that sits in front of your servers and distributes incoming requests across multiple servers so no single server gets overwhelmed.
 
-**Real-world analogy:** A supermarket with 10 checkout lanes. A manager (load balancer) directs customers to the shortest/least-busy lane so no single cashier has a massive queue while others are idle.
+**Real-world analogy:** A supermarket manager directing customers to the shortest checkout lane so no single cashier has a massive queue while others are idle.
 
 ```
-Without Load Balancer:
-  Client → [Single Server] ← overloaded, single point of failure
-
 With Load Balancer:
   Client → [Load Balancer] → [Server 1]
                            → [Server 2]
                            → [Server 3]
 ```
-
----
 
 ### Why Is Load Balancing Needed?
 
@@ -43,81 +25,27 @@ With Load Balancer:
 |---------|------------------------------|
 | Single server gets overloaded | Distributes requests across multiple servers |
 | Server crashes → entire app down | Traffic rerouted to healthy servers |
-| Traffic spikes (flash sales, viral posts) | Scale horizontally — add more servers |
+| Traffic spikes (flash sales) | Scale horizontally — add more servers |
 | Geographically distributed users | Route users to nearest server |
-
----
 
 ### Load Balancing Algorithms
 
-#### 1. Round Robin
-Requests are sent to each server in turn, cyclically.
+The common ones a junior should know:
+
+- **Round Robin** — each server in turn, cyclically. Best for identical servers; ignores actual load.
+- **Weighted Round Robin** — servers with more capacity get proportionally more traffic. Best for mixed hardware.
+- **Least Connections** — new request goes to the server with the fewest active connections. Best for long-lived connections (WebSockets).
+- **Least Response Time** — routes to the server with lowest average response time. Best for latency-sensitive APIs.
+- **IP Hash (Sticky Sessions)** — hashes client IP to always route to the same server. Best for stateful apps; if that server dies, its sessions are lost. Modern fix: shared session store (Redis).
+- **Random** — simple, surprisingly effective at scale.
 
 ```
-Request 1 → Server 1
-Request 2 → Server 2
-Request 3 → Server 3
-Request 4 → Server 1  (starts over)
-Request 5 → Server 2
-...
+Round Robin:
+  Request 1 → Server 1
+  Request 2 → Server 2
+  Request 3 → Server 3
+  Request 4 → Server 1  (starts over)
 ```
-
-- **Best for:** Servers with identical hardware and processing time
-- **Problem:** Ignores server load — a slow request on Server 1 doesn't stop the next request from going to Server 1
-
-#### 2. Weighted Round Robin
-Servers with more capacity get proportionally more traffic.
-
-```
-Server 1 (weight 3): gets 3 out of every 5 requests
-Server 2 (weight 2): gets 2 out of every 5 requests
-```
-
-- **Best for:** Heterogeneous server fleet (different specs)
-
-#### 3. Least Connections
-New requests go to the server with the fewest active connections.
-
-```
-Server 1: 100 active connections
-Server 2:  20 active connections  ← next request goes here
-Server 3:  75 active connections
-```
-
-- **Best for:** Long-lived connections (WebSockets, file uploads)
-- **Problem:** Connection count alone doesn't reflect CPU/memory load
-
-#### 4. Least Response Time
-Routes to the server with the lowest average response time AND fewest active connections.
-
-- **Best for:** Latency-sensitive applications (APIs, real-time systems)
-- More sophisticated than least connections
-
-#### 5. IP Hash (Sticky Sessions)
-The client's IP address is hashed to always route to the same server.
-
-```
-Client IP 192.168.1.10 → always → Server 2
-Client IP 10.0.0.5     → always → Server 1
-```
-
-- **Best for:** Stateful apps where session data is stored on the server
-- **Problem:** If Server 2 goes down, all its clients lose their sessions
-- **Modern alternative:** Use a shared session store (Redis) so any server can handle any client
-
-#### 6. Random
-Requests are sent to a randomly selected server.
-
-- Simple, surprisingly effective at scale (large numbers)
-- No consideration of server load
-
-#### 7. Resource-Based (Adaptive)
-Load balancer queries each server for current CPU/memory utilization and routes accordingly.
-
-- Most intelligent algorithm
-- Requires agents on each server to report health metrics
-
----
 
 ### Layer 4 vs Layer 7 Load Balancing
 
@@ -127,83 +55,48 @@ Load balancer queries each server for current CPU/memory utilization and routes 
 | **Sees** | IP addresses and ports | URLs, headers, cookies, body |
 | **Routing based on** | IP + port only | URL path, header values, cookies |
 | **Performance** | Faster (less inspection) | Slightly slower (deep inspection) |
-| **Example use** | Route all port 443 traffic | Route `/api/*` to API servers, `/static/*` to CDN |
-| **Examples** | AWS NLB, HAProxy (TCP mode) | AWS ALB, Nginx, HAProxy (HTTP mode) |
+| **Examples** | AWS NLB, HAProxy (TCP) | AWS ALB, Nginx, HAProxy (HTTP) |
 
-**Example — Layer 7 routing:**
-```
-/api/users    → User Service (3 servers)
-/api/orders   → Order Service (5 servers)
-/static/      → CDN or Static File Server
-/admin/       → Admin Service (internal network only)
-```
-
----
+**Example — Layer 7 routing:** route `/api/*` to API servers, `/static/*` to a CDN, `/admin/` to an internal service.
 
 ### Health Checks
 
-Load balancers continuously probe backend servers:
+Load balancers continuously probe backends and remove unhealthy ones from rotation:
 
 ```
 Every 30 seconds:
-  GET http://server1/health → 200 OK    ✓ Keep in rotation
-  GET http://server2/health → 503       ✗ Remove from rotation
-  GET http://server3/health → timeout   ✗ Remove from rotation
-
-When server2 recovers:
-  GET http://server2/health → 200 OK    ✓ Add back to rotation
+  GET /health → 200 OK    ✓ Keep in rotation
+  GET /health → 503       ✗ Remove from rotation
+  GET /health → 200 OK    ✓ Add back when recovered
 ```
-
----
 
 ### Sticky Sessions (Session Affinity)
 
-The problem: If Server 1 stores a user's shopping cart in memory, and the next request goes to Server 2, the cart is gone.
-
-**Solutions:**
+The problem: if Server 1 stores a user's cart in memory and the next request goes to Server 2, the cart is gone.
 
 ```
-Option 1: Sticky Sessions (IP Hash or Cookie-based)
-  → Load balancer always sends user X to Server 1
-  → Problem: uneven load distribution, server failure loses sessions
+Option 1: Sticky Sessions → always send user X to Server 1
+  → Downside: uneven load, server failure loses sessions
 
 Option 2: Shared Session Store (RECOMMENDED)
-  → All session data stored in Redis
-  → Any server can handle any request
+  → All session data in Redis → any server handles any request
   → Stateless servers = true horizontal scaling
-
-  Client → Load Balancer → Server 1 or 2 or 3
-                                    ↕
-                                  Redis (shared session store)
 ```
-
----
 
 ### Global Load Balancing (GeoDNS)
 
-For geographically distributed systems:
-
-```
-User in Europe    → DNS resolves to EU Load Balancer  → EU servers
-User in USA       → DNS resolves to US Load Balancer  → US servers
-User in Asia      → DNS resolves to AP Load Balancer  → AP servers
-```
-
-- Reduces latency by routing users to nearest data center
-- Provides disaster recovery — if one region fails, DNS updated to reroute traffic
-
----
+*Awareness:* DNS resolves users to the nearest data center's load balancer (EU users → EU servers). Reduces latency and provides disaster recovery — if a region fails, DNS reroutes traffic.
 
 ### Common Interview Questions — Load Balancing
 
-**Q: What is a single point of failure and how does a load balancer help?**
-A single point of failure (SPOF) is a component whose failure brings down the whole system. A load balancer helps by distributing traffic so if one server fails, others handle the load. However, the load balancer itself can become a SPOF — solved by running redundant load balancers (active-passive or active-active HA pairs).
+**Q: What is a single point of failure (SPOF) and how does a load balancer help?**
+A SPOF is a component whose failure brings down the whole system. A load balancer distributes traffic so one server failing doesn't take down the app. The load balancer itself can be a SPOF — solved by running redundant load balancers (active-passive or active-active HA pairs).
 
 **Q: What is the difference between a load balancer and a reverse proxy?**
-A reverse proxy sits in front of servers and forwards client requests to them. A load balancer is a type of reverse proxy that also distributes requests across multiple servers. Nginx and HAProxy can act as both. All load balancers are reverse proxies but not all reverse proxies are load balancers.
+A reverse proxy forwards client requests to backend servers. A load balancer is a reverse proxy that also distributes requests across multiple servers. All load balancers are reverse proxies; not all reverse proxies are load balancers.
 
 **Q: How does a load balancer handle a server that crashes mid-request?**
-The client receives a connection error or timeout. The load balancer marks the server unhealthy via health checks. Future requests are not sent to it. The failed request must be retried by the client (or an upstream service). To reduce impact: use timeouts, circuit breakers, and retry logic.
+The client gets a connection error/timeout. Health checks mark the server unhealthy so future requests skip it. The failed request must be retried by the client. Mitigate with timeouts, circuit breakers, and retry logic.
 
 ---
 
@@ -211,144 +104,72 @@ The client receives a connection error or timeout. The load balancer marks the s
 
 ### What Is It?
 
-**CAP Theorem** states that a distributed system can guarantee **at most 2 of the following 3 properties** simultaneously:
-
-```
-         C — Consistency
-        / \
-       /   \
-      /     \
-     A ——————P
-     Availability   Partition Tolerance
-```
+**CAP Theorem** states that a distributed system can guarantee **at most 2 of these 3 properties** at the same time:
 
 | Property | Meaning |
 |----------|---------|
-| **C — Consistency** | Every read gets the most recent write (or an error). All nodes see the same data at the same time. |
-| **A — Availability** | Every request gets a response (not necessarily the latest data). The system is always up and responsive. |
-| **P — Partition Tolerance** | The system keeps working even if network messages between nodes are lost or delayed (network partition). |
+| **C — Consistency** | Every read gets the most recent write (or an error). All nodes see the same data. |
+| **A — Availability** | Every request gets a response (not necessarily the latest data). |
+| **P — Partition Tolerance** | The system keeps working even if network messages between nodes are lost or delayed. |
 
-**Real-world analogy:**
-- **Consistency** = All ATMs show your exact current balance. If you deposit at Branch A, every ATM instantly reflects it.
-- **Availability** = Every ATM always responds, never says "try again later."
+**Real-world analogy (ATMs):**
+- **Consistency** = every ATM shows your exact current balance.
+- **Availability** = every ATM always responds, never "try again later."
 - **Partition Tolerance** = ATMs keep working even if the network between branches goes down.
-
----
 
 ### Why You Can Only Have 2 of 3
 
-**The catch:** In any real distributed system, **network partitions WILL happen** — cables fail, routers crash, data centers lose connectivity. So **P is not really optional**.
-
-This means the real-world choice is:
+In any real distributed system, **network partitions WILL happen** — so **P is not optional**. The real-world choice is CP vs AP:
 
 ```
 CP — Consistency + Partition Tolerance
-  → Sacrifice: Availability
-  → Behavior: When partition occurs, return error instead of stale data
-  → Examples: HBase, MongoDB (strong consistency mode), Zookeeper, etcd
+  → Sacrifice Availability: during a partition, return an error instead of stale data
+  → Examples: HBase, MongoDB (strong mode), Zookeeper, etcd
 
 AP — Availability + Partition Tolerance
-  → Sacrifice: Consistency (allow stale reads)
-  → Behavior: When partition occurs, return possibly outdated data
+  → Sacrifice Consistency: during a partition, return possibly stale data
   → Examples: Cassandra, CouchDB, DynamoDB, DNS
 
-CA — Consistency + Availability (NO partition tolerance)
-  → Only possible on a single node or within a single data center
-  → Not truly distributed — network partitions make this impossible at scale
-  → Examples: Single-node PostgreSQL (not distributed)
+CA — only possible on a single node (not truly distributed)
 ```
 
----
-
-### CP Systems in Practice
+### CP vs AP in Practice
 
 ```
-Scenario: Network partition between Node A and Node B
-           Node A receives a write: user.balance = $500
-           Node B cannot reach Node A
+Partition between Node A and Node B; A took a write that B hasn't seen.
 
-CP choice: Node B REFUSES to answer reads
-  → Returns error: "System unavailable — partition detected"
-  → Consistency preserved: no stale data served
-  → Availability sacrificed: clients get errors
+CP choice: Node B refuses reads → "System unavailable" (no stale data served)
+  Use case: banking, payments — stale data = disaster
 
-Use case: Banking, financial transactions, anything where stale data = disaster
+AP choice: Node B answers with its last known (stale) value
+  Use case: social feeds, DNS, product catalogs — stale data is acceptable
 ```
-
----
-
-### AP Systems in Practice
-
-```
-Scenario: Network partition between Node A and Node B
-           Node A receives a write: user.bio = "Software Engineer"
-           Node B cannot reach Node A
-
-AP choice: Node B ANSWERS reads with its last known data
-  → Returns: user.bio = "Developer"  (stale — old value)
-  → Availability preserved: clients get a response
-  → Consistency sacrificed: response may be outdated
-
-Use case: Social media feeds, DNS, product catalogs — stale data is acceptable
-```
-
----
-
-### PACELC Theorem (Extension of CAP)
-
-CAP only considers behavior during partitions. **PACELC** extends it:
-
-```
-If Partition (P):
-  Choose between Availability (A) vs Consistency (C)
-
-Else (E) — normal operation, no partition:
-  Choose between Latency (L) vs Consistency (C)
-```
-
-Even without partitions, there's a trade-off: strong consistency requires coordination between nodes (adds latency). Eventual consistency is faster but may serve stale data.
-
-| System | Partition behavior | Normal behavior | Classification |
-|--------|--------------------|-----------------|----------------|
-| DynamoDB | AP | EL (low latency) | PA/EL |
-| Cassandra | AP | EL | PA/EL |
-| MongoDB | CP | EC | PC/EC |
-| PostgreSQL | CA (single node) | EC | — |
-
----
 
 ### Choosing CP vs AP — Decision Guide
 
 ```
-Choose CP (Consistency over Availability) when:
-  ✓ Financial transactions (bank transfers, payments)
-  ✓ Inventory management (can't oversell)
-  ✓ User authentication (token validation must be current)
-  ✓ Leader election in distributed systems
+Choose CP when: financial transactions, inventory (can't oversell),
+                auth/token validation, leader election
 
-Choose AP (Availability over Consistency) when:
-  ✓ Social media posts/feeds (OK if slightly delayed)
-  ✓ Product ratings and reviews
-  ✓ DNS resolution
-  ✓ Shopping cart (consistency applied at checkout)
-  ✓ Metrics and analytics (approximate is fine)
-  ✓ User profile data (bio, avatar — stale for seconds is OK)
+Choose AP when: social feeds, ratings/reviews, DNS, shopping cart browsing,
+                metrics/analytics, profile data (bio, avatar)
 ```
 
----
+### PACELC Theorem (Awareness)
+
+PACELC extends CAP: if there's a **P**artition, choose **A** vs **C**; **E**lse (normal operation), choose **L**atency vs **C**onsistency. The point: even without partitions, strong consistency costs latency because nodes must coordinate. (e.g., DynamoDB = PA/EL, MongoDB = PC/EC.)
 
 ### Common Interview Questions — CAP Theorem
 
-**Q: Can a system be CA (consistent and available) in a distributed setup?**
-Technically no — network partitions are inevitable in distributed systems, so you must tolerate them. A CA system (like a single-node database) is not truly distributed. In practice, "CA" databases are those that run on a single node or within a tightly controlled network where partitions are near-impossible.
+**Q: Can a system be CA in a distributed setup?**
+Technically no — partitions are inevitable, so you must tolerate them. A "CA" system is effectively single-node or runs in a tightly controlled network where partitions are near-impossible.
 
-**Q: Is CAP theorem a limitation or a design choice?**
-Both. It's a mathematical theorem proving the limitation. But how a system handles the trade-off is a deliberate design choice. Cassandra chooses AP; Zookeeper chooses CP. Neither is wrong — it depends on the use case.
+**Q: Is CAP a limitation or a design choice?**
+Both. It's a proven limitation, but how a system handles the trade-off is a deliberate choice. Cassandra chooses AP; Zookeeper chooses CP — neither is wrong, it depends on the use case.
 
 **Q: How does CAP relate to ACID and BASE?**
-- **ACID** (Atomicity, Consistency, Isolation, Durability) = traditional RDBMS guarantees, maps to CP
-- **BASE** (Basically Available, Soft state, Eventually consistent) = NoSQL approach, maps to AP
-- CAP formalizes WHY you can't have both ACID guarantees AND high availability in a distributed system
+- **ACID** (traditional RDBMS guarantees) maps to CP.
+- **BASE** (Basically Available, Soft state, Eventually consistent — the NoSQL approach) maps to AP.
 
 ---
 
@@ -356,154 +177,68 @@ Both. It's a mathematical theorem proving the limitation. But how a system handl
 
 ### What Is It?
 
-**Easy Explanation:** Eventual consistency means that if no new updates are made to a piece of data, eventually (after some time), all nodes in the distributed system will return the same value. There's no guarantee of *when*, but it will happen.
+**Easy Explanation:** Eventual consistency means that if no new updates are made, eventually all nodes will return the same value. There's no guarantee of *when*, but it will happen.
 
-**Real-world analogy:** DNS propagation. When you change a domain's IP address, it doesn't update everywhere instantly. For hours (or up to 48 hours), some users get the old server, others get the new one. But *eventually*, all DNS servers worldwide reflect the update.
+**Real-world analogy:** DNS propagation. Change a domain's IP and it doesn't update everywhere instantly — for some time, some users get the old server, others the new one. Eventually all DNS servers reflect the update.
 
----
-
-### Strong Consistency vs Eventual Consistency
+### Strong vs Eventual Consistency
 
 ```
 Strong Consistency:
-  Write → All nodes updated → Read returns new value
-  [Write: X=5] → [Node A: X=5] [Node B: X=5] [Node C: X=5]
-  Time delay: write is slow (must confirm all nodes)
-  Guarantee: Every read always returns the latest write
+  Write → all nodes updated → read always returns the new value
+  Slower writes (must confirm all nodes); every read is current.
 
 Eventual Consistency:
-  Write → Primary updated → Replicas updated asynchronously
-  [Write: X=5] → [Node A: X=5]
-                  [Node B: X=3] ← still old value (replication lag)
-                  [Node C: X=3] ← still old value
-  ...time passes...
-  [Node A: X=5] [Node B: X=5] [Node C: X=5]  ← all converged
-  Time delay: write is fast (only confirm primary)
-  Guarantee: Reads will *eventually* return the latest write
+  Write → primary updated → replicas updated asynchronously
+  [Write X=5] → Node A: X=5 | Node B: X=3 | Node C: X=3  (replication lag)
+  ...time passes... → all nodes converge to X=5
+  Faster writes; reads may be stale briefly.
 ```
 
----
+### Consistency Models (Awareness)
 
-### Consistency Models (Spectrum)
+A spectrum from strongest to weakest — know the names exist:
 
-From strongest to weakest:
+- **Linearizable** — strongest; behaves like a single node (etcd, Zookeeper).
+- **Sequential / Causal** — all nodes see operations in the same / causally-correct order.
+- **Read-your-own-writes** — you always see your own updates immediately (most web apps need this).
+- **Monotonic reads** — once you've seen a value, you won't later see an older one.
+- **Eventual** — weakest; converges with no time guarantee (Cassandra, DynamoDB default).
 
-```
-STRONG CONSISTENCY
-    │  Linearizability — reads/writes appear instantaneous and globally ordered
-    │  Sequential Consistency — all nodes see operations in same order
-    │  Causal Consistency — causally related writes are seen in order
-    │  Read Your Own Writes — you always see your own updates
-    │  Monotonic Reads — once you see a value, you won't see an older one
-    │  Monotonic Writes — your writes are applied in order
-EVENTUAL CONSISTENCY
-```
-
-| Model | Description | Example |
-|-------|-------------|---------|
-| **Linearizable** | Strongest — system behaves as single node | etcd, Zookeeper |
-| **Sequential** | All nodes see same order, may lag | Some distributed databases |
-| **Causal** | If A causes B, everyone sees A before B | MongoDB causal sessions |
-| **Read-your-writes** | You see your own writes immediately | Most web apps need this |
-| **Eventual** | Weakest — will converge, no time guarantee | Cassandra, DynamoDB default |
-
----
-
-### How Eventual Consistency Works — The Mechanism
+### How It Works — The Mechanism
 
 ```
-System: 3 replicas of a user profile database
-
-Step 1: Client writes to primary node
-  Client → [Primary Node] write: {name: "Alice", city: "London"}
-  Primary: ACK → Client immediately (write succeeded)
-
-Step 2: Primary replicates asynchronously to replicas
-  [Primary] ---async--→ [Replica 1] (may take 10ms - 500ms)
-             ---async--→ [Replica 2] (may take 10ms - 500ms)
-
-Step 3: During replication lag, reads from replicas are stale
-  Client reads from Replica 1 → gets old data {city: "Dublin"}
-  This is called a "dirty read" or "stale read"
-
-Step 4: Replication completes — system is consistent
-  [Replica 1]: {city: "London"}
-  [Replica 2]: {city: "London"}
-  All future reads return "London"
+Step 1: Client writes to primary → primary ACKs immediately
+Step 2: Primary replicates async to replicas (10ms–500ms)
+Step 3: During the lag, a read from a replica may be stale ("stale read")
+Step 4: Replication completes → all replicas converge → reads are current
 ```
 
----
+### Conflict Resolution (Awareness)
 
-### Conflict Resolution in Eventual Consistency
+When two nodes accept writes for the same data during a partition, the system must resolve the conflict. Approaches you should be able to name:
 
-When two nodes accept writes for the same data simultaneously (during a partition):
+- **Last Write Wins (LWW)** — highest timestamp wins. Simple, but vulnerable to clock skew between servers.
+- **Vector Clocks** — version vectors track causality so the system can detect concurrent (conflicting) writes and surface them for resolution. Used by DynamoDB, Riak.
+- **CRDTs (Conflict-free Replicated Data Types)** — data structures that mathematically always converge without conflicts (e.g., a grow-only counter). Used in collaborative editing (Google Docs) and distributed counters.
 
-#### Last Write Wins (LWW)
-```
-Node A at 10:00:01.100: user.name = "Alice"
-Node B at 10:00:01.200: user.name = "Alicia"  ← higher timestamp wins
+### Read Repair and Anti-Entropy (Awareness)
 
-Result: user.name = "Alicia"
-Problem: Clock skew — servers' clocks are not perfectly synchronized
-```
+Background mechanisms that restore consistency over time:
 
-#### Vector Clocks
-Each write carries a version vector tracking causality:
-
-```
-Initial: {node_a: 0, node_b: 0}
-Node A writes: {node_a: 1, node_b: 0} → value: "Alice"
-Node B writes: {node_a: 0, node_b: 1} → value: "Alicia"
-
-These are concurrent writes (neither caused the other)
-System detects conflict → raises it for manual or application-level resolution
-DynamoDB and Riak use this approach
-```
-
-#### Multi-Version Concurrency (MVCC)
-Keep multiple versions; application or merge function resolves conflicts.
-
-#### CRDT (Conflict-free Replicated Data Types)
-Mathematical data structures that always converge without conflicts:
-
-```
-Example: G-Counter (grow-only counter)
-  Node A increments: [A:3, B:0]
-  Node B increments: [A:0, B:2]
-  Merge: take max of each → [A:3, B:2] → total = 5
-
-Used in: collaborative editing (Google Docs), distributed counters
-```
-
----
-
-### Read Repair and Anti-Entropy
-
-Systems maintain consistency over time via background processes:
-
-**Read Repair:** When a read detects inconsistency between replicas, it repairs the stale replica.
-```
-Client reads → asks all 3 replicas
-  Replica 1: X=5 (latest)
-  Replica 2: X=3 (stale)
-  Replica 3: X=5 (latest)
-System returns X=5 to client AND repairs Replica 2 → X=5
-```
-
-**Anti-Entropy:** Background process continuously compares replicas and syncs differences using a Merkle tree to efficiently find diverging data.
-
----
+- **Read Repair** — when a read sees replicas disagree, it serves the latest value and updates the stale replica.
+- **Anti-Entropy** — a background process compares replicas (using Merkle trees to find diffs efficiently) and syncs them.
 
 ### Common Interview Questions — Eventual Consistency
 
-**Q: What is the difference between eventual consistency and strong consistency?**
-Strong consistency guarantees every read returns the most recent write — all nodes are always in sync. Eventual consistency only guarantees that nodes will converge to the same value *eventually* — reads may return stale data during the convergence window. Strong consistency is slower (requires coordination); eventual is faster (allows async replication).
+**Q: Difference between eventual and strong consistency?**
+Strong guarantees every read returns the most recent write (slower, needs coordination). Eventual only guarantees nodes converge *eventually* — reads may be stale during the convergence window (faster, allows async replication).
 
-**Q: Is eventual consistency acceptable for a banking application?**
-Generally no for account balances and transactions — you cannot allow a user to see a stale balance and transfer money based on it. However, some parts of banking are eventually consistent — transaction history displays, statement generation, or notification delivery can tolerate slight delays.
+**Q: Is eventual consistency acceptable for banking?**
+Generally no for balances/transactions — a stale balance could allow an invalid transfer. But parts like transaction-history display or notifications can tolerate slight delays.
 
 **Q: What is "read-your-own-writes" consistency?**
-A guarantee that after you write data, your subsequent reads will always return that write. This is weaker than full consistency but critical for user experience — you update your profile picture, and you see the new picture immediately. Achieved by routing your reads to the same replica you wrote to, or using sticky sessions.
+A guarantee that after you write, your subsequent reads return that write — e.g., you update your profile picture and immediately see it. Achieved by routing your reads to the replica you wrote to, or using sticky sessions.
 
 ---
 
@@ -511,52 +246,34 @@ A guarantee that after you write data, your subsequent reads will always return 
 
 ### What Is It?
 
-**Easy Explanation:** A distributed lock is a mechanism that ensures only one server (or process) can perform a critical operation at a time, across an entire distributed system.
+**Easy Explanation:** A distributed lock ensures only one server/process can perform a critical operation at a time, across the whole system.
 
-**Real-world analogy:** A bathroom key at a restaurant. Only one person can have the key at a time. Everyone else must wait. The key is the "distributed lock."
+**Real-world analogy:** A single bathroom key at a restaurant. Only one person holds it at a time; everyone else waits.
 
 ```
 Without distributed lock:
-  Server 1: reads stock = 1, proceeds to sell
-  Server 2: reads stock = 1, proceeds to sell  ← BOTH think 1 item available!
-  Result: oversold by 1 item — data corruption
+  Server 1 reads stock = 1, sells
+  Server 2 reads stock = 1, sells  ← BOTH think 1 item available → oversold
 
 With distributed lock:
-  Server 1: acquires lock, reads stock = 1, sells, updates stock = 0, releases lock
-  Server 2: tries to acquire lock → BLOCKED until Server 1 releases
-  Server 2: acquires lock, reads stock = 0, rejects sale, releases lock
-  Result: no overselling
+  Server 1 acquires lock, sells, sets stock = 0, releases
+  Server 2 blocked until release → reads stock = 0 → rejects sale
 ```
-
----
 
 ### Why Distributed Locks Are Hard
 
-In a single machine, a mutex/synchronized block works. In distributed systems:
-
-1. **Network failures** — the server holding the lock may crash before releasing it
-2. **Clock skew** — servers have slightly different clocks, making TTL unreliable
-3. **GC pauses** — a Java/Go process can pause for seconds (GC), outliving its lock TTL
-4. **Split-brain** — two servers both think they hold the lock
-
----
+A single-machine mutex is easy; distributed locks face network failures (lock holder crashes before releasing), clock skew (unreliable TTLs), GC pauses (a process pauses past its lock TTL), and split-brain (two servers both think they hold the lock).
 
 ### Implementing Distributed Locks
 
 #### Option 1: Redis-based Lock (SETNX)
 
 ```
-SETNX = SET if Not eXists
-
-Acquire lock:
-  SET lock_key "server1_uuid" NX PX 30000
+Acquire:  SET lock_key "server1_uuid" NX PX 30000
   NX = only set if key doesn't exist
-  PX 30000 = expire in 30 seconds (TTL — prevents deadlock if server crashes)
+  PX 30000 = expire in 30s (TTL prevents deadlock if the holder crashes)
 
-If SET succeeds → lock acquired
-If SET fails → lock held by someone else → retry or fail
-
-Release lock (Lua script for atomicity):
+Release (Lua script for atomicity — only delete if you still own it):
   if redis.call("get", KEYS[1]) == ARGV[1] then
     return redis.call("del", KEYS[1])
   else
@@ -564,120 +281,42 @@ Release lock (Lua script for atomicity):
   end
 ```
 
-**Why the Lua script?** You must check that YOU own the lock before deleting it. Without atomicity, this race condition exists:
-```
-Server 1: GET lock_key → "server1"  ← checks ownership
-  [30s TTL expires here — lock auto-deleted]
-  [Server 2 acquires the lock]
-Server 1: DEL lock_key              ← deletes Server 2's lock!
-```
+**Why the Lua script?** Without an atomic check-then-delete, an expired lock could be re-acquired by Server 2, and Server 1's late `DEL` would delete Server 2's lock.
 
-#### Option 2: Redlock Algorithm (Multi-node Redis)
+#### Option 2: Redlock (Awareness)
 
-Single Redis node has a single point of failure. Redlock uses **N (usually 5) independent Redis nodes**:
+Single Redis is a SPOF. Redlock acquires the lock on a **majority of N independent Redis nodes** (e.g., 3 of 5) for fault tolerance. **Controversial** — Martin Kleppmann argued it isn't safe under GC pauses and clock drift; use Zookeeper/etcd for safety-critical locks.
 
-```
-To acquire lock:
-  1. Record current time T1
-  2. Try to SET lock on all 5 Redis nodes simultaneously
-  3. Count how many succeeded (say 3 out of 5)
-  4. Lock is acquired if:
-     - Majority acquired (>= 3 out of 5)
-     - Time taken < TTL (still valid)
-  5. Actual TTL = original_TTL - time_elapsed
+#### Option 3: Zookeeper Locks (Awareness)
 
-To release lock:
-  Send DEL to all 5 Redis nodes
-```
-
-```
-Node 1: ✓ acquired
-Node 2: ✓ acquired
-Node 3: ✓ acquired  ← quorum reached (3/5)
-Node 4: ✗ failed (network issue)
-Node 5: ✗ failed (crashed)
-
-Lock is valid — majority obtained
-```
-
-**Controversy:** Martin Kleppmann argued Redlock is not safe due to GC pauses and clock drift. Use Zookeeper or etcd for safety-critical locks.
-
-#### Option 3: Zookeeper (ZK) Locks
-
-Zookeeper is a distributed coordination service designed specifically for this use case:
-
-```
-Lock acquisition using ephemeral sequential znodes:
-  1. Create /locks/lock-0000000001 (ephemeral sequential node)
-  2. List all children of /locks
-  3. If your node is the lowest-numbered → you have the lock
-  4. If not → watch the next-lowest node for deletion
-  5. When that node is deleted → re-check if you're now lowest
-
-Lock release:
-  Delete your ephemeral node
-  Zookeeper automatically deletes ephemeral nodes if session ends (crash protection)
-```
-
-**Advantage:** Handles server crashes automatically — ephemeral nodes disappear when the client disconnects.
+A distributed coordination service. Clients create **ephemeral sequential znodes**; the lowest-numbered node holds the lock, others watch the next-lowest. Key advantage: ephemeral nodes auto-delete when a client disconnects, so crashes release locks automatically.
 
 #### Option 4: Database-based Locks
 
-Using a relational database:
-
 ```sql
--- Pessimistic locking
+-- Pessimistic: row locked until the transaction ends
 SELECT * FROM inventory WHERE product_id = 1 FOR UPDATE;
--- Row is locked until transaction commits/rolls back
 
--- Optimistic locking (no actual lock, uses version check)
-UPDATE inventory
-SET stock = stock - 1, version = version + 1
+-- Optimistic: version check, no actual lock
+UPDATE inventory SET stock = stock - 1, version = version + 1
 WHERE product_id = 1 AND version = 5;
--- If 0 rows updated → someone else changed it → retry
+-- 0 rows updated → someone else changed it → retry
 ```
 
----
+### Fencing Tokens (Awareness)
 
-### Lock Timeout and Fencing Tokens
-
-**The GC pause problem:**
-
-```
-Server 1 acquires lock with 30s TTL
-Server 1 enters GC pause for 35 seconds
-  → Lock TTL expires
-  → Server 2 acquires the lock
-Server 1 wakes up from GC
-  → Thinks it still holds the lock
-  → BOTH Server 1 and Server 2 are executing the critical section!
-```
-
-**Fencing tokens** solve this:
-
-```
-Lock server issues monotonically increasing token with each lock grant:
-  Server 1 acquires lock → receives token 33
-  Lock expires
-  Server 2 acquires lock → receives token 34
-
-Server 1 sends write request to storage with token 33
-Server 2 sends write request to storage with token 34
-Storage rejects token 33 (already seen token 34 — Server 1's token is stale)
-```
-
----
+If a lock holder GC-pauses past its TTL, two servers can run the critical section at once. **Fencing tokens** fix this: the lock service hands out a monotonically increasing token with each grant; storage rejects any write carrying a token older than the highest it has seen, so a stale holder can't write.
 
 ### Common Interview Questions — Distributed Locks
 
-**Q: What is a deadlock in distributed systems and how do you prevent it?**
-A deadlock occurs when two processes each hold a lock the other needs, causing both to wait forever. Prevention strategies: always acquire locks in a consistent order, use TTLs (automatic expiry), use tryLock with timeout instead of blocking forever, and use deadlock detection with timeouts.
+**Q: What is a deadlock and how do you prevent it?**
+Two processes each hold a lock the other needs, so both wait forever. Prevent by acquiring locks in a consistent order, using TTLs, using tryLock-with-timeout instead of blocking forever, and deadlock detection via timeouts.
 
 **Q: Why not just use a database row lock as a distributed lock?**
-Database row locks (`SELECT FOR UPDATE`) work but have limitations: higher latency than Redis, the database becomes a bottleneck, they don't work across multiple databases, and there's no built-in TTL protection against crashed clients holding locks. Redis and Zookeeper are purpose-built for coordination and are faster.
+It works but has limits: higher latency than Redis, the DB becomes a bottleneck, it doesn't span multiple databases, and there's no built-in TTL to protect against crashed clients. Redis/Zookeeper are purpose-built and faster.
 
-**Q: What is the difference between a distributed lock and a semaphore?**
-A lock (mutex) allows only 1 holder at a time. A distributed semaphore allows N holders simultaneously. Example: rate limiting to 10 concurrent operations uses a semaphore with count 10; protecting a single critical section uses a mutex.
+**Q: Difference between a distributed lock and a semaphore?**
+A lock (mutex) allows 1 holder; a semaphore allows N holders. Rate-limiting to 10 concurrent operations uses a semaphore of 10; protecting a single critical section uses a mutex.
 
 ---
 
@@ -685,189 +324,65 @@ A lock (mutex) allows only 1 holder at a time. A distributed semaphore allows N 
 
 ### What Is It?
 
-**Easy Explanation:** Sharding is splitting a large database into smaller, independent pieces called shards. Each shard holds a subset of the total data, distributed across multiple servers.
+**Easy Explanation:** Sharding splits a large database into smaller independent pieces (shards), each holding a subset of the data on different servers.
 
-**Real-world analogy:** An encyclopedia set. Instead of one massive book, it's split into 26 volumes (A-B, C-D, ... Y-Z). Each volume is smaller and faster to search. Sharding does the same for database tables.
+**Real-world analogy:** An encyclopedia split into 26 volumes (A-B, C-D, ...) — each smaller and faster to search.
 
 ```
-Without sharding (single database):
-  [All 1 billion users in one DB] → slow queries, storage limit hit
-
 With sharding:
-  [Users A-D → Shard 1 DB]
-  [Users E-K → Shard 2 DB]
-  [Users L-R → Shard 3 DB]
-  [Users S-Z → Shard 4 DB]
-  → Each shard has ~250M users → faster queries, distributed storage
+  [Users A-D → Shard 1] [Users E-K → Shard 2]
+  [Users L-R → Shard 3] [Users S-Z → Shard 4]
+  → Each shard holds a fraction of users → faster queries, distributed storage
 ```
-
----
 
 ### Sharding vs Partitioning
 
-| Concept | Definition |
-|---------|-----------|
-| **Partitioning** | Splitting data within a single database (logical split) |
-| **Sharding** | Splitting data across multiple databases/servers (physical split) |
-
-Sharding is a form of horizontal partitioning across separate database instances.
-
----
+- **Partitioning** — splitting data within a single database (logical split).
+- **Sharding** — splitting data across multiple databases/servers (physical split). It's horizontal partitioning across separate instances.
 
 ### Sharding Strategies
 
-#### 1. Range-Based Sharding
-
-Data is split by value ranges of the shard key:
-
-```
-User ID 1–1,000,000       → Shard 1
-User ID 1,000,001–2,000,000 → Shard 2
-User ID 2,000,001–3,000,000 → Shard 3
-
-Orders by date:
-  January 2024   → Shard 1
-  February 2024  → Shard 2
-  March 2024     → Shard 3
-```
-
-**Pros:** Range queries are efficient (find all orders in January → goes to one shard). Easy to add new ranges.
-
-**Cons:** **Hotspots** — new users always go to the latest shard, creating uneven load. Recently created content always hits one shard.
-
-#### 2. Hash-Based Sharding
-
-Apply a hash function to the shard key to determine which shard:
+- **Range-Based** — split by value ranges of the shard key (IDs 1–1M → Shard 1). Pro: efficient range queries. Con: **hotspots** (new data all hits the latest shard).
+- **Hash-Based** — `shard = hash(key) % N`. Pro: even distribution, no hotspots. Con: range queries impossible; adding a shard (`% 4` → `% 5`) remaps almost all data (the **resharding problem**).
+- **Consistent Hashing** — places shards on a ring; a key goes to the next shard clockwise. Adding a shard only moves the keys in its neighborhood (~1/N), not everything. Used by DynamoDB, Cassandra, Memcached, Riak.
+- **Directory-Based** — a lookup table maps data to shards. Most flexible (move data by updating the directory), but the directory is a bottleneck/SPOF and must be cached.
 
 ```
-shard_number = hash(user_id) % total_shards
-
-user_id = 12345 → hash(12345) = 89273 → 89273 % 4 = 1 → Shard 1
-user_id = 12346 → hash(12346) = 23891 → 23891 % 4 = 3 → Shard 3
-user_id = 12347 → hash(12347) = 47201 → 47201 % 4 = 0 → Shard 0
+Hash-based:
+  shard = hash(user_id) % 4
+  user_id 12345 → hash → % 4 = 1 → Shard 1
 ```
-
-**Pros:** Even data distribution, eliminates hotspots.
-
-**Cons:** Range queries are impossible (users 1–1000 scattered across all shards). **Resharding problem** — if you add a new shard, almost all data needs to move (change from `% 4` to `% 5`).
-
-#### 3. Consistent Hashing
-
-Solves the resharding problem of hash-based sharding:
-
-```
-Imagine a ring (0 to 2^32):
-  Shard A placed at position 100
-  Shard B placed at position 200
-  Shard C placed at position 300
-  Shard D placed at position 400
-
-Data key hashed to a position on the ring
-Data goes to the NEXT shard clockwise from its position:
-  key at 150 → Shard B (next clockwise from 150 is 200)
-  key at 250 → Shard C
-  key at 350 → Shard D
-
-Adding Shard E at position 250:
-  Only keys between 200-250 (previously going to C) now go to E
-  All other keys unaffected
-  Minimizes data movement
-```
-
-**Used by:** Amazon DynamoDB, Apache Cassandra, Memcached, Riak
-
-#### 4. Directory-Based Sharding
-
-A lookup table (directory service) maps each data item (or range) to a specific shard:
-
-```
-Directory service:
-  user_id 1–500    → Shard 1
-  user_id 501–900  → Shard 3
-  user_id 901–1500 → Shard 2
-
-Look up directory → route to correct shard
-```
-
-**Pros:** Most flexible — can move data between shards by updating the directory without rehashing.
-
-**Cons:** Directory service becomes a bottleneck and single point of failure. Must be cached aggressively.
-
----
 
 ### Choosing a Shard Key
 
-The shard key is the most critical decision in sharding. A bad shard key creates hotspots.
-
-**Good shard key qualities:**
-```
-✓ High cardinality       — many distinct values (user_id is good; boolean is bad)
-✓ Even distribution      — values spread uniformly (UUIDs are good; sequential IDs cause hotspots)
-✓ Immutable              — once set, never changes (user_id is good; email can change)
-✓ Low cross-shard joins  — related data on same shard (user + their orders → user_id as key)
-✓ Query patterns match   — most queries filter by this key
-```
-
-**Bad shard key examples:**
-```
-✗ created_at (timestamp): all new data hits one shard — hotspot
-✗ country_code: popular countries (US, UK) become hotspots
-✗ boolean status: only 2 values → only 2 shards can be used effectively
-```
-
----
-
-### Challenges of Sharding
-
-#### Cross-Shard Joins
-```
-"Find all orders for premium users"
-  Users table: sharded by user_id across 4 shards
-  Orders table: sharded by order_id across 4 shards
-
-  → Must query ALL 4 user shards to find premium users
-  → Then query ALL 4 order shards per user
-  → Massive scatter-gather operation
-
-Solutions:
-  1. Denormalize — store user tier in the orders table
-  2. Co-locate data — shard both users and orders by user_id
-  3. Use a separate analytics DB (e.g., data warehouse) for complex queries
-```
-
-#### Rebalancing (Resharding)
-When shards become uneven, data must be moved:
+The most critical decision — a bad key creates hotspots.
 
 ```
-Shard 1: 80% full  ← hotspot
-Shard 2: 20% full
-Shard 3: 50% full
+Good shard key:
+  ✓ High cardinality      (many distinct values; user_id good, boolean bad)
+  ✓ Even distribution     (UUIDs good; sequential IDs cause hotspots)
+  ✓ Immutable             (user_id good; email can change)
+  ✓ Matches query patterns + keeps related data co-located
 
-Rebalance: move some of Shard 1's data to Shard 2
-  Challenge: must do this live without downtime
-  Solution: double-write during migration, verify, then switch
+Bad: created_at (all new data → one shard), country_code (US/UK hotspots), boolean status
 ```
 
-#### Distributed Transactions (Cross-Shard)
-```
-Transfer $100 from User A (Shard 1) to User B (Shard 3)
-  Must atomically debit Shard 1 AND credit Shard 3
-  Cross-shard transactions require 2-Phase Commit (2PC) or SAGA pattern
-  2PC is slow and complex → many sharded DBs avoid cross-shard transactions by design
-```
+### Challenges of Sharding (Awareness)
 
----
+- **Cross-shard joins** — "all orders for premium users" may need a scatter-gather across every shard. Mitigate by denormalizing, co-locating related data on the same shard, or using a separate analytics DB.
+- **Rebalancing** — moving data when shards become uneven, ideally live (double-write during migration, verify, switch).
+- **Cross-shard transactions** — require 2-Phase Commit or the SAGA pattern; both add complexity, so many sharded systems avoid them by design.
 
 ### Common Interview Questions — Database Sharding
 
-**Q: When should you shard a database?**
-Shard when: single-node database can't handle the write throughput, data size exceeds what fits on one server, or query latency is unacceptable. Sharding adds significant complexity — exhaust vertical scaling, caching, and read replicas first.
+**Q: When should you shard?**
+When a single node can't handle the write throughput, data exceeds one server, or latency is unacceptable. Sharding adds major complexity — exhaust vertical scaling, caching, and read replicas first.
 
 **Q: What is the resharding problem and how does consistent hashing solve it?**
-With `hash(key) % N` sharding, adding a server changes N, which remaps almost all keys. Consistent hashing places servers on a ring so adding/removing a server only affects keys in its neighborhood — typically 1/N of the data moves instead of nearly all of it.
+With `hash(key) % N`, adding a server changes N and remaps almost all keys. Consistent hashing places servers on a ring so adding/removing one only affects ~1/N of keys.
 
 **Q: How do you handle transactions across shards?**
-Options: (1) **Avoid them** — design data model so related data is co-located on the same shard. (2) **SAGA pattern** — break into local transactions with compensating transactions on failure. (3) **Two-phase commit (2PC)** — distributed transaction protocol, but slow and blocks. (4) **Eventual consistency** — accept that cross-shard operations are eventually consistent.
+Best: avoid them by co-locating related data. Otherwise use the SAGA pattern (local transactions + compensations), 2PC (correct but slow/blocking), or accept eventual consistency.
 
 ---
 
@@ -875,213 +390,68 @@ Options: (1) **Avoid them** — design data model so related data is co-located 
 
 ### What Is It?
 
-**Easy Explanation:** Replication means keeping copies of your data on multiple servers. If one copy is lost or unavailable, others are intact. It also allows multiple servers to serve read requests simultaneously.
+**Easy Explanation:** Replication keeps copies of your data on multiple servers. If one copy is lost, others survive, and multiple servers can serve reads at once.
 
-**Real-world analogy:** A book that exists in 10 libraries. Even if one library burns down, the book survives. And 10 people can read the book simultaneously (one in each library).
-
----
+**Real-world analogy:** A book in 10 libraries — if one burns down the book survives, and 10 people can read it simultaneously.
 
 ### Why Replicate?
 
 | Goal | How Replication Helps |
 |------|----------------------|
-| **High Availability** | If primary fails, promote a replica — no data loss |
-| **Fault Tolerance** | Survive hardware failures, data center outages |
-| **Read Scalability** | Spread read load across multiple replicas |
+| **High Availability** | If primary fails, promote a replica |
+| **Fault Tolerance** | Survive hardware/data-center failures |
+| **Read Scalability** | Spread read load across replicas |
 | **Disaster Recovery** | Geographic replicas survive regional outages |
-| **Low Latency** | Serve users from geographically closest replica |
-
----
 
 ### Replication Topologies
 
-#### 1. Primary-Replica (Master-Slave) Replication
+- **Primary-Replica (Master-Slave)** — primary takes all writes; replicas replay the write log and serve reads. Replicas may lag (**replication lag**). Used by MySQL, PostgreSQL, MongoDB.
+- **Primary-Primary (Multi-Master)** — both nodes accept writes, replicated bidirectionally. Requires **conflict resolution** (LWW, app-level, CRDTs). Used by Galera, CockroachDB, active-active setups.
+- **Chain Replication** *(awareness)* — writes enter at a head node, propagate through a chain, and only the tail serves reads, giving strong-consistency reads.
 
 ```
-         Writes
-           ↓
-      [Primary Node]
-           │
-    ┌──────┼──────┐
-    ↓      ↓      ↓
-[Replica1][Replica2][Replica3]
-    ↑      ↑      ↑
-         Reads
+Primary-Replica:
+        Writes → [Primary] → replicates to → [Replica 1] [Replica 2]
+                                   Reads served from replicas
 ```
-
-- **Primary** handles all writes
-- **Replicas** handle reads (read scaling)
-- Replicas receive write logs from primary and replay them
-- **Replication lag** — replicas may be slightly behind the primary
-
-**Use cases:** MySQL, PostgreSQL, MongoDB
-
-#### 2. Primary-Primary (Multi-Master) Replication
-
-```
-Writes from App 1       Writes from App 2
-       ↓                       ↓
-  [Primary A] ←──sync──→ [Primary B]
-```
-
-- Both nodes accept writes simultaneously
-- Changes are replicated bidirectionally
-- **Conflict resolution required** — what if both nodes update the same row simultaneously?
-
-**Conflict strategies:** Last-write-wins, application-level resolution, CRDTs
-
-**Use cases:** MySQL Group Replication, Galera Cluster, CockroachDB, active-active geodistribution
-
-#### 3. Chain Replication
-
-```
-[Head Node] → [Middle 1] → [Middle 2] → [Tail Node]
-    ↑                                        ↑
-  Writes go here                     Reads served here
-```
-
-- Writes enter at Head, propagate through the chain
-- Only the Tail node serves reads (guaranteed fully replicated data)
-- Tail acks client only after write propagates entire chain
-- **Strong consistency guarantee** — reads are always up-to-date
-- **Used by:** Microsoft Azure Storage, some HBase configurations
-
----
 
 ### Synchronous vs Asynchronous Replication
 
 | | Synchronous | Asynchronous |
 |-|-------------|--------------|
-| **Write confirms when** | ALL replicas confirm receipt | Primary writes locally, replicas catch up later |
-| **Data durability** | High — no data loss if primary fails | Risk of losing recent writes if primary crashes before replicating |
-| **Write latency** | Higher (waits for slowest replica) | Lower (doesn't wait) |
-| **Availability** | Lower (blocked if replica is slow/down) | Higher |
-| **Replication lag** | None | Possible (milliseconds to seconds) |
+| **Write confirms when** | All replicas confirm | Primary writes locally; replicas catch up later |
+| **Durability** | High — no data loss on primary failure | Risk of losing recent writes |
+| **Write latency** | Higher (waits for slowest replica) | Lower |
+| **Replication lag** | None | Possible (ms to seconds) |
 
-**Semi-synchronous replication** (MySQL): Write confirmed after at least 1 replica acknowledges — balance between safety and performance.
-
-```
-Synchronous:
-  Client → Primary → [wait] → Replica 1 confirmed
-                            → Replica 2 confirmed
-  → ACK to client
-  Latency: ~5-50ms extra per write
-
-Asynchronous:
-  Client → Primary → ACK to client immediately
-                   ↓ (async, later)
-             Replica 1 updated
-             Replica 2 updated
-  Latency: No extra latency
-  Risk: If primary crashes before async replication → data loss
-```
-
----
+**Semi-synchronous** (MySQL): confirm after at least 1 replica acks — a balance of safety and performance.
 
 ### Replication Lag and Its Consequences
 
-Replication lag is the delay between a write on the primary and when it appears on replicas.
+Lag is the delay between a write on the primary and when it appears on replicas.
 
 ```
-Scenario: User changes their email on primary
-  t=0ms:  Primary updated: email=new@email.com
-  t=0ms:  Application redirects user to profile page
-  t=50ms: Profile page reads from Replica 1
-  t=50ms: Replica 1 still has: email=old@email.com  ← STALE READ
-
-User sees: "Why is my old email still showing?"
+t=0ms:  Primary updated: email=new@email.com → user redirected to profile
+t=50ms: Profile reads from Replica 1, still email=old@email.com  ← STALE READ
+User: "Why is my old email still showing?"
 ```
 
-**Solutions to replication lag issues:**
+**Solutions:** read-your-own-writes (route a user's reads to the primary briefly after a write), monotonic reads (sticky-route a user to the same replica), or read critical data (balance, inventory) from the primary.
 
-```
-1. Read-your-own-writes consistency:
-   → Route the user's reads to the primary (for a short period after a write)
-   → Or track "last write timestamp" per user and wait for replica to catch up
+### Failover (Awareness)
 
-2. Monotonic reads:
-   → Ensure a user always reads from the same replica
-   → Avoids the phenomenon of seeing newer data and then older data (time goes backward)
-   → Implementation: sticky routing by user ID to a specific replica
-
-3. Consistent reads on important data:
-   → For reads that MUST be current (balance, inventory), always read from primary
-   → Accept the replica lag only for non-critical reads (feeds, history)
-```
-
----
-
-### Failover
-
-When the primary fails, a replica must be promoted to become the new primary:
-
-```
-Normal state:
-  [Primary] → [Replica A] [Replica B]
-
-Primary fails:
-  [FAILED Primary]   [Replica A] [Replica B]
-
-Failover:
-  1. Detect failure (health check timeout)
-  2. Elect new primary (usually most up-to-date replica)
-  3. Promote Replica A → new Primary
-  4. Update Replica B to follow new Primary
-  5. Update application connection strings / DNS
-
-  [New Primary (was Replica A)] → [Replica B]
-```
-
-**Failover challenges:**
-
-| Challenge | Description |
-|-----------|-------------|
-| **Split-brain** | Both old and new primary think they're primary — data diverges |
-| **Data loss** | Async replicas may not have the latest writes from the failed primary |
-| **False positives** | Network hiccup detected as failure — unnecessary failover |
-| **Application reconnection** | Apps must discover new primary address |
-
-**Solutions:** Quorum-based election (Raft, Paxos), fencing tokens to prevent split-brain, semi-sync replication to reduce data loss risk.
-
----
-
-### Replication in Practice — Examples
-
-**PostgreSQL Streaming Replication:**
-```
-Primary → streams WAL (Write-Ahead Log) → Replica(s)
-Replica replays the WAL → stays in sync
-Synchronous_standby_names setting controls sync vs async per replica
-```
-
-**MySQL GTID Replication:**
-```
-Each transaction gets a Global Transaction ID (GTID)
-Replica tracks which GTIDs it has executed
-If replica falls behind → it knows exactly what to replay
-GTID makes failover simpler — new replica can sync from any point
-```
-
-**MongoDB Replica Sets:**
-```
-One primary, multiple secondaries
-Automatic election using Raft protocol
-readPreference: allows routing reads to secondaries
-writeConcern: w:majority ensures write is on majority before acknowledging
-```
-
----
+When the primary fails, a replica is promoted: detect failure → elect the most up-to-date replica → promote it → repoint other replicas and the app. Challenges: **split-brain** (both think they're primary), **data loss** (async replica missing latest writes), **false positives** (a network hiccup triggers needless failover). Mitigations: quorum-based election (Raft/Paxos), fencing tokens, semi-sync replication.
 
 ### Common Interview Questions — Replication
 
-**Q: What is the difference between replication and backup?**
-Replication is real-time copying to live servers — used for high availability and read scaling. Backups are point-in-time snapshots stored offline — used for data recovery from logical errors (accidental deletes, corruption). You need BOTH: replication doesn't protect against "DELETE all rows" mistakes; backups don't give you instant failover.
+**Q: Difference between replication and backup?**
+Replication is real-time copying to live servers (availability, read scaling). Backups are point-in-time snapshots for recovering from logical errors (accidental deletes, corruption). You need both — replication won't save you from "DELETE all rows," backups don't give instant failover.
 
 **Q: How do you handle split-brain in a primary-replica setup?**
-Split-brain occurs when a network partition makes both primary and replica think they're the primary. Prevention: use a quorum — require majority of nodes to agree on who is primary (Raft/Paxos). Use fencing tokens to ensure the old primary can't write after being fenced off. Tools like Patroni (PostgreSQL) and MHA (MySQL) handle this.
+A partition makes both nodes think they're primary. Prevent with a quorum (majority must agree on the primary — Raft/Paxos) and fencing tokens so a fenced-off old primary can't write. Tools: Patroni (PostgreSQL), MHA (MySQL).
 
 **Q: What is a read replica and when would you use it?**
-A read replica is a copy of the database that handles SELECT queries, offloading reads from the primary. Use when read traffic is significantly higher than write traffic (common in most apps). Caveat: reads may be slightly stale due to replication lag.
+A copy that serves SELECT queries, offloading reads from the primary. Use when read traffic far exceeds writes (common). Caveat: reads may be slightly stale due to lag.
 
 ---
 
@@ -1089,387 +459,171 @@ A read replica is a copy of the database that handles SELECT queries, offloading
 
 ### What Is It?
 
-**Easy Explanation:** A message queue is a component that sits between services, letting them communicate asynchronously. Service A sends a message to the queue and continues working. Service B reads from the queue when it's ready.
+**Easy Explanation:** A message queue sits between services so they communicate asynchronously. Service A sends a message and keeps working; Service B reads it when ready.
 
-**Real-world analogy:** Email. You send an email and continue your work. The recipient doesn't need to be available at that exact moment. They process it when they're ready. The email server is the "queue."
+**Real-world analogy:** Email. You send it and move on; the recipient processes it when they're ready.
 
 ```
-Without message queue (synchronous, tight coupling):
-  Order Service → Payment Service (waits for response)
-                → Inventory Service (waits for response)
-                → Notification Service (waits for response)
-  Problem: If any service is slow or down → entire flow fails or slows
+Without queue (synchronous, tight coupling):
+  Order Service → Payment / Inventory / Notification (waits for each)
+  If any is slow or down → the whole flow fails or slows
 
-With message queue (asynchronous, loose coupling):
-  Order Service → [Message Queue] → Payment Service (processes when ready)
-                                  → Inventory Service (processes when ready)
-                                  → Notification Service (processes when ready)
-  Order Service: no waiting, publishes and moves on
+With queue (asynchronous, loose coupling):
+  Order Service → [Queue] → Payment / Inventory / Notification (process when ready)
+  Order Service publishes and moves on — no waiting
 ```
-
----
 
 ### Core Concepts
 
 | Concept | Description |
 |---------|-------------|
-| **Producer** | Service that sends/publishes messages to the queue |
-| **Consumer** | Service that reads/subscribes to messages from the queue |
-| **Queue** | Ordered buffer that stores messages until consumed |
-| **Topic** | Named channel (in pub/sub systems like Kafka) |
-| **Message** | The data payload (JSON, bytes, Protobuf, Avro) |
-| **Broker** | The message queue server (RabbitMQ, Kafka broker) |
-| **Acknowledgment (ACK)** | Consumer signals it processed the message successfully |
-| **Dead Letter Queue (DLQ)** | Where failed/unprocessable messages are sent |
-
----
+| **Producer** | Sends/publishes messages |
+| **Consumer** | Reads/subscribes to messages |
+| **Queue / Topic** | Buffer (queue) or named channel (topic, pub/sub) for messages |
+| **Broker** | The queue server (RabbitMQ, Kafka) |
+| **Acknowledgment (ACK)** | Consumer signals successful processing |
+| **Dead Letter Queue (DLQ)** | Where failed/unprocessable messages go |
 
 ### Queue Models
 
-#### Point-to-Point (Queue)
-One message is consumed by exactly one consumer:
-
-```
-Producer → [Queue] → Consumer A
-                   ← (message removed from queue after consumption)
-
-Use case: Task distribution — 10 workers, each picks the next available job
-Example: RabbitMQ queues, AWS SQS
-```
-
-#### Publish-Subscribe (Topic)
-One message is delivered to ALL subscribers:
-
-```
-Publisher → [Topic: order.created] → Consumer Group A (Payment Service)
-                                    → Consumer Group B (Inventory Service)
-                                    → Consumer Group C (Notification Service)
-
-All three receive the same message
-Use case: Event broadcasting — one event triggers multiple independent reactions
-Example: Kafka topics, AWS SNS
-```
-
----
+- **Point-to-Point (Queue)** — one message consumed by exactly one consumer. Good for task distribution (10 workers each pick the next job). E.g., RabbitMQ queues, AWS SQS.
+- **Publish-Subscribe (Topic)** — one message delivered to all subscribers. Good for event broadcasting (one event → many independent reactions). E.g., Kafka topics, AWS SNS.
 
 ### Why Use Message Queues?
 
-#### 1. Decoupling
-```
-Without queue: Order Service directly calls Payment Service API
-  → If Payment Service is down → Order Service fails
-  → If Payment Service is slow → Order Service is slow
-
-With queue: Order Service publishes to queue, doesn't know/care who processes
-  → Payment Service can be down; messages accumulate, processed on restart
-  → Services are independently deployable and scalable
-```
-
-#### 2. Load Leveling (Buffer)
-```
-Flash sale: 100,000 orders in 10 seconds
-  Without queue: 100,000 simultaneous requests hit Payment Service → crashes
-
-  With queue:
-    Orders flood in → [Queue] ← absorbs the spike
-    Payment Service: processes at its steady rate of 1,000/second
-    Queue acts as a buffer, smoothing out the spike
-    All orders eventually processed, no crash
-```
-
-#### 3. Reliability / At-Least-Once Delivery
-```
-Without queue (direct HTTP call):
-  Order Service → POST /payment → network failure → payment may or may not have happened
-
-With queue:
-  Message stays in queue until consumer ACKs
-  If consumer crashes mid-processing → message returned to queue → redelivered
-  Guarantee: message is processed at least once
-```
-
-#### 4. Asynchronous Processing
-```
-User uploads a video → immediately gets "Upload successful"
-  Queue message: {video_id: 123, action: "transcode"}
-  Transcoding Service: picks up job, processes over next 5 minutes
-  User is not waiting — they were immediately freed
-```
-
----
+- **Decoupling** — the producer doesn't know or care who consumes; consumers can be down and catch up later.
+- **Load leveling** — the queue absorbs spikes (100k orders in 10s) while consumers process at a steady rate, smoothing the load.
+- **Reliability** — a message stays until ACKed; a crashed consumer means the message is redelivered (at-least-once).
+- **Async processing** — a video upload returns immediately while transcoding happens in the background.
 
 ### Message Delivery Guarantees
 
 | Guarantee | Description | Risk |
 |-----------|-------------|------|
-| **At Most Once** | Message delivered 0 or 1 times — never duplicated | Messages can be LOST |
-| **At Least Once** | Message delivered 1 or more times — never lost | Messages can be DUPLICATED |
-| **Exactly Once** | Message delivered exactly 1 time — no loss, no duplicates | Hardest to implement — expensive |
+| **At Most Once** | Delivered 0 or 1 times | Messages can be LOST |
+| **At Least Once** | Delivered 1+ times (most common) | Messages can be DUPLICATED |
+| **Exactly Once** | Delivered exactly once | Hardest/most expensive to implement |
 
 ```
-At Least Once (most common):
-  Producer sends message
-  Consumer receives, processes, crashes before ACKing
-  Broker redelivers message
-  Consumer processes it again → DUPLICATE
-
-To handle duplicates → make consumers IDEMPOTENT:
-  "Apply payment of $50 for order_id 12345"
-  → Check: has order 12345 already been paid?
-  → If yes, skip (safe to process twice)
-  → If no, process
+At-least-once → consumer may see a message twice.
+Fix: make consumers IDEMPOTENT.
+  "Apply payment of $50 for order 12345"
+  → Already paid? skip. Not paid? process.
 ```
 
----
+### Idempotency
+
+Idempotency means applying an operation multiple times has the same result as applying it once. It's essential with at-least-once delivery, where retries and redeliveries can deliver the same message twice. Implement by recording processed message IDs and skipping duplicates.
 
 ### Dead Letter Queue (DLQ)
 
 ```
-Normal flow:
-  [Queue] → Consumer → ACK → message deleted
+[Queue] → Consumer → processing error → broker retries (e.g., 3x)
+  → after max retries → message moved to [Dead Letter Queue]
 
-When processing fails:
-  [Queue] → Consumer → processing error → NACK
-  Broker: retries (e.g., 3 times)
-  After max retries: message moved to [Dead Letter Queue]
-
-DLQ allows:
-  → Inspect why messages are failing
-  → Fix the bug
-  → Replay DLQ messages
-  → Alert on DLQ size (indicates systemic issues)
+DLQ lets you inspect failures, fix the bug, replay messages, and alert on DLQ size.
 ```
-
----
 
 ### Kafka vs RabbitMQ
 
 | Feature | Apache Kafka | RabbitMQ |
 |---------|-------------|----------|
-| **Model** | Distributed log (pub/sub) | Traditional message broker (queue + pub/sub) |
-| **Message retention** | Configurable (days/weeks/forever) | Deleted after consumption (by default) |
-| **Ordering** | Per-partition ordering guaranteed | Per-queue ordering guaranteed |
+| **Model** | Distributed log (pub/sub) | Traditional broker (queue + pub/sub) |
+| **Retention** | Configurable (days/forever) | Deleted after consumption |
 | **Throughput** | Extremely high (millions/sec) | High (tens of thousands/sec) |
-| **Consumer groups** | Multiple groups each consume all messages | Competing consumers share one queue |
-| **Replay** | Yes — consumers track their own offset | No — consumed messages are gone |
-| **Use case** | Event streaming, audit logs, data pipelines | Task queues, RPC, microservice messaging |
-| **Complexity** | Higher (Zookeeper/KRaft, partitions) | Lower (easier setup) |
-| **Protocol** | Custom binary (Kafka protocol) | AMQP, STOMP, MQTT |
-| **Message size** | Optimized for small-medium messages | Handles any size |
+| **Replay** | Yes — consumers track their offset | No — consumed messages are gone |
+| **Use case** | Event streaming, audit logs, pipelines | Task queues, RPC, microservice messaging |
+| **Complexity** | Higher (partitions, KRaft/Zookeeper) | Lower (easier setup) |
 
----
+**Kafka basics (awareness):** a topic is split into partitions; each partition is consumed by one consumer per group; consumers track their **offset** (position) and can replay by resetting it. Ordering is guaranteed only **within a partition** — pick a partition key (e.g., `user_id`) so related events stay ordered.
 
-### Kafka Deep Dive
+### Common Patterns (Awareness)
 
-```
-Topics and Partitions:
-  Topic "orders" → 4 partitions
-    Partition 0: [msg1, msg2, msg3, ...]  → consumed by Consumer A
-    Partition 1: [msg4, msg5, msg6, ...]  → consumed by Consumer B
-    Partition 2: [msg7, msg8, msg9, ...]  → consumed by Consumer C
-    Partition 3: [msg10, ...]             → consumed by Consumer D
-
-Consumer Groups:
-  Group "payment-service": each partition consumed by one consumer
-  Group "inventory-service": same messages, independent consumption
-
-Offsets:
-  Each consumer tracks its own offset (position in the partition)
-  Consumer reads partition 0, offset 150 → next read from offset 151
-  Consumer can replay by resetting offset to 0
-
-Retention:
-  Messages kept for 7 days (configurable) regardless of consumption
-  This enables: replay, audit trail, multiple consumers at different speeds
-```
-
----
-
-### Common Patterns with Message Queues
-
-#### Saga Pattern (Distributed Transactions)
-```
-Choreography-based Saga:
-  Order Service: publishes "order.created"
-  Payment Service: consumes → processes payment → publishes "payment.completed" or "payment.failed"
-  Inventory Service: consumes "payment.completed" → reserves stock → publishes "stock.reserved"
-  Shipping Service: consumes "stock.reserved" → creates shipment
-
-Compensating transactions on failure:
-  Inventory fails → publishes "stock.failed"
-  Payment Service: consumes → refunds payment → publishes "payment.reversed"
-  Order Service: consumes → marks order as failed
-```
-
-#### Fan-Out Pattern
-```
-One event → multiple independent consumers (all processing in parallel)
-  "user.registered" event → Welcome Email Service
-                          → CRM Service
-                          → Analytics Service
-                          → Fraud Detection Service
-```
-
-#### Work Queue (Task Distribution)
-```
-10 worker instances competing for tasks:
-  [Queue: image-resize-jobs] ← producers add jobs
-  Worker 1: picks job, processes, ACKs
-  Worker 2: picks next available job, processes, ACKs
-  ...
-  Auto-scaling: queue depth grows → scale up workers
-                queue depth shrinks → scale down workers
-```
-
----
+- **Saga** — distributed transaction as a chain of local transactions across services, with compensating transactions on failure (e.g., refund payment if inventory fails).
+- **Fan-Out** — one event drives many independent consumers (`user.registered` → email, CRM, analytics, fraud check).
+- **Work Queue** — N workers compete for tasks; auto-scale workers based on queue depth.
 
 ### Common Interview Questions — Message Queues
 
-**Q: What is the difference between a message queue and an event bus?**
-A message queue (like RabbitMQ) is pull-based — consumers pull messages when ready. An event bus (like Kafka) is publish-subscribe — events are broadcast to all interested subscribers. Message queues focus on task distribution (one consumer per message); event buses focus on event propagation (many consumers per event). The line is blurry — Kafka can do both, RabbitMQ supports pub/sub via exchanges.
+**Q: Difference between a message queue and an event bus?**
+A queue (RabbitMQ) is pull-based, focused on task distribution (one consumer per message). An event bus (Kafka) broadcasts events to many subscribers. The line is blurry — Kafka can do both, RabbitMQ supports pub/sub via exchanges.
 
-**Q: How do you ensure messages are not lost if a consumer crashes?**
-Use acknowledgments (ACKs). The broker keeps the message until the consumer sends a positive ACK. If the consumer crashes (no ACK), the broker redelivers the message to another consumer. Combined with persistent message storage (disk-backed queues), messages survive broker restarts too.
+**Q: How do you ensure messages aren't lost if a consumer crashes?**
+Use ACKs — the broker keeps a message until the consumer ACKs; no ACK means redelivery. Combine with persistent (disk-backed) storage so messages survive broker restarts.
 
-**Q: What is idempotency and why is it important with message queues?**
-Idempotency means an operation can be applied multiple times with the same result as applying it once. Critical with "at-least-once" delivery — consumers may receive the same message more than once (retries, redeliveries). An idempotent consumer handles duplicates safely. Implementation: use unique message IDs and record "processed message IDs" in a store; skip if already processed.
+**Q: What is idempotency and why does it matter here?**
+It lets a consumer handle the same message more than once safely — essential with at-least-once delivery. Use unique message IDs and track processed IDs; skip duplicates.
 
 **Q: How does Kafka guarantee ordering?**
-Kafka guarantees ordering within a single partition. Messages with the same partition key always go to the same partition, maintaining relative order. Across partitions, there's no ordering guarantee. Design your partition key around what needs to be ordered (e.g., use `user_id` as key so all events for a user go to the same partition in order).
+Only within a single partition. Same partition key → same partition → preserved order. Design the key around what needs ordering (e.g., `user_id`).
 
-**Q: When would you choose RabbitMQ over Kafka?**
-RabbitMQ: when you need traditional message routing (topic exchanges, fanout, direct routing with rules), request-reply patterns, per-message TTL, or simpler setup. Kafka: when you need high throughput, message replay, audit logging, stream processing, or when multiple independent services need to consume the same events.
+**Q: When choose RabbitMQ over Kafka?**
+RabbitMQ for flexible routing, request-reply, per-message TTL, or simpler setup. Kafka for high throughput, replay, audit logging, or many independent consumers of the same events.
 
 ---
 
 ## How These Topics Connect
 
-Understanding how these 7 topics relate is critical for system design interviews:
+For system design interviews, see how the pieces fit together:
 
 ```
-                        ┌─────────────────────────────┐
-                        │        Your Application      │
-                        └──────────────┬──────────────┘
-                                       │
-                                       ↓
-                           ┌───────────────────────┐
-                           │     LOAD BALANCER      │ ← distributes traffic
-                           └──────────┬────────────┘
-                                      │
-                    ┌─────────────────┼─────────────────┐
-                    ↓                 ↓                  ↓
-               [Server 1]        [Server 2]         [Server 3]
-                    │                 │                  │
-                    └─────────────────┼──────────────────┘
-                                      │
-              ┌───────────────────────┼──────────────────────┐
-              ↓                       ↓                      ↓
-    ┌──────────────────┐   ┌──────────────────┐   ┌──────────────────┐
-    │  DATABASE        │   │  MESSAGE QUEUE   │   │  CACHE (Redis)   │
-    │  (sharded +      │   │  (Kafka/Rabbit)  │   │  (distributed    │
-    │   replicated)    │   │                  │   │   locks too)     │
-    └──────────────────┘   └──────────────────┘   └──────────────────┘
-             │
-    ┌────────┴────────┐
-    │                 │
-  Shard 1           Shard 2        ← DATABASE SHARDING
-    │                 │
-  Primary          Primary
-    │                 │
-  Replica          Replica         ← REPLICATION
+        [Clients] → [LOAD BALANCER] → [Server 1] [Server 2] [Server 3]
+                                            │
+              ┌─────────────────────────────┼─────────────────────────┐
+              ↓                             ↓                          ↓
+        DATABASE (sharded + replicated)  MESSAGE QUEUE (Kafka/Rabbit)  CACHE / Redis
+                                                                       (distributed locks)
 ```
 
-**CAP Theorem governs every storage decision:**
-- Sharded DB + async replication = AP (available but eventually consistent)
-- Zookeeper (for distributed locks) = CP (consistent but may be unavailable during partition)
-
-**Eventual Consistency is the outcome of async replication:**
-- Replicas lag behind primary = eventual consistency window
-- Message queues create eventual consistency between services
-
-**Distributed Locks protect against race conditions when:**
-- Multiple servers (behind load balancer) access the same shared resource
-- Cross-shard operations need serialization
-
-**Message Queues enable decoupling when:**
-- Services can't afford synchronous coupling
-- Load needs to be buffered (load leveling)
-- Multiple consumers need the same event (fan-out)
+- **CAP** governs every storage decision: sharded DB + async replication = AP; Zookeeper (for locks) = CP.
+- **Eventual Consistency** is the outcome of async replication and of message queues passing data between services.
+- **Distributed Locks** protect shared resources when multiple servers (behind the load balancer) access them.
+- **Message Queues** enable decoupling, load leveling, and fan-out.
 
 ---
 
 ## Quick Revision Cheat Sheet
 
-### Load Balancing
 ```
-Algorithms:  Round Robin | Weighted | Least Connections | IP Hash | Least Response Time
-Layers:      L4 (TCP/IP — fast) | L7 (HTTP — smart routing)
-Sticky:      IP Hash or cookie → same server (avoid: use Redis sessions instead)
-Health:      Continuous health checks → auto-remove failed servers
-HA LB:       Active-passive pair to avoid LB being a SPOF
-```
+LOAD BALANCING
+  Algorithms: Round Robin | Weighted | Least Connections | IP Hash | Least Response Time
+  Layers: L4 (TCP, fast) | L7 (HTTP, smart routing)
+  Sticky sessions → prefer shared Redis session store; health checks auto-remove dead servers
+  Run redundant LBs so the LB isn't a SPOF
 
-### CAP Theorem
-```
-C = every read returns latest write
-A = system always responds
-P = works despite network partitions
+CAP THEOREM
+  C = latest read | A = always responds | P = survives partitions
+  P is non-negotiable → real choice is CP vs AP
+  CP: Zookeeper, etcd, HBase | AP: Cassandra, DynamoDB, DNS | ACID≈CP, BASE≈AP
 
-P is non-negotiable → real choice is CP vs AP
-CP: strong consistency, may reject requests during partition (Zookeeper, etcd, HBase)
-AP: always responds, may return stale data (Cassandra, DynamoDB, DNS)
-ACID ≈ CP | BASE ≈ AP
-```
+EVENTUAL CONSISTENCY
+  All nodes converge eventually; cause = async replication lag
+  Conflict resolution: Last Write Wins | Vector Clocks | CRDTs
+  Read repair fixes stale replicas on detected inconsistency
 
-### Eventual Consistency
-```
-Guarantee: all nodes converge to same value — eventually
-Cause: async replication introduces lag
-Conflict resolution: Last Write Wins | Vector Clocks | CRDTs
-Models: Linearizable > Sequential > Causal > Read-your-writes > Eventual
-Read repair: fix stale replicas on detected inconsistency
-```
+DISTRIBUTED LOCKS
+  Redis: SET key val NX PX ttl (release via Lua check-then-delete)
+  Redlock = majority of N nodes | Zookeeper = ephemeral sequential znodes
+  Fencing token prevents stale holders writing; keep operations idempotent
 
-### Distributed Locks
-```
-Redis SETNX:  SET key value NX PX ttl_ms (atomic, with TTL)
-              Release with Lua script (check-then-delete atomically)
-Redlock:      Acquire on majority of N Redis nodes (fault tolerant)
-Zookeeper:    Ephemeral sequential znodes (auto-released on crash)
-Fencing token: Monotonic counter prevents stale lock holders from writing
-Idempotency:  Critical for lock-protected operations (handle duplicate execution)
-```
+DATABASE SHARDING
+  Range (range queries, hotspots) | Hash (even, no range, resharding pain)
+  Consistent Hashing (minimal resharding) | Directory (flexible)
+  Shard key: high cardinality + immutable + even + matches queries
+  Exhaust vertical scaling + caching + read replicas first
 
-### Database Sharding
-```
-Strategies:   Range (easy range queries, hotspots) | Hash (even dist, no range) 
-              | Consistent Hashing (minimal resharding) | Directory (most flexible)
-Shard key:    High cardinality + immutable + even distribution + matches query pattern
-Challenges:   Cross-shard joins | Rebalancing | Distributed transactions
-When to shard: Exhaust vertical scaling + caching + read replicas first
-```
+REPLICATION
+  Primary-Replica (read scaling) | Primary-Primary (conflicts) | Chain (strong reads)
+  Sync = no data loss/higher latency | Async = possible loss/low latency
+  Lag → stale reads (use read-your-writes); avoid split-brain via quorum + fencing
 
-### Replication
-```
-Topologies:   Primary-Replica (read scaling) | Primary-Primary (write scaling, conflicts)
-              | Chain (strong consistency reads)
-Sync vs Async: Sync = no data loss, higher latency | Async = possible data loss, low latency
-Replication lag: stale reads problem → read-your-writes, monotonic reads
-Failover:     Detect → elect new primary → promote → update connections
-Avoid:        Split-brain (quorum-based election + fencing tokens)
-```
-
-### Message Queues
-```
-Models:       Point-to-Point (1 consumer) | Pub/Sub (all consumers)
-Guarantees:   At-most-once | At-least-once (common) | Exactly-once (hardest)
-Idempotency:  Required with at-least-once (handle duplicate messages safely)
-DLQ:          Store failed messages for inspection + replay
-Kafka:        Distributed log, message replay, high throughput, partitioned ordering
-RabbitMQ:     Routing rules, task queues, simpler setup, AMQP protocol
-Use for:      Decoupling | Load leveling | Async processing | Fan-out | Saga pattern
+MESSAGE QUEUES
+  Point-to-Point (1 consumer) | Pub/Sub (all consumers)
+  Guarantees: at-most-once | at-least-once (common) | exactly-once (hardest)
+  At-least-once → make consumers idempotent | DLQ for failed messages
+  Kafka: log, replay, high throughput, per-partition order | RabbitMQ: routing, simpler
 ```
 
 ---
 
-*Last updated: 2026-06-05 | Focus: Backend, Cloud, and System Design Interviews*
+*Last updated: 2026-06-17 | Focus: Backend and System Design Interviews*

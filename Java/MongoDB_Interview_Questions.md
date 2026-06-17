@@ -1,22 +1,5 @@
 # MongoDB Interview Questions & Answers
 
-## Table of Contents
-1. [MongoDB Basics](#mongodb-basics)
-2. [Data Modeling](#data-modeling)
-3. [CRUD Operations](#crud-operations)
-4. [Aggregation Framework](#aggregation-framework)
-5. [Indexing](#indexing)
-6. [Replication](#replication)
-7. [Sharding](#sharding)
-8. [Performance Optimization](#performance-optimization)
-9. [Transactions](#transactions)
-10. [MongoDB vs SQL Databases](#mongodb-vs-sql-databases)
-11. [Advanced Features](#advanced-features)
-12. [Common Mistakes](#common-mistakes-2)
-13. [Short Revision Summary](#short-revision-summary-2)
-
----
-
 ## MongoDB Basics
 
 ### Q1: What is MongoDB and why is it used?
@@ -42,40 +25,7 @@
 
 ### Q2: What are the key components of MongoDB architecture?
 
-**Answer:**
-
-**MongoDB Architecture Components:**
-
-```
-┌─────────────────────────────────────────┐
-│         Application Layer               │
-│   (Drivers for various languages)       │
-└──────────────────┬──────────────────────┘
-                   │
-┌──────────────────▼──────────────────────┐
-│         MongoDB Instance                │
-│  ┌──────────────────────────────────┐  │
-│  │      mongod (Database Process)  │  │
-│  │  ┌────────────────────────────┐  │  │
-│  │  │    Query Engine           │  │  │
-│  │  │    Storage Engine          │  │  │
-│  │  │    (WiredTiger)            │  │  │
-│  │  └────────────────────────────┘  │  │
-│  └──────────────────────────────────┘  │
-└──────────────────┬──────────────────────┘
-                   │
-┌──────────────────▼──────────────────────┐
-│         Data Storage                    │
-│  ┌──────────┐  ┌──────────┐            │
-│  │ Database │  │ Database │            │
-│  │  (DB)    │  │  (DB)    │            │
-│  │ ┌──────┐ │  │ ┌──────┐ │            │
-│  │ │ Coll │ │  │ │ Coll │ │            │
-│  │ │ ect  │ │  │ │ ect  │ │            │
-│  │ └──────┘ │  │ └──────┘ │            │
-│  └──────────┘  └──────────┘            │
-└─────────────────────────────────────────┘
-```
+**Answer:** Applications connect via language drivers to a `mongod` process (query engine + WiredTiger storage engine), which stores data hierarchically: Instance → Database → Collection → Document.
 
 **Key Components:**
 
@@ -138,71 +88,23 @@
 | Indexing | Not supported | Supported |
 | Use Case | Data exchange | Storage and networking |
 
-**BSON Data Types:**
+**Common BSON Data Types:**
 
 ```javascript
-// String
-{"name": "John Doe"}
-
-// Number (int32, int64, double)
-{"age": 30, "price": 99.99, "count": NumberLong("9007199254740991")}
-
-// Boolean
-{"isActive": true}
-
-// Null
-{"middleName": null}
-
-// Array
-{"tags": ["tag1", "tag2", "tag3"]}
-
-// Object (embedded document)
-{"address": {"street": "123 Main St", "city": "New York"}}
-
-// ObjectId (MongoDB specific)
-{"_id": ObjectId("507f1f77bcf86cd799439011")}
-
-// Date
-{"createdAt": ISODate("2024-01-15T10:30:00Z")}
-
-// Binary Data
-{"fileData": BinData(0, "SGVsbG8gV29ybGQ=")}
-
-// Regular Expression
-{"pattern": /mongodb/i}
-
-// JavaScript Code
-{"code": Code("function() { return 'Hello'; }")}
-
-// Timestamp
-{"timestamp": Timestamp(1610754600, 1)}
-
-// MinKey/MaxKey (for comparison)
-{"minKey": MinKey(), "maxKey": MaxKey()}
+{
+  "name": "John Doe",                        // String
+  "age": 30,                                 // Number (int32/int64/double)
+  "isActive": true,                          // Boolean
+  "tags": ["tag1", "tag2"],                  // Array
+  "address": {"city": "New York"},           // Object (embedded document)
+  "_id": ObjectId("507f1f77bcf86cd799439011"), // ObjectId
+  "createdAt": ISODate("2024-01-15T10:30:00Z") // Date
+}
 ```
 
-**ObjectId Structure:**
+Other types include Binary, Regular Expression, Timestamp, and MinKey/MaxKey.
 
-```javascript
-// ObjectId is 12 bytes:
-// Bytes 0-3: Timestamp (seconds since epoch)
-// Bytes 4-6: Machine identifier
-// Bytes 7-8: Process ID
-// Bytes 9-11: Counter (incrementing value)
-
-// Example: 507f1f77bcf86cd799439011
-// 507f1f77: Timestamp (2012-10-17T20:46:15Z)
-// bcf86c: Machine identifier
-// d799: Process ID
-// 439011: Counter
-
-// Generate ObjectId
-var objectId = new ObjectId();
-var objectIdFromString = ObjectId("507f1f77bcf86cd799439011");
-
-// Extract timestamp from ObjectId
-var timestamp = objectId.getTimestamp();  // Returns Date object
-```
+**ObjectId Structure:** A 12-byte value = 4-byte timestamp + 5-byte random value + 3-byte counter. This makes `_id` roughly time-ordered and globally unique. Use `objectId.getTimestamp()` to extract the creation time.
 
 ---
 
@@ -376,61 +278,11 @@ var timestamp = objectId.getTimestamp();  // Returns Date object
 // Orders stored separately with userId reference
 ```
 
-**3. Use Appropriate Data Types:**
+**3. Use Appropriate Data Types:** Store numbers, dates, and booleans as their BSON types — not strings — so queries, sorting, and indexes work correctly (e.g. `price: 99.99` and `createdAt: ISODate(...)`, not `"99.99"` / `"2024-01-15"`).
 
-```javascript
-// ❌ BAD: Using strings for numbers and dates
-{
-  "price": "99.99",
-  "quantity": "10",
-  "createdAt": "2024-01-15"
-}
+**4. Design for Read vs Write Performance:** Read-heavy workloads favor denormalization (embed related data); write-heavy workloads favor normalization (reference by id) to avoid updating duplicated data in many places.
 
-// ✅ GOOD: Use appropriate BSON types
-{
-  "price": 99.99,                    // Number
-  "quantity": 10,                    // Number
-  "createdAt": ISODate("2024-01-15") // Date
-}
-```
-
-**4. Design for Read vs Write Performance:**
-
-```javascript
-// Read-heavy: Denormalize (embed)
-{
-  "_id": "product1",
-  "name": "Laptop",
-  "category": {
-    "_id": "cat1",
-    "name": "Electronics",
-    "description": "Electronic devices"
-  }
-}
-
-// Write-heavy: Normalize (reference)
-{
-  "_id": "product1",
-  "name": "Laptop",
-  "categoryId": ObjectId("cat1")
-}
-```
-
-**5. Use Arrays Efficiently:**
-
-```javascript
-// ❌ BAD: Unbounded arrays
-{
-  "_id": "user1",
-  "notifications": []  // Can grow indefinitely
-}
-
-// ✅ GOOD: Limit array size or use separate collection
-{
-  "_id": "user1",
-  "recentNotifications": []  // Limit to last N notifications
-}
-```
+**5. Use Arrays Efficiently:** Avoid unbounded arrays that grow forever (e.g. `notifications: []`). Cap them to the last N items or move the history to a separate collection.
 
 ---
 
@@ -756,126 +608,18 @@ db.users.aggregate([
   {$limit: 10}
 ]);
 
-// $redact: Restrict content based on field values
-db.documents.aggregate([
-  {
-    $redact: {
-      $cond: {
-        if: {$eq: ["$accessLevel", "public"]},
-        then: "$$DESCEND",
-        else: "$$PRUNE"
-      }
-    }
-  }
-]);
-```
-
-**Advanced Aggregation:**
-
-```javascript
-// Complex aggregation: Customer lifetime value analysis
+// $addFields: Add computed fields to documents
 db.orders.aggregate([
-  // Join with users collection
-  {
-    $lookup: {
-      from: "users",
-      localField: "userId",
-      foreignField: "_id",
-      as: "user"
-    }
-  },
-  {$unwind: "$user"},
-
-  // Calculate customer metrics
-  {
-    $group: {
-      _id: "$userId",
-      customerName: {$first: "$user.name"},
-      customerEmail: {$first: "$user.email"},
-      firstOrderDate: {$min: "$orderDate"},
-      lastOrderDate: {$max: "$orderDate"},
-      totalOrders: {$sum: 1},
-      totalSpent: {$sum: "$total"},
-      avgOrderValue: {$avg: "$total"},
-      categories: {$addToSet: "$category"}
-    }
-  },
-
-  // Calculate customer lifetime value and days active
-  {
-    $project: {
-      customerName: 1,
-      customerEmail: 1,
-      firstOrderDate: 1,
-      lastOrderDate: 1,
-      totalOrders: 1,
-      totalSpent: {$round: ["$totalSpent", 2]},
-      avgOrderValue: {$round: ["$avgOrderValue", 2]},
-      daysActive: {
-        $divide: [
-          {$subtract: ["$lastOrderDate", "$firstOrderDate"]},
-          1000 * 60 * 60 * 24  // Convert milliseconds to days
-        ]
-      },
-      categoryCount: {$size: "$categories"},
-      preferredCategories: {$slice: ["$categories", 3]}
-    }
-  },
-
-  // Segment customers
-  {
-    $addFields: {
-      segment: {
-        $cond: {
-          if: {$gte: ["$totalSpent", 1000]},
-          then: "high-value",
-          else: {
-            $cond: {
-              if: {$gte: ["$totalSpent", 500]},
-              then: "medium-value",
-              else: "low-value"
-            }
-          }
-        }
-      }
-    }
-  },
-
-  // Sort by total spent
-  {$sort: {totalSpent: -1}}
-]);
-
-// Faceted search (multiple aggregations in one query)
-db.products.aggregate([
-  {
-    $facet: {
-      "products": [
-        {$match: {category: "electronics", price: {$lt: 1000}}},
-        {$sort: {rating: -1}},
-        {$skip: 0},
-        {$limit: 10}
-      ],
-      "categories": [
-        {$group: {_id: "$category", count: {$sum: 1}}},
-        {$sort: {count: -1}}
-      ],
-      "priceRanges": [
-        {
-          $bucket: {
-            groupBy: "$price",
-            boundaries: [0, 100, 500, 1000, 5000],
-            default: "5000+",
-            output: {
-              count: {$sum: 1},
-              products: {$push: "$name"}
-            }
-          }
-        }
-      ]
-    }
-  }
+  {$addFields: {isLarge: {$gte: ["$total", 1000]}}}
 ]);
 ```
+
+**Advanced stages (awareness-level):** Beyond the basics, MongoDB offers powerful operators you'll meet on larger datasets:
+
+- `$facet` — run multiple sub-pipelines in one query (e.g. results + category counts + price buckets for a search page).
+- `$bucket` / `$bucketAuto` — group documents into ranges (histograms).
+- `$redact` — include/exclude content based on field values (access control).
+- Date, math, and conditional operators (`$year`, `$round`, `$cond`, `$switch`) for in-pipeline computation.
 
 ---
 
@@ -971,24 +715,7 @@ db.locations.find({
     }
   }
 });
-
-// Find locations within a polygon
-db.locations.find({
-  coordinates: {
-    $geoWithin: {
-      $geometry: {
-        type: "Polygon",
-        coordinates: [[
-          [-73.97, 40.77],
-          [-73.97, 40.78],
-          [-73.96, 40.78],
-          [-73.96, 40.77],
-          [-73.97, 40.77]
-        ]]
-      }
-    }
-  }
-});
+// $geoWithin can also find points inside a given Polygon.
 ```
 
 **6. Hashed Index:**
@@ -1039,110 +766,26 @@ db.users.createIndex({email: 1}, {name: "user_email_idx"});
 
 ### Q9: How does replication work in MongoDB?
 
-**Answer:** MongoDB replication provides data redundancy and high availability through replica sets.
+**Answer (awareness-level):** MongoDB replication provides data redundancy and high availability through **replica sets** — a group of `mongod` instances holding the same data.
 
-**Replica Set Components:**
-
-```
-┌─────────────────────────────────────────┐
-│         Replica Set                     │
-│  ┌──────────┐  ┌──────────┐            │
-│  │ Primary  │  │ Secondary│            │
-│  │ (Master) │  │  (Slave) │            │
-│  │  Writes  │  │  Reads   │            │
-│  └──────────┘  └──────────┘            │
-│       │              │                 │
-│       └──────┬───────┘                 │
-│              │                         │
-│       ┌──────▼──────┐                  │
-│       │  Arbiter    │                  │
-│       │  (Voting)   │                  │
-│       └─────────────┘                  │
-└─────────────────────────────────────────┘
-```
-
-**Replica Set Configuration:**
+- **Primary**: receives all writes. **Secondaries**: replicate the primary's data and can serve reads. **Arbiter**: votes in elections but holds no data.
+- **Automatic failover**: if the primary goes down, the remaining members elect a new primary (election internals are a senior/DBA topic).
+- **Read preference** controls which member serves reads: `primary` (default), `primaryPreferred`, `secondary`, `secondaryPreferred`, `nearest`.
+- **Write concern** (`w`) controls write acknowledgement: `w: 1` (primary only), `w: "majority"` (durable across most members), optional `j: true` for journaling. Higher concern = more durability, more latency.
 
 ```javascript
-// Initialize replica set
+// Initialize a 3-member replica set
 rs.initiate({
   _id: "myReplicaSet",
   members: [
-    {_id: 0, host: "mongodb1.example.com:27017"},
-    {_id: 1, host: "mongodb2.example.com:27017"},
-    {_id: 2, host: "mongodb3.example.com:27017", arbiterOnly: true}
+    {_id: 0, host: "mongodb1:27017"},
+    {_id: 1, host: "mongodb2:27017"},
+    {_id: 2, host: "mongodb3:27017"}
   ]
 });
 
-// Check replica set status
-rs.status();
-
-// Check replica set configuration
-rs.conf();
-
-// Add member to replica set
-rs.add("mongodb4.example.com:27017");
-
-// Add arbiter
-rs.addArb("mongodb5.example.com:27017");
-
-// Remove member
-rs.remove("mongodb2.example.com:27017");
-
-// Step down primary (force election)
-rs.stepDown();
-```
-
-**Read Preferences:**
-
-```javascript
-// Read from primary (default)
-db.collection.find().readPref("primary");
-
-// Read from primary if available, otherwise secondary
-db.collection.find().readPref("primaryPreferred");
-
-// Read from secondary
-db.collection.find().readPref("secondary");
-
-// Read from secondary if available, otherwise primary
-db.collection.find().readPref("secondaryPreferred");
-
-// Read from nearest member (based on network latency)
-db.collection.find().readPref("nearest");
-
-// Set read preference for connection
-conn = new Mongo("mongodb://mongodb1,mongodb2,mongodb3/mydb?readPreference=secondary");
-```
-
-**Write Concern:**
-
-```javascript
-// Write concern levels
-db.collection.insertOne(
-  {name: "John"},
-  {writeConcern: {w: 1}}  // Default: acknowledge write from primary
-);
-
-db.collection.insertOne(
-  {name: "John"},
-  {writeConcern: {w: 2}}  // Acknowledge from 2 members
-);
-
-db.collection.insertOne(
-  {name: "John"},
-  {writeConcern: {w: "majority"}}  // Acknowledge from majority of members
-);
-
-db.collection.insertOne(
-  {name: "John"},
-  {writeConcern: {w: 1, j: true}}  // Acknowledge write + journaling
-);
-
-db.collection.insertOne(
-  {name: "John"},
-  {writeConcern: {w: 1, j: true, wtimeout: 5000}}  // Timeout after 5 seconds
-);
+// Durable write
+db.collection.insertOne({name: "John"}, {writeConcern: {w: "majority", j: true}});
 ```
 
 ---
@@ -1151,84 +794,16 @@ db.collection.insertOne(
 
 ### Q10: How does sharding work in MongoDB?
 
-**Answer:** Sharding distributes data across multiple machines to support large datasets and high throughput operations.
+**Answer (awareness-level):** Sharding distributes data across multiple machines (**shards**) to support large datasets and high throughput. It is the mechanism behind MongoDB's horizontal scaling.
 
-**Sharding Components:**
-
-```
-┌─────────────────────────────────────────┐
-│         Application                     │
-└──────────────────┬──────────────────────┘
-                   │
-┌──────────────────▼──────────────────────┐
-│         mongos (Query Router)           │
-│         (Multiple instances)             │
-└──────────────────┬──────────────────────┘
-                   │
-        ┌──────────┼──────────┐
-        │          │          │
-┌───────▼────┐ ┌──▼──────┐ ┌▼──────────┐
-│  Shard 1   │ │ Shard 2 │ │ Shard 3  │
-│ (Primary)  │ │(Primary)│ │(Primary) │
-│  ┌───────┐ ││ ┌──────┐ ││ ┌───────┐ │
-│  │Sec 1  │ ││ │Sec 1 │ ││ │Sec 1  │ │
-│  │Sec 2  │ ││ │Sec 2 │ ││ │Sec 2  │ │
-│  └───────┘ ││ └──────┘ ││ └───────┘ │
-└────────────┘ └─────────┘ └───────────┘
-        │             │            │
-        └─────────────┼────────────┘
-                      │
-        ┌─────────────▼─────────────┐
-        │    Config Servers         │
-        │  (3-member replica set)   │
-        └───────────────────────────┘
-```
-
-**Shard Keys:**
+- **Components**: **Shards** (each a replica set holding a subset of data), **mongos** (query router the app connects to), and **config servers** (store cluster metadata).
+- **Shard key**: the field(s) MongoDB uses to split data into chunks across shards. Choosing it well is critical and a senior/DBA concern.
+- **Strategies**: *range-based* (good for range queries, can distribute unevenly) vs *hashed* (even distribution, poor for range queries).
 
 ```javascript
-// Enable sharding on database
 sh.enableSharding("mydb");
-
-// Shard collection with range-based sharding
-sh.shardCollection("mydb.users", {_id: 1});
-
-// Shard collection with hash-based sharding (better distribution)
-sh.shardCollection("mydb.users", {userId: "hashed"});
-
-// Shard collection with compound shard key
-sh.shardCollection("mydb.orders", {userId: 1, orderDate: -1});
-
-// Check shard status
+sh.shardCollection("mydb.users", {userId: "hashed"});  // hashed sharding
 sh.status();
-
-// List shards
-sh.getShardMap();
-
-// Move chunk manually (rarely needed)
-sh.moveChunk("mydb.users", {_id: ObjectId("...")}, "shard2");
-```
-
-**Sharding Strategies:**
-
-```javascript
-// Range-based sharding
-// Good for: Range queries on shard key
-// Bad for: Uneven data distribution
-sh.shardCollection("mydb.logs", {timestamp: 1});
-
-// Hash-based sharding
-// Good for: Even data distribution, random access
-// Bad for: Range queries on shard key
-sh.shardCollection("mydb.users", {userId: "hashed"});
-
-// Ranged sharding with tags (data locality)
-// Tag specific ranges to specific shards
-sh.addShardTag("shard1", "US-East");
-sh.addShardTag("shard2", "US-West");
-
-sh.addTagRange("mydb.users", {region: "East"}, {region: "East"}, "US-East");
-sh.addTagRange("mydb.users", {region: "West"}, {region: "West"}, "US-West");
 ```
 
 ---
@@ -1302,83 +877,9 @@ db.products.find(
 );
 ```
 
-**Schema Optimization:**
+**Schema Optimization (recap):** Embed frequently-accessed data, use correct BSON types (numbers/dates, not strings), keep documents under 16MB, and avoid unbounded arrays. See the Data Modeling section for details.
 
-```javascript
-// 1. Embed frequently accessed data
-{
-  "_id": "order1",
-  "userId": "user1",
-  "items": [
-    {
-      "productId": "prod1",
-      "name": "Laptop",  // Embedded product name
-      "price": 999.99    // Embedded price
-    }
-  ]
-}
-
-// 2. Use appropriate data types
-{
-  "price": 999.99,                    // Number, not string
-  "createdAt": ISODate("2024-01-15"), // Date, not string
-  "count": 100,                       // Number, not string
-  "isActive": true                    // Boolean, not string
-}
-
-// 3. Limit document size (<16MB)
-{
-  "_id": "user1",
-  "recentActivity": [],  // Limit to recent items
-  // Store full history in separate collection
-}
-
-// 4. Use arrays efficiently
-// ❌ BAD: Unbounded arrays
-{
-  "_id": "user1",
-  "allNotifications": []  // Can grow indefinitely
-}
-
-// ✅ GOOD: Bounded arrays or separate collection
-{
-  "_id": "user1",
-  "recentNotifications": []  // Limit to last N
-}
-```
-
-**Configuration Optimization:**
-
-```javascript
-// MongoDB configuration (mongod.conf)
-storage:
-  dbPath: /var/lib/mongodb
-  journal:
-    enabled: true
-  wiredTiger:
-    engineConfig:
-      cacheSizeGB: 4  # 50-60% of available RAM
-    collectionConfig:
-      blockCompressor: snappy
-    indexConfig:
-      prefixCompression: true
-
-systemLog:
-  destination: file
-  path: /var/log/mongodb/mongod.log
-  logAppend: true
-
-net:
-  port: 27017
-  bindIp: 0.0.0.0
-
-operationProfiling:
-  mode: slowOp  # or all, none
-  slowOpThresholdMs: 100
-
-security:
-  authorization: enabled
-```
+**Configuration (awareness-level):** Production tuning lives in `mongod.conf` — notably the WiredTiger cache size (set to ~50% of RAM), journaling, and `operationProfiling` to log slow queries. This is largely a DBA/ops concern.
 
 ---
 
@@ -1432,53 +933,7 @@ try {
 }
 ```
 
-**Transaction with Retry Logic:**
-
-```javascript
-async function runTransactionWithRetry(txnFunc, session) {
-  while (true) {
-    try {
-      await txnFunc(session);  // Perform transaction
-      break;  // Success, exit retry loop
-    } catch (error) {
-      if (error.errorLabels && error.errorLabels.includes('TransientTransactionError')) {
-        console.log("Transient transaction error, retrying...");
-        continue;  // Retry
-      } else {
-        throw error;  // Non-retryable error
-      }
-    }
-  }
-}
-
-async function commitTransactionWithRetry(session) {
-  while (true) {
-    try {
-      await session.commitTransaction();
-      break;  // Success
-    } catch (error) {
-      if (error.errorLabels && error.errorLabels.includes('UnknownTransactionCommitResult')) {
-        console.log("Unknown commit result, retrying commit...");
-        continue;  // Retry commit
-      } else {
-        throw error;  // Non-retryable error
-      }
-    }
-  }
-}
-
-// Usage
-const session = client.startSession();
-try {
-  await runTransactionWithRetry(async (session) => {
-    session.startTransaction();
-    // Transaction operations...
-    await commitTransactionWithRetry(session);
-  }, session);
-} finally {
-  session.endSession();
-}
-```
+**Retry Logic (awareness-level):** Production transactions should retry on transient errors. The driver may flag errors with `TransientTransactionError` (retry the whole transaction) or `UnknownTransactionCommitResult` (retry just the commit). Most official drivers provide a `withTransaction()` helper that handles this retry loop automatically.
 
 **Transaction Considerations:**
 
@@ -1548,39 +1003,14 @@ try {
 
 ### Q14: What are change streams in MongoDB?
 
-**Answer:** Change streams allow applications to access real-time data changes without the complexity and risk of tailing the oplog.
-
-**Basic Change Stream:**
+**Answer (awareness-level):** Change streams let applications subscribe to real-time data changes (inserts, updates, deletes) without tailing the oplog directly. Useful for event-driven features, cache invalidation, and notifications. They support filtering with an aggregation pipeline and resuming after disconnects via a resume token (internals are an advanced topic).
 
 ```javascript
-// Watch for changes in a collection
+// Watch a collection for changes
 const changeStream = db.collection('users').watch();
 
 changeStream.on('change', (change) => {
-  console.log('Change detected:', change);
-
-  if (change.operationType === 'insert') {
-    console.log('New document:', change.fullDocument);
-  } else if (change.operationType === 'update') {
-    console.log('Updated fields:', change.updateDescription.updatedFields);
-  } else if (change.operationType === 'delete') {
-    console.log('Deleted document ID:', change.documentKey._id);
-  }
-});
-
-// Watch with filter
-const changeStream = db.collection('orders').watch([
-  {$match: {'fullDocument.status': 'completed'}}
-]);
-
-// Watch for database changes
-const changeStream = db.watch();
-
-// Resume after disconnect
-const changeStream = db.collection('users').watch([], {resumeAfter: resumeToken});
-changeStream.on('change', (change) => {
-  resumeToken = change._id;
-  // Process change...
+  console.log(change.operationType, change.fullDocument);
 });
 ```
 
@@ -1710,45 +1140,6 @@ db.users.aggregate([{$indexStats: {}}]);
 
 ## Short Revision Summary
 
-### Key MongoDB Concepts
-
-**Data Model:**
-- Document-oriented (BSON/JSON)
-- Flexible schema
-- Embedding vs referencing
-- Hybrid approach
-
-**CRUD Operations:**
-- Create: insertOne(), insertMany()
-- Read: find(), findOne()
-- Update: updateOne(), updateMany(), replaceOne()
-- Delete: deleteOne(), deleteMany()
-
-**Aggregation Framework:**
-- Pipeline-based data processing
-- Stages: $match, $group, $project, $lookup, $unwind, $sort, $limit, $skip
-- Powerful data transformations
-
-**Indexing:**
-- Single field, compound, multikey
-- Text, geospatial, hashed indexes
-- Index management and monitoring
-
-**Replication:**
-- Replica sets for high availability
-- Primary-secondary architecture
-- Automatic failover
-
-**Sharding:**
-- Horizontal scaling
-- Shard keys (range, hash)
-- Config servers and mongos
-
-**Transactions:**
-- Multi-document ACID transactions
-- Session-based
-- Retry logic for transient errors
-
 ### Quick Reference
 
 **Create Index:**
@@ -1787,25 +1178,3 @@ changeStream.on('change', (change) => {
   console.log(change);
 });
 ```
-
-### Critical Points for Interviews:
-
-1. **BSON vs JSON**: BSON is binary, supports more data types, faster for storage and querying
-2. **Embedding vs Referencing**: Embed for one-to-few, reference for one-to-many/many-to-many
-3. **Index Types**: Choose based on query patterns (single, compound, multikey, text, geospatial)
-4. **Aggregation**: Pipeline approach for data transformation and analytics
-5. **Replica Sets**: Provide high availability with automatic failover
-6. **Sharding**: Horizontal scaling with shard keys and mongos routers
-7. **Transactions**: Multi-document ACID transactions with retry logic
-8. **Performance**: Indexing, query optimization, appropriate data modeling
-9. **Change Streams**: Real-time data change notifications
-10. **Schema Design**: Based on query patterns, not normalization
-
----
-
-**Next Topics to Study:**
-- General Database Concepts (ACID, Normalization, SQL Fundamentals)
-- Database Design Patterns
-- NoSQL vs SQL Decision Making
-- Cloud Database Services (AWS MongoDB, Atlas, etc.)
-- Database Security and Compliance

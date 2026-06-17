@@ -1,21 +1,5 @@
 # Java Developer Interview Questions & Answers
 
-## Table of Contents
-1. [Core Java Fundamentals](#core-java-fundamentals)
-2. [Object-Oriented Programming](#object-oriented-programming)
-3. [Collections Framework](#collections-framework)
-4. [Exception Handling](#exception-handling)
-5. [Multithreading & Concurrency](#multithreading--concurrency)
-6. [String Handling](#string-handling)
-7. [Java 8+ Features](#java-8-features)
-8. [JVM Internals](#jvm-internals)
-9. [Design Patterns](#design-patterns)
-10. [Common Coding Questions](#common-coding-questions)
-11. [Streams API](#streams-api)
-12. [Java Best Practices](#java-best-practices)
-
----
-
 ## Core Java Fundamentals
 
 ### Q1: What is the difference between JDK, JRE, and JVM?
@@ -359,21 +343,15 @@ public interface Flyable {
     }
 }
 
-// Class can extend abstract class and implement interface
+// A class can extend an abstract class AND implement an interface
 public class Bird extends Animal implements Flyable {
-    public Bird(String name, int age) {
-        super(name, age);
-    }
+    public Bird(String name, int age) { super(name, age); }
 
     @Override
-    public void makeSound() {
-        System.out.println("Chirp chirp");
-    }
+    public void makeSound() { System.out.println("Chirp chirp"); }
 
     @Override
-    public void fly() {
-        System.out.println("Flying high");
-    }
+    public void fly() { System.out.println("Flying high"); }
 }
 ```
 
@@ -456,51 +434,22 @@ class Animal {
     private String name;
     private int age;
 
-    // Constructor 1
     public Animal(String name) {
-        this(name, 0);  // Calls Constructor 2
+        this(name, 0);  // this() - calls the other constructor in this class
     }
 
-    // Constructor 2
     public Animal(String name, int age) {
         this.name = name;
         this.age = age;
-    }
-
-    public void printDetails() {
-        System.out.println("Name: " + name + ", Age: " + age);
     }
 }
 
 class Dog extends Animal {
     private String breed;
 
-    // Constructor 1
-    public Dog(String name) {
-        super(name);  // Calls parent constructor
-        this.breed = "Unknown";
-    }
-
-    // Constructor 2
     public Dog(String name, int age, String breed) {
-        super(name, age);  // Calls parent constructor
+        super(name, age);  // super() - calls the parent constructor
         this.breed = breed;
-    }
-
-    @Override
-    public void printDetails() {
-        super.printDetails();
-        System.out.println("Breed: " + breed);
-    }
-}
-
-public class Main {
-    public static void main(String[] args) {
-        Dog dog1 = new Dog("Max");
-        Dog dog2 = new Dog("Buddy", 3, "Labrador");
-
-        dog1.printDetails();
-        dog2.printDetails();
     }
 }
 ```
@@ -525,13 +474,7 @@ public class Main {
 ```java
 class Parent {
     protected String name = "Parent";
-    public Parent() {
-        System.out.println("Parent constructor");
-    }
-
-    public void display() {
-        System.out.println("Parent display");
-    }
+    public void display() { System.out.println("Parent display"); }
 }
 
 class Child extends Parent {
@@ -539,20 +482,17 @@ class Child extends Parent {
 
     public Child() {
         super();  // Calls parent constructor
-        System.out.println("Child constructor");
     }
 
     public void showDetails() {
-        System.out.println(this.name);    // Prints "Child"
-        System.out.println(super.name);    // Prints "Parent"
-        this.display();                    // Calls Child's display
-        super.display();                   // Calls Parent's display
+        System.out.println(this.name);    // "Child"
+        System.out.println(super.name);   // "Parent"
+        this.display();                   // Calls Child's display
+        super.display();                  // Calls Parent's display
     }
 
     @Override
-    public void display() {
-        System.out.println("Child display");
-    }
+    public void display() { System.out.println("Child display"); }
 }
 ```
 
@@ -649,10 +589,7 @@ treeMap.put("A", 1);
 treeMap.put("B", 2);
 System.out.println(treeMap);  // {A=1, B=2, C=3} - sorted order
 
-// TreeMap specific methods
-System.out.println(treeMap.firstKey());   // A
-System.out.println(treeMap.lastKey());    // C
-System.out.println(treeMap.headMap("B")); // {A=1}
+// TreeMap also offers firstKey(), lastKey(), headMap(), tailMap()
 ```
 
 ### Q13: What is the difference between HashSet and TreeSet?
@@ -689,10 +626,7 @@ treeSet.add(1);
 treeSet.add(2);
 System.out.println(treeSet);  // [1, 2, 3] - sorted order
 
-// TreeSet specific methods
-System.out.println(treeSet.first());  // 1
-System.out.println(treeSet.last());   // 3
-System.out.println(treeSet.headSet(2));  // [1]
+// TreeSet also offers first(), last(), headSet(), tailSet()
 ```
 
 ### Q14: What is the difference between List, Set, and Map?
@@ -773,17 +707,12 @@ while (failFast.hasNext()) {
     }
 }
 
-// Fail-safe iterator
-List<String> copyOnWriteList = new CopyOnWriteArrayList<>();
-copyOnWriteList.add("A");
-copyOnWriteList.add("B");
-copyOnWriteList.add("C");
-
+// Fail-safe iterator - works on a copy, so no exception
+List<String> copyOnWriteList = new CopyOnWriteArrayList<>(List.of("A", "B", "C"));
 Iterator<String> failSafe = copyOnWriteList.iterator();
 while (failSafe.hasNext()) {
-    String element = failSafe.next();
-    if (element.equals("B")) {
-        copyOnWriteList.remove("A");  // No exception
+    if (failSafe.next().equals("B")) {
+        copyOnWriteList.remove("A");  // No ConcurrentModificationException
     }
 }
 ```
@@ -866,25 +795,16 @@ public void readFileSafely(String filename) {
 **Example:**
 ```java
 public void example() throws IOException {
-    FileReader reader = null;
     try {
-        reader = new FileReader("file.txt");
         // Code that might throw exceptions
-        throw new IOException("Custom error");  // Explicit throw
+        throw new IOException("Custom error");  // 'throw' - explicit throw
     } catch (FileNotFoundException e) {
         System.out.println("File not found");
         throw e;  // Re-throw exception
     } catch (IOException e) {
         System.out.println("IO error");
     } finally {
-        // Always executes
-        if (reader != null) {
-            try {
-                reader.close();
-            } catch (IOException e) {
-                System.out.println("Error closing file");
-            }
-        }
+        System.out.println("Always executes - cleanup goes here");
     }
 }
 ```
@@ -961,30 +881,12 @@ public class InvalidAgeException extends RuntimeException {
     }
 }
 
-// Using custom exceptions
-public class BankAccount {
-    private double balance;
-
-    public BankAccount(double initialBalance) {
-        this.balance = initialBalance;
+// Using a custom exception
+public void withdraw(double amount) throws InsufficientFundsException {
+    if (amount > balance) {
+        throw new InsufficientFundsException("Insufficient funds", amount, balance);
     }
-
-    public void withdraw(double amount) throws InsufficientFundsException {
-        if (amount > balance) {
-            throw new InsufficientFundsException(
-                "Insufficient funds",
-                amount,
-                balance
-            );
-        }
-        balance -= amount;
-    }
-
-    public void setAge(int age) {
-        if (age < 0 || age > 120) {
-            throw new InvalidAgeException("Invalid age: " + age);
-        }
-    }
+    balance -= amount;
 }
 ```
 
@@ -1056,36 +958,16 @@ Throwable
 
 **Example:**
 ```java
-// Creating threads
+// Creating and starting a thread with a Runnable lambda
 public class ThreadExample {
     public static void main(String[] args) {
-        // Using Runnable interface
-        Thread thread1 = new Thread(() -> {
+        Thread worker = new Thread(() -> {
             for (int i = 0; i < 5; i++) {
-                System.out.println("Thread 1: " + i);
-                try {
-                    Thread.sleep(100);
-                } catch (InterruptedException e) {
-                    e.printStackTrace();
-                }
+                System.out.println("Worker: " + i);
             }
         });
 
-        // Using Thread class
-        Thread thread2 = new Thread(() -> {
-            for (int i = 0; i < 5; i++) {
-                System.out.println("Thread 2: " + i);
-                try {
-                    Thread.sleep(100);
-                } catch (InterruptedException e) {
-                    e.printStackTrace();
-                }
-            }
-        });
-
-        thread1.start();
-        thread2.start();
-
+        worker.start();
         System.out.println("Main thread continues...");
     }
 }
@@ -1114,28 +996,15 @@ RUNNABLE --completes--> TERMINATED
 
 **Example:**
 ```java
-public class ThreadStates {
-    public static void main(String[] args) throws InterruptedException {
-        Thread thread = new Thread(() -> {
-            try {
-                Thread.sleep(1000);  // TIMED_WAITING
-                synchronized (ThreadStates.class) {
-                    ThreadStates.class.wait();  // WAITING
-                }
-            } catch (InterruptedException e) {
-                e.printStackTrace();
-            }
-        });
+Thread thread = new Thread(() -> {
+    try { Thread.sleep(1000); } catch (InterruptedException e) {}
+});
 
-        System.out.println("State after creation: " + thread.getState());  // NEW
-
-        thread.start();
-        System.out.println("State after start: " + thread.getState());  // RUNNABLE
-
-        Thread.sleep(100);
-        System.out.println("State during sleep: " + thread.getState());  // TIMED_WAITING
-    }
-}
+System.out.println(thread.getState());  // NEW
+thread.start();
+System.out.println(thread.getState());  // RUNNABLE
+Thread.sleep(100);
+System.out.println(thread.getState());  // TIMED_WAITING (during sleep)
 ```
 
 ### Q23: What is the difference between `wait()` and `sleep()`?
@@ -1158,38 +1027,27 @@ public class ThreadStates {
 
 **Example:**
 ```java
-public class WaitSleepExample {
-    private static final Object lock = new Object();
+final Object lock = new Object();
 
-    public static void main(String[] args) {
-        Thread waitingThread = new Thread(() -> {
-            synchronized (lock) {
-                try {
-                    System.out.println("Thread waiting...");
-                    lock.wait();  // Releases lock
-                    System.out.println("Thread resumed");
-                } catch (InterruptedException e) {
-                    e.printStackTrace();
-                }
-            }
-        });
-
-        Thread notifyingThread = new Thread(() -> {
-            synchronized (lock) {
-                try {
-                    Thread.sleep(2000);  // Doesn't release lock
-                    System.out.println("Thread notifying...");
-                    lock.notify();  // Wakes up waiting thread
-                } catch (InterruptedException e) {
-                    e.printStackTrace();
-                }
-            }
-        });
-
-        waitingThread.start();
-        notifyingThread.start();
+// Waiting thread - releases the lock while waiting
+new Thread(() -> {
+    synchronized (lock) {
+        try {
+            lock.wait();              // Releases lock, waits for notify()
+            System.out.println("Resumed");
+        } catch (InterruptedException e) {}
     }
-}
+}).start();
+
+// Notifying thread
+new Thread(() -> {
+    synchronized (lock) {
+        try {
+            Thread.sleep(2000);      // Does NOT release the lock
+            lock.notify();           // Wakes up the waiting thread
+        } catch (InterruptedException e) {}
+    }
+}).start();
 ```
 
 ### Q24: What is the difference between `synchronized` method and block?
@@ -1225,28 +1083,13 @@ public class SynchronizationExample {
     // Synchronized block - more precise locking
     public void method2() {
         System.out.println("Method 2 start");
-        // Only this block is synchronized
+        // Only this block is synchronized (here, on 'this';
+        // a dedicated private lock object can be used for finer control)
         synchronized (this) {
             // Critical section
         }
         System.out.println("Method 2 end");
     }
-
-    // Synchronized on different objects
-    public void method3() {
-        synchronized (lock1) {
-            // Critical section 1
-        }
-
-        // Non-critical code
-
-        synchronized (lock2) {
-            // Critical section 2
-        }
-    }
-
-    private final Object lock1 = new Object();
-    private final Object lock2 = new Object();
 }
 ```
 
@@ -1270,40 +1113,20 @@ public class VolatileExample {
         new Thread(() -> {
             while (running) {
                 // Do some work
-                System.out.println("Thread running...");
-                try {
-                    Thread.sleep(100);
-                } catch (InterruptedException e) {
-                    e.printStackTrace();
-                }
             }
             System.out.println("Thread stopped");
         }).start();
     }
 
     public void stop() {
-        running = false;  // Change is immediately visible to all threads
-    }
-
-    public static void main(String[] args) throws InterruptedException {
-        VolatileExample example = new VolatileExample();
-        example.start();
-
-        Thread.sleep(1000);
-        example.stop();
+        running = false;  // Change is immediately visible to the other thread
     }
 }
 ```
 
-**When to use volatile:**
-- Flags to control thread execution
-- Status indicators
-- Simple read-write operations
+**When to use volatile:** flags/status indicators and simple read-write operations.
 
-**When NOT to use volatile:**
-- Compound operations (like increment)
-- When you need atomicity
-- Complex synchronization scenarios
+**When NOT to use volatile:** compound operations (like increment) or anything needing atomicity — use `synchronized` or atomic classes instead.
 
 ---
 
@@ -1496,23 +1319,12 @@ names.stream()
 names.forEach(System.out::println);
 
 // Equivalent lambda
-names.forEach(name -> System.out::println(name));
+names.forEach(name -> System.out.println(name));
 ```
 
 **Functional Interfaces:**
-- Interfaces with single abstract method
-- `@FunctionalInterface` annotation
-- Examples: Predicate, Function, Consumer, Supplier
-
-```java
-@FunctionalInterface
-interface Calculator {
-    int calculate(int a, int b);
-}
-
-Calculator add = (a, b) -> a + b;
-Calculator multiply = (a, b) -> a * b;
-```
+- Interfaces with a single abstract method, marked `@FunctionalInterface`
+- Examples: Predicate, Function, Consumer, Supplier (covered in detail in Q30)
 
 **Optional:**
 - Container for optional values
@@ -1550,16 +1362,7 @@ LocalDateTime dateTime = LocalDateTime.now();
 ZonedDateTime zonedDateTime = ZonedDateTime.now(ZoneId.of("America/New_York"));
 ```
 
-**CompletableFuture:**
-- Asynchronous programming
-- Better than Future
-- Chainable operations
-
-```java
-CompletableFuture.supplyAsync(() -> "Hello")
-               .thenApplyAsync(String::toUpperCase)
-               .thenAcceptAsync(System.out::println);
-```
+**CompletableFuture:** asynchronous programming with chainable operations (an improved alternative to `Future`). Senior-level topic — be aware it exists for async pipelines.
 
 ### Q30: What are functional interfaces in Java 8?
 
@@ -1683,28 +1486,11 @@ public class FunctionalInterfaceExample {
 
 - **Metaspace**: Class metadata (replaced PermGen in Java 8+)
 
-**GC Algorithms:**
-
-**Serial GC:**
-- Single-threaded collector
-- Good for small applications
-- Causes pauses
-
-**Parallel GC:**
-- Multi-threaded young generation collector
-- Uses multiple threads for young generation GC
-- Still uses single thread for old generation GC
-
-**G1 GC (Garbage First):**
-- Modern collector
-- Divides heap into regions
-- Prioritizes regions with most garbage
-- Better for large heaps
-
-**ZGC (Z Garbage Collector):**
-- Low-latency collector
-- Handles multi-terabyte heaps
-- Pause times don't exceed a few milliseconds
+**GC Algorithms (awareness level):**
+- **Serial GC**: single-threaded, good for small apps, causes pauses.
+- **Parallel GC**: multi-threaded young generation collection (higher throughput).
+- **G1 GC**: modern default, divides heap into regions and collects the ones with most garbage first; good for large heaps.
+- **ZGC**: low-latency collector for very large heaps with sub-millisecond pauses (specialist use).
 
 **Example:**
 ```java
@@ -1713,24 +1499,9 @@ System.gc();
 
 // Memory analysis
 Runtime runtime = Runtime.getRuntime();
-
 System.out.println("Max Memory: " + runtime.maxMemory() / (1024 * 1024) + " MB");
-System.out.println("Total Memory: " + runtime.totalMemory() / (1024 * 1024) + " MB");
-System.out.println("Free Memory: " + runtime.freeMemory() / (1024 * 1024) + " MB");
 System.out.println("Used Memory: " +
     (runtime.totalMemory() - runtime.freeMemory()) / (1024 * 1024) + " MB");
-
-// Object finalization
-class MyObject {
-    @Override
-    protected void finalize() throws Throwable {
-        try {
-            System.out.println("Object is being finalized");
-        } finally {
-            super.finalize();
-        }
-    }
-}
 ```
 
 ### Q32: What is the Java Memory Model?
@@ -1751,28 +1522,7 @@ class MyObject {
 - Grows and shrinks with method calls
 - Automatically managed
 
-**Memory Areas:**
-
-1. **Stack Area**
-   - Method frames
-   - Local variables
-   - Partial results
-
-2. **Heap Area**
-   - Objects
-   - Arrays
-   - Class instances
-
-3. **Method Area**
-   - Class data
-   - Static variables
-   - Method code
-
-4. **PC Registers**
-   - Program counter for each thread
-
-5. **Native Method Stack**
-   - Native methods support
+**Other runtime areas:** Method Area (class data, static variables, method code), PC Registers (program counter per thread), and the Native Method Stack (for native method calls).
 
 **Example:**
 ```java
@@ -1829,25 +1579,12 @@ public class MemoryModelExample {
 
 **Example:**
 ```java
-public class ClassLoaderExample {
-    public static void main(String[] args) {
-        // Get class loaders
-        ClassLoader classLoader = ClassLoaderExample.class.getClassLoader();
+// Inspect the class loader hierarchy and load a class dynamically
+ClassLoader cl = MyClass.class.getClassLoader();
+System.out.println(cl);              // Application/System ClassLoader
+System.out.println(cl.getParent());  // Platform ClassLoader
 
-        System.out.println("Class Loader: " + classLoader);
-        System.out.println("Parent Class Loader: " + classLoader.getParent());
-        System.out.println("Grandparent Class Loader: " +
-            classLoader.getParent().getParent());
-
-        // Load a class dynamically
-        try {
-            Class<?> clazz = Class.forName("java.lang.String");
-            System.out.println("Loaded class: " + clazz.getName());
-        } catch (ClassNotFoundException e) {
-            e.printStackTrace();
-        }
-    }
-}
+Class<?> clazz = Class.forName("java.lang.String");
 ```
 
 ---
@@ -1949,10 +1686,7 @@ class Subject {
 
 class ConcreteObserver implements Observer {
     private String name;
-
-    public ConcreteObserver(String name) {
-        this.name = name;
-    }
+    public ConcreteObserver(String name) { this.name = name; }
 
     @Override
     public void update(String message) {
@@ -1963,7 +1697,6 @@ class ConcreteObserver implements Observer {
 // Usage
 Subject subject = new Subject();
 subject.attach(new ConcreteObserver("Observer 1"));
-subject.attach(new ConcreteObserver("Observer 2"));
 subject.notifyObservers("Hello Observers!");
 ```
 
@@ -1977,15 +1710,11 @@ interface PaymentStrategy {
 }
 
 class CreditCardPayment implements PaymentStrategy {
-    public void pay(int amount) {
-        System.out.println("Paid " + amount + " using Credit Card");
-    }
+    public void pay(int amount) { System.out.println("Paid " + amount + " by Credit Card"); }
 }
 
 class PayPalPayment implements PaymentStrategy {
-    public void pay(int amount) {
-        System.out.println("Paid " + amount + " using PayPal");
-    }
+    public void pay(int amount) { System.out.println("Paid " + amount + " by PayPal"); }
 }
 
 class ShoppingCart {
@@ -2012,40 +1741,9 @@ cart.checkout(100);
 
 **Thread-safe Singleton Implementations:**
 
-**1. Eager Initialization:**
-```java
-public class EagerSingleton {
-    private static final EagerSingleton instance = new EagerSingleton();
+Besides the eager (`private static final` field) and the double-checked locking approach shown in Q34, the two preferred forms are:
 
-    private EagerSingleton() {}
-
-    public static EagerSingleton getInstance() {
-        return instance;
-    }
-}
-```
-
-**2. Lazy Initialization with Double-Checked Locking:**
-```java
-public class LazySingleton {
-    private static volatile LazySingleton instance;
-
-    private LazySingleton() {}
-
-    public static LazySingleton getInstance() {
-        if (instance == null) {
-            synchronized (LazySingleton.class) {
-                if (instance == null) {
-                    instance = new LazySingleton();
-                }
-            }
-        }
-        return instance;
-    }
-}
-```
-
-**3. Static Inner Class (Bill Pugh Solution):**
+**1. Static Inner Class (Bill Pugh Solution):**
 ```java
 public class StaticInnerClassSingleton {
     private StaticInnerClassSingleton() {}
@@ -2061,7 +1759,7 @@ public class StaticInnerClassSingleton {
 }
 ```
 
-**4. Enum Singleton:**
+**2. Enum Singleton (simplest, serialization-safe):**
 ```java
 public enum EnumSingleton {
     INSTANCE;
@@ -2194,30 +1892,11 @@ public class StringReverser {
         return new String(chars);
     }
 
-    // Method 3: Using recursion
-    public static String reverseUsingRecursion(String str) {
-        if (str.length() <= 1) {
-            return str;
-        }
-        return reverseUsingRecursion(str.substring(1)) + str.charAt(0);
-    }
-
-    // Method 4: Using StringBuilder with manual iteration
-    public static String reverseManually(String str) {
-        StringBuilder reversed = new StringBuilder();
-        for (int i = str.length() - 1; i >= 0; i--) {
-            reversed.append(str.charAt(i));
-        }
-        return reversed.toString();
-    }
-
     public static void main(String[] args) {
         String str = "Hello World";
 
         System.out.println(reverseUsingBuilder(str));
         System.out.println(reverseUsingCharArray(str));
-        System.out.println(reverseUsingRecursion(str));
-        System.out.println(reverseManually(str));
     }
 }
 ```
@@ -2265,15 +1944,10 @@ public class DuplicateFinder {
 
     public static void main(String[] args) {
         Integer[] numbers = {1, 2, 3, 4, 5, 2, 3, 6, 7, 3};
-        String[] names = {"John", "Jane", "Bob", "John", "Alice", "Jane"};
 
-        System.out.println("Duplicate numbers: " + findDuplicatesUsingHashSet(numbers));
-        System.out.println("Duplicate names: " + findDuplicatesUsingHashSet(names));
-
-        System.out.println("Number occurrences: " + countOccurrences(numbers));
-        System.out.println("Name occurrences: " + countOccurrences(names));
-
-        System.out.println("Duplicates using streams: " + findDuplicatesUsingStreams(numbers));
+        System.out.println("Duplicates: " + findDuplicatesUsingHashSet(numbers));
+        System.out.println("Occurrences: " + countOccurrences(numbers));
+        System.out.println("Via streams: " + findDuplicatesUsingStreams(numbers));
     }
 }
 ```
@@ -2304,22 +1978,6 @@ public class ArraySorter {
     // Method 4: Using Collections.sort (for Lists)
     public static void sortList(List<Integer> list) {
         Collections.sort(list);  // Ascending order
-    }
-
-    // Method 5: Custom sorting logic
-    public static void sortCustom(int[] arr) {
-        // Bubble sort example (for learning)
-        int n = arr.length;
-        for (int i = 0; i < n - 1; i++) {
-            for (int j = 0; j < n - i - 1; j++) {
-                if (arr[j] > arr[j + 1]) {
-                    // Swap
-                    int temp = arr[j];
-                    arr[j] = arr[j + 1];
-                    arr[j + 1] = temp;
-                }
-            }
-        }
     }
 
     public static void main(String[] args) {
@@ -2516,16 +2174,9 @@ Map<Integer, List<String>> groupedByLength = names.stream()
 List<Integer> numbers = Arrays.asList(5, 2, 8, 1, 9, 3);
 
 List<Integer> sorted = numbers.stream()
-                               .sorted()
-                               .collect(Collectors.toList());
-
-// [1, 2, 3, 5, 8, 9]
-
-List<Integer> reverseSorted = numbers.stream()
-                                     .sorted(Comparator.reverseOrder())
-                                     .collect(Collectors.toList());
-
-// [9, 8, 5, 3, 2, 1]
+                               .sorted()                          // natural order
+                               .collect(Collectors.toList());     // [1, 2, 3, 5, 8, 9]
+// Use .sorted(Comparator.reverseOrder()) for descending order.
 ```
 
 ---
@@ -2646,60 +2297,14 @@ try (FileReader reader = new FileReader("file.txt");
 } catch (IOException e) {
     e.printStackTrace();
 }
-// Resources are automatically closed
-
-// Bad - Manual resource management
-FileReader reader = null;
-try {
-    reader = new FileReader("file.txt");
-    // Process file
-} catch (IOException e) {
-    e.printStackTrace();
-} finally {
-    if (reader != null) {
-        try {
-            reader.close();  // Easy to forget or cause issues
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-    }
-}
+// Resources are closed automatically — no manual finally/close() needed.
 ```
 
 ### Q45: What are common Java performance optimization techniques?
 
 **Answer:**
 
-**1. Use StringBuilder/StringBuffer:**
-```java
-// Efficient for frequent string modifications
-StringBuilder sb = new StringBuilder();
-for (int i = 0; i < 1000; i++) {
-    sb.append(i);
-}
-```
-
-**2. Use primitive types when possible:**
-```java
-// Prefer int over Integer for performance
-int sum = 0;  // Better
-Integer sum = 0;  // Less efficient (boxing/unboxing)
-```
-
-**3. Use appropriate collections:**
-```java
-// ArrayList for random access
-List<Integer> randomAccess = new ArrayList<>();
-
-// LinkedList for frequent insertions/deletions at ends
-List<Integer> frequentModifications = new LinkedList<>();
-
-// HashSet for unique elements
-Set<String> uniqueElements = new HashSet<>();
-
-// HashMap for key-value pairs
-Map<String, Integer> keyValuePairs = new HashMap<>();
-```
+**1-3. Basics (covered earlier):** use `StringBuilder` for string concatenation in loops, prefer primitives over wrappers to avoid boxing, and pick the right collection for the access pattern (ArrayList for random access, LinkedList for end insertions, HashSet/HashMap for lookups).
 
 **4. Lazy initialization:**
 ```java
@@ -2750,23 +2355,17 @@ for (int i = 0; i < 1000; i++) {
 
 ## Quick Reference Summary
 
-### Key Java Concepts
-- **Platform Independence**: Write Once, Run Anywhere via JVM
-- **OOP**: Encapsulation, Inheritance, Polymorphism, Abstraction
-- **Memory Management**: Automatic garbage collection
-- **Multithreading**: Built-in support for concurrent programming
-
-### Collections Framework
-- **List**: Ordered, allows duplicates (ArrayList, LinkedList)
-- **Set**: Unique elements (HashSet, TreeSet)
-- **Map**: Key-value pairs (HashMap, TreeMap)
-
 ### Important Keywords
 - `final`: Cannot be changed
 - `static`: Belongs to class, not instance
 - `abstract`: Cannot be instantiated
 - `synchronized`: Thread safety
 - `volatile`: Visibility across threads
+
+### Collections
+- **List**: ordered, allows duplicates (ArrayList, LinkedList)
+- **Set**: unique elements (HashSet, TreeSet)
+- **Map**: key-value pairs (HashMap, TreeMap)
 
 ### Exception Hierarchy
 ```
@@ -2777,22 +2376,4 @@ Throwable
     └── Unchecked (Runtime)
 ```
 
-### Java 8+ Features
-- Lambda expressions
-- Stream API
-- Functional interfaces
-- Optional class
-- Date/Time API
-
----
-
-**Interview Success Tips:**
-
-1. **Understand fundamentals**: Focus on core concepts rather than memorization
-2. **Provide examples**: Use code examples to illustrate your understanding
-3. **Explain trade-offs**: Discuss when to use which approach
-4. **Mention performance**: Be aware of performance implications
-5. **Hands-on experience**: Relate answers to practical experience
-6. **Stay current**: Keep up with Java updates and best practices
-
-**Good luck with your Java interviews!**
+**Interview tips:** focus on fundamentals over memorization, back answers with code examples, and explain trade-offs (when to use which approach).

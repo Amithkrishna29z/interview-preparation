@@ -6,22 +6,6 @@ Java releases since Java 8 have transformed the language significantly. Java 17 
 
 ---
 
-## Table of Contents
-
-1. [Java 9 Features](#java-9-features)
-2. [Java 10 Features](#java-10-features)
-3. [Java 11 Features (LTS)](#java-11-features-lts)
-4. [Java 14 Features](#java-14-features)
-5. [Java 15 Features](#java-15-features)
-6. [Java 16 Features](#java-16-features)
-7. [Java 17 Features (LTS)](#java-17-features-lts--major-release)
-8. [Java 21 Features (LTS)](#java-21-features-lts--the-most-important-modern-java-release)
-9. [Impact on Spring Boot Development](#impact-on-spring-boot-development)
-10. [Java Versions Quick Reference Table](#java-versions-quick-reference-table)
-11. [Interview Questions & Answers](#interview-questions--answers)
-12. [Common Pitfalls](#common-pitfalls)
-13. [Quick Reference Cheat Sheet](#quick-reference-cheat-sheet)
-
 > **New to modern Java? Start here.** There are a LOT of features below, but for interviews you don't need to master all of them equally. The highest-value features to truly understand are: **Records**, **Sealed classes**, **Text blocks**, **`var`**, **Pattern matching for `switch`/`instanceof`**, and **Virtual Threads (Java 21)**. If you nail those six, you'll handle 90% of "what's new in Java" questions confidently. Skim the rest for awareness, but spend your real study time here.
 
 ---
@@ -30,48 +14,22 @@ Java releases since Java 8 have transformed the language significantly. Java 17 
 
 ### Module System (JPMS — Java Platform Module System)
 
-The module system (Project Jigsaw) introduces strong encapsulation at the package level.
-
-> **Think of it like:** an office building with locked rooms. Before modules, every room was wide open — anyone could walk in. With modules, the building (your module) keeps most rooms private, and you must explicitly post a sign saying which rooms are open to visitors. If a package isn't `exports`-ed, nobody outside can get in.
+**Awareness summary (juniors rarely write `module-info.java`).** The module system (Project Jigsaw) adds strong encapsulation at the package level: a module declares what it `requires` and which packages it `exports`. If a package isn't `exports`-ed, code outside the module can't access it.
 
 ```java
-// module-info.java (in src/main/java/) — the "front desk rules" for this module
+// module-info.java — basic shape
 module com.example.orderservice {
-    requires java.base;           // implicit, always present (every module needs the core library)
-    requires spring.context;       // we depend on Spring — needed to compile AND run
-    requires transitive java.sql;  // anyone who uses US also automatically gets java.sql
-
-    exports com.example.orderservice.api;           // this package is public to ALL other modules
-    exports com.example.orderservice.internal to com.example.admin; // public ONLY to the admin module
-
-    opens com.example.orderservice.model;           // let frameworks peek inside via reflection
-    opens com.example.orderservice.dto to com.fasterxml.jackson.databind; // open only to Jackson (for JSON)
-
-    uses com.example.spi.PaymentGateway;            // "I want to consume this service interface"
-    provides com.example.spi.PaymentGateway
-        with com.example.orderservice.StripeGateway; // "and here's my implementation of it"
+    requires spring.context;              // depend on another module
+    exports com.example.orderservice.api; // make this package visible to others
 }
 ```
 
-**Key keywords:**
-- `requires`: declares a dependency on another module
-- `requires transitive`: re-exports the dependency to consumers
-- `exports`: makes a package accessible to other modules
-- `opens`: allows reflective access (needed by Spring, Hibernate, Jackson)
-- `uses`/`provides`: ServiceLoader SPI mechanism
+Other keywords: `requires transitive` (re-export a dependency), `opens` (allow reflective access for Spring/Hibernate/Jackson), `uses`/`provides` (ServiceLoader SPI).
 
-**Interview Tip:** Spring Boot applications typically run on the classpath (not module path), so JPMS is not mandatory for Spring apps but you should understand the concepts.
+**Interview Tip:** Spring Boot apps typically run on the classpath (not module path), so JPMS is not mandatory — just understand the basic concept.
 
 ### JShell (REPL)
-```bash
-$ jshell
-jshell> int x = 10
-x ==> 10
-jshell> x * 3
-$2 ==> 30
-jshell> /list
-jshell> /exit
-```
+A command-line REPL (`$ jshell`) for trying out Java snippets interactively without a full class — handy for quick experiments.
 
 ### Collection Factory Methods (Immutable)
 
@@ -96,7 +54,7 @@ list.add("d"); // ERROR — the box is sealed, you cannot add to it
 
 ### Stream API Enhancements
 
-> **Think of it like:** `takeWhile` is reading a list from the top and stopping the moment a condition fails ("keep taking while items are small, stop at the first big one"). `dropWhile` is the opposite — skip items while the condition holds, then keep everything from there on. Both stop checking once the condition first flips.
+`takeWhile` keeps elements while a condition holds and stops at the first failure; `dropWhile` is the opposite (skip while true, then keep the rest). Both stop checking once the condition first flips.
 
 ```java
 // takeWhile — KEEP elements while predicate is true, then STOP at the first false
@@ -139,7 +97,7 @@ long count = opt.stream().count(); // 1
 
 ### Private Methods in Interfaces
 
-> **Think of it like:** giving an interface its own private "helper drawer." Default methods can now share common code through a private method, instead of copy-pasting the same logic into each one.
+Java 9+ lets an interface have `private` methods so its `default` methods can share common logic instead of duplicating it.
 
 ```java
 interface Validator<T> {
@@ -190,14 +148,11 @@ try (var stream = Files.lines(Path.of("file.txt"))) { // 'stream' inferred as St
 
 ### Unmodifiable Collection Copies
 
-> **Think of it like:** taking a photocopy of a document and laminating it. The copy captures the current contents, but nobody can write on it afterward — and editing the original doesn't change the laminated copy.
+`List.copyOf` (and `Set.copyOf`/`Map.copyOf`) takes a frozen snapshot — the copy can't be modified, and later edits to the original don't affect it.
 
 ```java
 List<String> original = new ArrayList<>(List.of("a", "b", "c"));
 List<String> copy = List.copyOf(original);  // a frozen snapshot — can't be modified
-
-Set<String> setCopy = Set.copyOf(original);       // same idea for a Set
-Map<String, Integer> mapCopy = Map.copyOf(Map.of("a", 1)); // and for a Map
 ```
 
 ### Additional Stream/Collectors Enhancements
@@ -244,7 +199,7 @@ String content = Files.readString(path);
 
 ### HTTP Client API (Standard, was incubator in Java 9/10)
 
-> **Think of it like:** a built-in web browser for your code — a modern, official way to call other web services without pulling in an external library. It supports HTTP/2 and can wait for the reply (synchronous) or carry on and be notified later (asynchronous).
+A built-in, modern HTTP/2 client for calling other web services without an external library. Supports synchronous (wait for the reply) and asynchronous (be notified later) calls.
 
 ```java
 HttpClient client = HttpClient.newBuilder()
@@ -263,10 +218,7 @@ HttpResponse<String> response = client.send(request, BodyHandlers.ofString());
 System.out.println(response.statusCode()); // 200 = success
 System.out.println(response.body());        // the response text
 
-// Asynchronous — fire the request and keep going; handle the reply when it lands
-CompletableFuture<HttpResponse<String>> asyncResponse =
-    client.sendAsync(request, BodyHandlers.ofString());
-asyncResponse.thenApply(HttpResponse::body).thenAccept(System.out::println); // print body when done
+// There is also an async variant: client.sendAsync(request, ...) returns a CompletableFuture.
 ```
 
 ### Predicate.not()
@@ -294,13 +246,7 @@ java HelloWorld.java
 > **Think of it like:** a switch that *hands you back an answer* instead of just doing chores. The old switch was a list of instructions ("do this, then break"); the new switch expression is a question that returns a single value you can store in a variable — like a vending machine that gives you exactly one item for your input.
 
 ```java
-// Old switch (statement, fall-through, verbose)
-int numLetters;
-switch (day) {
-    case MONDAY: case FRIDAY: case SUNDAY: numLetters = 6; break; // must remember 'break' or it falls through
-    case TUESDAY: numLetters = 7; break;
-    default: numLetters = 8;
-}
+// Old switch: a statement with fall-through — must remember 'break', assigns via a variable.
 
 // New switch expression (Java 14+) — no fall-through, returns value
 int numLetters = switch (day) {          // the whole switch produces one value assigned to numLetters
@@ -343,14 +289,7 @@ if (obj instanceof String s) {     // if obj is a String, bind it to 's' automat
 if (obj instanceof String s && s.length() > 5) { // only true if it's a String AND longer than 5
     System.out.println("Long string: " + s);
 }
-
-// In switch (Java 21)
-String result = switch (obj) {
-    case Integer i -> "Integer: " + i;   // matches AND binds 'i' as an Integer
-    case String s -> "String: " + s;     // matches AND binds 's' as a String
-    case null -> "null value";           // switch can now handle null explicitly
-    default -> "Other: " + obj;          // anything else
-};
+// (Pattern matching also works in switch — see "Pattern Matching for switch" under Java 21.)
 ```
 
 ### Helpful NullPointerExceptions
@@ -370,11 +309,8 @@ user.getAddress().getCity().length();
 > **Think of it like:** a triple-quoted note pad. You paste multi-line text in exactly as it looks — no more gluing strings together with `\n` and escaped quotes. What you see between the `"""` marks is (almost) what you get.
 
 ```java
-// Old multi-line strings — ugly: escaped quotes, manual \n, lots of +
-String json = "{\n" +
-    "  \"name\": \"John\",\n" +
-    "  \"age\": 30\n" +
-    "}";
+// Old way: ugly concatenation with escaped quotes and manual \n
+//   String json = "{\n  \"name\": \"John\"\n}";
 
 // Text block (triple-quote) — write it like it reads
 String json = """
@@ -452,13 +388,6 @@ public record CreateUserRequest(
 public ResponseEntity<UserResponse> createUser(@Valid @RequestBody CreateUserRequest req) {
     // req.name(), req.email(), req.age()
 }
-
-// Use with JPA (as projection interface alternative)
-interface UserSummary {
-    String getName();
-    String getEmail();
-}
-// Records as projections require @Query with constructor expression
 ```
 
 **Interview Tip:** Records cannot be used as JPA entities (they're immutable, JPA needs mutable no-arg constructor). Use them as DTOs, request/response bodies, and value objects.
@@ -528,136 +457,43 @@ double area = switch (shape) {
 
 ### Virtual Threads — Project Loom (The Biggest Feature)
 
-**The Problem with Platform Threads:**
-- Traditional Java threads map 1:1 to OS threads
-- Creating/blocking on OS threads is expensive (1MB stack, context switch overhead)
-- Thread-per-request model limits throughput (e.g., 200 concurrent requests = 200 OS threads)
-- When a thread blocks on I/O (DB query, HTTP call), the OS thread is wasted
+**Why they exist:** Traditional platform threads map 1:1 to OS threads and are expensive (~1MB stack each), so the thread-per-request model caps out at a few thousand concurrent requests. Virtual threads are lightweight, JVM-managed threads — you can create millions. When one blocks on I/O it is *unmounted* from its underlying OS "carrier" thread (freeing it for other work) and *remounted* when the I/O completes.
 
-> **Think of it like:** the difference between hiring one expensive full-time worker for every single task versus having one supervisor who juggles a million lightweight to-do notes. Old "platform" threads each tie up a real OS worker (costly, limited). Virtual threads are cheap paper notes: when one is "waiting" (e.g., for a database reply), the supervisor sets it aside and picks up another — so a handful of real workers can handle a million tasks.
+> **Think of it like:** one supervisor juggling a million lightweight to-do notes. When a task is "waiting" (e.g., for a database reply), the supervisor sets it aside and picks up another — so a handful of real OS threads can handle huge numbers of I/O-bound tasks.
 
-**Virtual Threads Solution:**
 ```java
 // Platform thread (old) — backed by a real, heavy OS thread
 Thread platformThread = new Thread(() -> doWork());
 platformThread.start();
 
 // Virtual thread (Java 21) — lightweight, managed by the JVM
-Thread virtualThread = Thread.ofVirtual().start(() -> doWork());
+Thread.ofVirtual().start(() -> doWork());
 
-// Virtual thread factory — produces virtual threads on demand
-ThreadFactory factory = Thread.ofVirtual().factory();
-ExecutorService executor = Executors.newThreadPerTaskExecutor(factory);
-
-// The key executor for virtual threads — gives EACH task its own virtual thread
+// The key executor — gives EACH task its own virtual thread (the common pattern)
 ExecutorService virtualExecutor = Executors.newVirtualThreadPerTaskExecutor();
-
-// Submit millions of tasks — each gets its own virtual thread (this is fine!)
-for (int i = 0; i < 1_000_000; i++) {
-    virtualExecutor.submit(() -> {
-        Thread.sleep(1000);  // while "sleeping", the virtual thread steps aside and frees the OS thread
-        return "done";
-    });
-}
+virtualExecutor.submit(() -> {
+    Thread.sleep(1000);  // while "waiting", the virtual thread frees its OS thread
+    return "done";
+});
 ```
 
-**How Virtual Threads Work:**
-- Virtual threads are JVM-managed, not OS-managed
-- Many virtual threads share few OS threads ("carrier threads")
-- When a virtual thread blocks (I/O, sleep, lock), it is **unmounted** from carrier thread
-- Carrier thread picks up another virtual thread to run
-- When I/O completes, virtual thread is **remounted** to a carrier thread
+**Pinning (the one gotcha to know):** inside a `synchronized` block a virtual thread can get *pinned* — stuck to its OS thread and unable to step aside while blocking, defeating the purpose. Fix: use `ReentrantLock` instead of `synchronized` in hot paths.
 
-**Pinning (What to Avoid):**
-
-> **Think of it like:** gluing a paper note to a worker's hand so they can't put it down. "Pinning" means a virtual thread gets stuck to its real OS thread and can't step aside while waiting — defeating the whole point. Certain old constructs (`synchronized`) cause this.
-
-```java
-// Pinning: virtual thread is stuck to carrier thread, blocking it
-// Happens with: synchronized blocks, native methods
-
-// BAD — synchronized PINS the virtual thread to its OS thread
-synchronized (lock) {
-    Thread.sleep(1000);  // can't step aside — the real OS thread is wasted during this sleep!
-}
-
-// GOOD — use ReentrantLock instead (no pinning)
-ReentrantLock lock = new ReentrantLock();
-lock.lock();           // acquire the lock without pinning
-try {
-    Thread.sleep(1000);  // virtual thread can correctly step aside (unmount) here
-} finally {
-    lock.unlock();      // always release in finally so the lock is never left held
-}
-```
-
-**Spring Boot with Virtual Threads (Spring Boot 3.2+):**
+**Spring Boot 3.2+ — enable with one line:**
 ```yaml
 # application.yml
-spring:
-  threads:
-    virtual:
-      enabled: true  # enables virtual threads for Tomcat/Jetty/Undertow and @Async
-```
-```java
-// Or programmatically
-@Bean
-public TomcatProtocolHandlerCustomizer<?> protocolHandlerVirtualThreadExecutorCustomizer() {
-    return protocolHandler -> {
-        protocolHandler.setExecutor(Executors.newVirtualThreadPerTaskExecutor());
-    };
-}
+spring.threads.virtual.enabled: true  # virtual threads for Tomcat requests and @Async
 ```
 
-**When NOT to Use Virtual Threads:**
-- CPU-intensive tasks (no I/O blocking): use ForkJoinPool / parallel streams instead
-- When you use synchronized heavily (pinning): migrate to ReentrantLock
-- Not a replacement for reactive programming in all cases
+**When NOT to use:** CPU-intensive work (no I/O to block on — use parallel streams / ForkJoinPool instead).
 
-### Structured Concurrency (Java 21)
+### Structured Concurrency (Java 21, preview)
 
-> **Think of it like:** a group project with one deadline. All sub-tasks are started together and must finish together; if one teammate fails, the whole group stops instead of leaving others running forever. The `scope` block guarantees no "orphan" background tasks leak out.
+**Awareness only — rarely written by juniors.** *What/why:* `StructuredTaskScope` lets you fork several parallel subtasks that are treated as one unit — they start together and finish together, and if any one fails the rest are cancelled (no leaked/orphan tasks). A cleaner, safer alternative to juggling raw `CompletableFuture` chains.
 
-```java
-// Traditional: error-prone parallel task management
-Future<User> userFuture = executor.submit(() -> fetchUser(id));
-Future<Order> orderFuture = executor.submit(() -> fetchOrder(id));
-User user = userFuture.get();   // if orderFuture later fails, userFuture's work may leak/hang
-Order order = orderFuture.get();
+### Scoped Values (Java 21, preview)
 
-// Structured Concurrency: the scope manages the lifecycle of all sub-tasks
-try (var scope = new StructuredTaskScope.ShutdownOnFailure()) { // if ANY task fails, cancel the rest
-    StructuredTaskScope.Subtask<User> user = scope.fork(() -> fetchUser(id));   // start task 1
-    StructuredTaskScope.Subtask<Order> order = scope.fork(() -> fetchOrder(id)); // start task 2 (in parallel)
-
-    scope.join();           // wait until ALL forked tasks finish
-    scope.throwIfFailed();  // if any task threw, re-throw it here
-
-    return new UserWithOrders(user.get(), order.get()); // both succeeded — safe to read results
-} // leaving the block closes the scope: any leftover tasks are cancelled automatically
-```
-
-### Scoped Values (Java 21)
-
-> **Think of it like:** a visitor badge that's valid only inside one building and only for one visit. The value (e.g., the current user) is available everywhere within a scope, automatically expires when you leave, and can't be tampered with — unlike `ThreadLocal`, which you must remember to clean up manually.
-
-```java
-// ThreadLocal alternative — read-only, inheritable by child threads, no memory leak
-public static final ScopedValue<User> CURRENT_USER = ScopedValue.newInstance(); // declare the "badge slot"
-
-// Bind value for a scope — CURRENT_USER holds 'user' only inside this run() block
-ScopedValue.where(CURRENT_USER, user).run(() -> {
-    processOrder();  // anything called here can read CURRENT_USER.get()
-    // virtual threads forked within this scope inherit the value automatically
-});
-
-// In method
-void processOrder() {
-    User user = CURRENT_USER.get();  // reads the value bound for the current scope
-}
-```
-
-**vs ThreadLocal:** ScopedValues are immutable, inherited by child threads, automatically cleaned up when scope exits (no memory leaks).
+**Awareness only.** *What/why:* `ScopedValue` is an immutable, auto-cleaned replacement for `ThreadLocal`. A value (e.g., the current user) is bound for the duration of a scope, inherited by child/virtual threads, and cleared automatically when the scope exits — avoiding the memory-leak pitfalls of `ThreadLocal`.
 
 ### Sequenced Collections (Java 21)
 
@@ -665,26 +501,18 @@ void processOrder() {
 
 ```java
 // New interfaces: SequencedCollection, SequencedSet, SequencedMap
-// All ordered collections now have consistent first/last/reversed API
+// All ordered collections now share a consistent first/last/reversed API
 
 List<String> list = new ArrayList<>(List.of("a", "b", "c"));
-list.getFirst();   // "a" — cleaner than get(0)
-list.getLast();    // "c" — cleaner than get(list.size()-1)
-list.removeFirst(); // removes "a" (the front element)
-list.removeLast();  // removes "c" (the back element)
-list.reversed();    // a reversed VIEW (no copy made — changes reflect back)
+list.getFirst();    // "a" — cleaner than get(0)
+list.getLast();     // "c" — cleaner than get(list.size()-1)
+list.removeFirst(); // removes "a"
+list.removeLast();  // removes "c"
+list.reversed();    // a reversed VIEW (no copy — changes reflect back)
 list.addFirst("z"); // insert at the very front
-
-// LinkedHashSet now implements SequencedSet
-LinkedHashSet<String> set = new LinkedHashSet<>(Set.of("x", "y", "z"));
-set.getFirst();   // the first element in insertion order
-
-// LinkedHashMap now implements SequencedMap
-LinkedHashMap<String, Integer> map = new LinkedHashMap<>();
-map.put("a", 1); map.put("b", 2);
-map.firstEntry();  // Map.Entry("a", 1) — first inserted pair
-map.lastEntry();   // Map.Entry("b", 2) — last inserted pair
 ```
+
+`LinkedHashSet` (`getFirst()`) and `LinkedHashMap` (`firstEntry()`/`lastEntry()`) implement these interfaces too.
 
 ### Record Patterns (Java 21)
 
@@ -759,41 +587,13 @@ for (var _ : list) {  // we don't use the element — we're only counting iterat
 ## Impact on Spring Boot Development
 
 ### Virtual Threads Change Thread-per-Request Model
-```yaml
-# Spring Boot 3.2+ — one line to enable virtual threads
-spring.threads.virtual.enabled: true
-```
-- Tomcat uses virtual threads per request — supports 100k+ concurrent requests
-- @Async methods use virtual threads automatically
-- JDBC, RestTemplate, WebClient all benefit from virtual thread unmounting on I/O
+With `spring.threads.virtual.enabled: true` (Spring Boot 3.2+), Tomcat runs each request on a virtual thread (100k+ concurrent requests), `@Async` methods use them automatically, and JDBC/RestTemplate/WebClient all benefit from unmounting on I/O.
 
 ### Records as Spring DTOs
-```java
-// Clean request/response objects
-public record CreateProductRequest(
-    @NotBlank String name,
-    @Positive BigDecimal price,
-    @NotNull Category category
-) {}
-
-public record ProductResponse(Long id, String name, BigDecimal price) {
-    public static ProductResponse from(Product p) {
-        return new ProductResponse(p.getId(), p.getName(), p.getPrice());
-    }
-}
-```
+Use records for request/response bodies and projections — `record CreateProductRequest(@NotBlank String name, @Positive BigDecimal price)` plus a static `from(entity)` factory for responses (see the Records section above).
 
 ### Text Blocks for SQL in Spring Data
-```java
-@Query("""
-    SELECT new com.example.UserSummary(u.name, COUNT(o.id))
-    FROM User u LEFT JOIN u.orders o
-    WHERE u.active = true
-    GROUP BY u.name
-    HAVING COUNT(o.id) > :minOrders
-    """)
-List<UserSummary> findActiveUsersWithMinOrders(@Param("minOrders") int minOrders);
-```
+Use text blocks for readable inline `@Query` JPQL/SQL instead of `+`-concatenated strings (see the Text Blocks section above).
 
 ### Sealed Classes for Domain Events
 ```java
@@ -854,9 +654,9 @@ Yes. The compact constructor (no parameter list) runs before field assignment �
 
 Sealed classes restrict which classes can extend/implement them using `permits`. They solve the problem of open inheritance hierarchies that make exhaustive pattern matching impossible. With sealed types, the compiler knows all subtypes at compile time and can require switch expressions to handle all cases without a default branch. Perfect for ADTs (algebraic data types), domain events, and result types.
 
-**Q6: What is the difference between `var` and dynamic typing?**
+**Q6: What is `var`, and how is it different from dynamic typing?**
 
-`var` is static type inference at compile time — the type is fixed once inferred. It's purely a compile-time feature; the bytecode is identical to writing the explicit type. Java remains statically typed. `var` cannot be used for fields, method parameters, or return types.
+`var` (Java 10) is local variable type inference — static, fixed once inferred at compile time (bytecode is identical to writing the explicit type), so Java stays statically typed. Limitations: only for local variables (not fields, parameters, or return types); requires an initializer; can't be `null` alone; no array-initializer shorthand (`var arr = {1, 2, 3}` is illegal).
 
 **Q7: How do Text Blocks handle indentation?**
 
@@ -872,11 +672,7 @@ Java 21 added `SequencedCollection`, `SequencedSet`, and `SequencedMap` interfac
 
 **Q10: What are the key Java 21 features that impact Spring Boot applications?**
 
-1. **Virtual threads** (`spring.threads.virtual.enabled=true`) — Tomcat handles each request on a virtual thread, enabling massive concurrency for I/O-bound workloads without reactive programming
-2. **Records** — Cleaner DTOs and request/response bodies with less boilerplate
-3. **Text blocks** — Readable inline SQL queries and JSON templates
-4. **Sealed classes + Pattern matching switch** — Type-safe domain event handling without instanceof chains
-5. **Structured concurrency** — Safer parallel operations replacing some CompletableFuture patterns
+Virtual threads (`spring.threads.virtual.enabled=true`) for high I/O concurrency; records for cleaner DTOs; text blocks for inline SQL/JSON; sealed classes + pattern-matching switch for type-safe domain event handling.
 
 **Q11: When should you NOT use virtual threads?**
 
@@ -892,11 +688,7 @@ Switch statements are side-effecting constructs that execute code. Switch expres
 
 `List.of()` returns a truly immutable list — no set/add/remove. `Arrays.asList()` returns a fixed-size but mutable list (set is allowed, add/remove throw). `List.of()` also disallows null elements; `Arrays.asList()` allows nulls.
 
-**Q14: What is the `var` keyword? What are its limitations?**
-
-`var` is local variable type inference introduced in Java 10. Limitations: only for local variables (not fields, parameters, return types); requires an initializer; cannot initialize to `null` alone; cannot be used with array initializer shorthand (`var arr = {1, 2, 3}` is illegal).
-
-**Q15: What is the difference between `strip()` and `trim()`?**
+**Q14: What is the difference between `strip()` and `trim()`?**
 
 `trim()` removes ASCII whitespace (chars ≤ ' '). `strip()` is Unicode-aware and removes all whitespace as defined by `Character.isWhitespace()`, including Unicode spaces. `strip()` is the modern replacement.
 
@@ -920,15 +712,7 @@ Switch statements are side-effecting constructs that execute code. Switch expres
 
 ### LTS versions (the ones companies actually run in production)
 
-```
-LTS (Long-Term Support) = supported for years, safe for production
-  Java 8   → LTS (still everywhere — the old baseline)
-  Java 11  → LTS
-  Java 17  → LTS
-  Java 21  → LTS (current modern baseline)
-Non-LTS (9, 10, 12-16, 18-20) = short-lived "feature preview" releases
-Rule of thumb: production teams jump LTS → LTS (8 → 11 → 17 → 21)
-```
+LTS = supported for years, safe for production. The LTS line is **8 → 11 → 17 → 21**; production teams jump LTS to LTS. Everything else (9, 10, 12-16, 18-20) is a short-lived feature-preview release.
 
 ### One-line "what it's for" per major feature
 
@@ -947,37 +731,6 @@ Virtual threads    → millions of cheap threads; great for I/O-bound work
 Structured concur. → start parallel tasks together, fail/cancel together
 Scoped values      → safer, auto-cleaned ThreadLocal replacement
 Sequenced colls.   → consistent getFirst()/getLast()/reversed() everywhere
-```
-
-### Copy-paste: Virtual Threads
-
-```java
-// 1) One-off virtual thread
-Thread.ofVirtual().start(() -> doWork());
-
-// 2) Executor that gives EACH task its own virtual thread (the common one)
-try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
-    executor.submit(() -> {
-        // do blocking I/O here (DB call, HTTP call) — scales to huge concurrency
-        return fetchSomething();
-    });
-} // executor auto-closes and waits for tasks (try-with-resources)
-
-// 3) Spring Boot 3.2+ — enable for every web request with ONE line:
-// application.yml ->  spring.threads.virtual.enabled: true
-```
-
-### Top gotchas (memorize before the interview)
-
-```
-Records ≠ JPA entities  → JPA needs a mutable, no-arg-constructor class
-synchronized + virtual  → causes "pinning"; use ReentrantLock instead
-var x = null            → won't compile (no type to infer)
-List.of(null)           → throws NPE (no nulls allowed in factory collections)
-Stream.toList()         → returns UNMODIFIABLE list (can't add/remove)
-Switch expression       → must be exhaustive (cover all cases / add default)
-Sealed permits          → subclasses must be same package or module
-Virtual threads         → for I/O-bound work, NOT CPU-bound (use parallel streams there)
 ```
 
 ### 5-second decision helper

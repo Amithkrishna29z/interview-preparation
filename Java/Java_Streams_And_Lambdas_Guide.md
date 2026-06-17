@@ -16,24 +16,6 @@ This is one of the **most heavily tested topics** in Java backend interviews. Al
 
 ---
 
-## Table of Contents
-
-1. [Lambda Expressions](#lambda-expressions)
-2. [Functional Interfaces](#functional-interfaces)
-3. [Method References](#method-references)
-4. [Streams — The Big Picture](#streams--the-big-picture)
-5. [Intermediate Operations](#intermediate-operations)
-6. [Terminal Operations](#terminal-operations)
-7. [Collectors](#collectors)
-8. [Optional](#optional)
-9. [Primitive Streams](#primitive-streams)
-10. [Parallel Streams](#parallel-streams)
-11. [Common Mistakes & Gotchas](#common-mistakes--gotchas)
-12. [Common Interview Questions](#common-interview-questions)
-13. [Quick Reference Cheat Sheet](#quick-reference-cheat-sheet)
-
----
-
 ## Lambda Expressions
 
 A **lambda expression** is a short block of code that you can pass around like a value. It's essentially a function without a name that you can store in a variable or hand to a method.
@@ -52,7 +34,7 @@ Collections.sort(names, new Comparator<String>() {   // a whole anonymous class.
         return a.compareTo(b);
     }
 });
-// 6 lines of code, most of it ceremony (the class, the @Override, the method signature)
+// 6 lines, most of it ceremony (the class, the @Override, the method signature)
 ```
 
 ### After lambdas (the clean way)
@@ -91,28 +73,12 @@ BiFunction<Integer, Integer, Integer> calc = (a, b) -> {
 // 5. Single-expression body — no braces, no 'return' (the value is returned automatically)
 Function<Integer, Integer> square = n -> n * n;
 // "n * n" is automatically returned — no need for braces or the return keyword
-
-// 6. Explicit parameter types (rarely needed — Java usually infers them)
-BiFunction<Integer, Integer, Integer> multiply = (Integer a, Integer b) -> a * b;
+// (You can also write explicit parameter types like (Integer a, Integer b), but Java usually infers them.)
 ```
 
 ### What a lambda REALLY is (the key insight)
 
-A lambda is **not a new kind of object** invented out of thin air. Under the hood, a lambda is simply **an instance of a functional interface** — an interface with exactly one abstract method.
-
-```java
-// These two are EQUIVALENT. The lambda is just shorthand for the anonymous class.
-
-// Anonymous class version:
-Runnable r1 = new Runnable() {
-    @Override
-    public void run() { System.out.println("hi"); }
-};
-
-// Lambda version — Java sees that Runnable has ONE abstract method (run())
-// and treats the lambda body as that method's implementation:
-Runnable r2 = () -> System.out.println("hi");
-```
+A lambda is **not a new kind of object** invented out of thin air. Under the hood, a lambda is simply **an instance of a functional interface** — an interface with exactly one abstract method. When you write `Runnable r = () -> System.out.println("hi")`, Java sees that `Runnable` has ONE abstract method (`run()`) and treats the lambda body as that method's implementation. It's exact shorthand for the anonymous-class version shown above.
 
 > **Interview Tip**: A lambda can only be assigned to a **functional interface** type. When you write `Runnable r = () -> ...`, the compiler knows the lambda implements `Runnable.run()`. This is why "what is a functional interface" and "what is a lambda" are really the same question viewed from two angles.
 
@@ -164,37 +130,19 @@ import java.util.function.*;
 Function<String, Integer> length = s -> s.length();
 System.out.println(length.apply("hello"));        // 5
 
-// BiFunction<T,U,R> — two inputs, one output
-BiFunction<Integer, Integer, Integer> sum = (a, b) -> a + b;
-System.out.println(sum.apply(3, 4));               // 7
-
-// Consumer<T> — consumes a value, returns nothing (side effect like printing)
-Consumer<String> print = s -> System.out.println(s);
-print.accept("Hi");                                // prints: Hi
-
-// BiConsumer<T,U> — consumes two values (common when iterating a Map)
-BiConsumer<String, Integer> show = (k, v) -> System.out.println(k + "=" + v);
-show.accept("age", 30);                            // prints: age=30
+// Predicate<T> — returns true/false
+Predicate<Integer> isEven = n -> n % 2 == 0;
+System.out.println(isEven.test(4));                // true
 
 // Supplier<T> — supplies a value on demand, takes no input
 Supplier<Double> random = () -> Math.random();
 System.out.println(random.get());                  // e.g. 0.732...
 
-// Predicate<T> — returns true/false
-Predicate<Integer> isEven = n -> n % 2 == 0;
-System.out.println(isEven.test(4));                // true
-
-// BiPredicate<T,U> — true/false from two inputs
-BiPredicate<String, Integer> hasLength = (s, len) -> s.length() == len;
-System.out.println(hasLength.test("abc", 3));      // true
-
-// UnaryOperator<T> — input and output are the SAME type
-UnaryOperator<String> upper = s -> s.toUpperCase();
-System.out.println(upper.apply("hi"));             // HI
-
 // BinaryOperator<T> — two same-type inputs, same-type output (used heavily in reduce)
 BinaryOperator<Integer> max = (a, b) -> a > b ? a : b;
 System.out.println(max.apply(3, 9));               // 9
+// The rest follow the same pattern: BiFunction (2 in, 1 out via apply), Consumer/BiConsumer
+// (accept, no return), BiPredicate (test on 2 inputs), UnaryOperator (Function<T,T>).
 ```
 
 > **Interview Tip**: `Predicate` has handy combiner methods: `.and()`, `.or()`, `.negate()`. `Function` has `.andThen()` (run this, then the next) and `.compose()` (run the other first). Example: `isEven.and(n -> n > 10)` is a predicate for "even AND greater than 10".
@@ -249,17 +197,7 @@ The trickiest one is **kind 3 vs kind 2**. The difference:
 - **Kind 2 (particular object)**: the object is fixed and known now — `greeting::toUpperCase` always uses that one `greeting` string.
 - **Kind 3 (arbitrary object)**: the object is whatever gets passed in at call time — `String::toLowerCase` calls `.toLowerCase()` on whichever string you pass to `apply()`.
 
-```java
-// Real-world usage in streams — method references make pipelines read like English:
-List<String> names = Arrays.asList("alice", "bob", "charlie");
-
-names.stream()
-     .map(String::toUpperCase)        // kind 3: call .toUpperCase() on each name
-     .forEach(System.out::println);   // kind 2: print each result via System.out
-// ALICE
-// BOB
-// CHARLIE
-```
+In streams, method references make pipelines read like English: `names.stream().map(String::toUpperCase).forEach(System.out::println)` — kind 3 to uppercase each name, kind 2 to print each result.
 
 > **Interview Tip**: Use a method reference only when it makes the code **clearer**. If a lambda needs to do anything beyond calling a single existing method (e.g., `x -> x.trim().toUpperCase()`), keep it as a lambda — you can't chain in a method reference.
 
@@ -284,9 +222,7 @@ This is the #1 misconception. A `List` **stores** data in memory. A `Stream` doe
                         (lazy)                  each item   (triggers the whole line)
 ```
 
-- Raw boxes come from the **warehouse** (the *source*).
-- They travel along the belt passing through **stations**: one removes defective boxes (`filter`), another paints them (`map`). These are **intermediate operations** — they just describe a step; the belt isn't actually moving yet.
-- At the end, a worker **packs everything into a crate** (`collect`). This is the **terminal operation**. Only when this worker shows up does the belt actually start running.
+Boxes come from the **warehouse** (the *source*), pass through **stations** like `filter` and `map` (the **intermediate operations** — lazy, the belt isn't moving yet), and a worker finally **packs them into a crate** with `collect` (the **terminal operation**) — only then does the belt actually run.
 
 ### The 3 parts of every stream pipeline
 
@@ -400,10 +336,7 @@ nums.stream()
     .map(n -> n * 2)
     .forEach(System.out::println);
 
-// mapToInt / boxed — convert to a primitive IntStream and back (covered in Primitive Streams)
-int total = nums.stream()
-    .mapToInt(Integer::intValue)        // Stream<Integer> → IntStream (avoids autoboxing)
-    .sum();                             // IntStream has a handy sum() method
+// mapToInt / boxed — convert to a primitive IntStream and back (see Primitive Streams below)
 ```
 
 ### flatMap — flattening a list of lists
@@ -431,15 +364,9 @@ List<Integer> flat = listOfLists.stream()
     .flatMap(innerList -> innerList.stream())   // each inner list becomes a stream; all are merged
     .collect(Collectors.toList());
 // flat = [1, 2, 3, 4, 5, 6, 7, 8, 9]  — one flat list!
-
-// Real-world example: get all unique words from a list of sentences
-List<String> sentences = Arrays.asList("hello world", "foo bar", "hello foo");
-List<String> words = sentences.stream()
-    .flatMap(sentence -> Arrays.stream(sentence.split(" ")))  // each sentence → stream of words
-    .distinct()                                               // remove duplicate words
-    .collect(Collectors.toList());
-// words = [hello, world, foo, bar]
 ```
+
+The same idiom flattens a list of sentences into words: `sentences.stream().flatMap(s -> Arrays.stream(s.split(" "))).distinct().collect(toList())` — each sentence expands into a stream of words, all merged into one flat stream.
 
 | Operation | Input → Output mapping | Result shape |
 |---|---|---|
@@ -500,12 +427,7 @@ List<Integer> nums = Arrays.asList(1, 2, 3, 4);
 // Sum using reduce:
 int sum = nums.stream()
     .reduce(0, (runningTotal, next) -> runningTotal + next);
-// identity = 0 (start value)
-// step 1: 0 + 1 = 1
-// step 2: 1 + 2 = 3
-// step 3: 3 + 3 = 6
-// step 4: 6 + 4 = 10
-// result = 10
+// identity = 0 (start value), then: 0+1=1, 1+2=3, 3+3=6, 6+4=10 → result = 10
 
 // Product:
 int product = nums.stream().reduce(1, (a, b) -> a * b);
@@ -514,11 +436,6 @@ int product = nums.stream().reduce(1, (a, b) -> a * b);
 // reduce WITHOUT identity returns Optional (because an empty stream has no result):
 Optional<Integer> maybeSum = nums.stream().reduce((a, b) -> a + b);  // Optional[10]
 Optional<Integer> emptyResult = Stream.<Integer>of().reduce((a, b) -> a + b); // Optional.empty
-
-// String concatenation with reduce:
-List<String> words = Arrays.asList("Java", "is", "fun");
-String sentence = words.stream().reduce("", (a, b) -> a + " " + b).trim();
-// "Java is fun"  (though joining is better done with Collectors.joining — see below)
 ```
 
 > **Interview Tip — choosing the identity**: The identity must be a value that "doesn't change the result" when combined. For addition that's `0`, for multiplication it's `1`, for string concatenation it's `""`. Picking the wrong identity is a classic bug.
@@ -642,8 +559,8 @@ Map<String, List<String>> namesByDept = employees.stream()
 Map<Boolean, List<Employee>> partitioned = employees.stream()
     .collect(Collectors.partitioningBy(e -> e.salary() >= 75_000));
 // {
-//   false=[Bob(80k? no), Charlie, Dave],   ← the < 75k group
-//   true=[Alice, Eve, ...]                  ← the >= 75k group
+//   false=[Charlie(70k), Dave(60k)],          ← the < 75k group
+//   true=[Alice(90k), Bob(80k), Eve(75k)]     ← the >= 75k group
 // }
 // Difference from groupingBy: partitioningBy ALWAYS produces exactly 2 keys (true & false),
 // even if one group is empty. groupingBy creates a key per distinct value.
@@ -664,18 +581,6 @@ String csv = employees.stream().map(Employee::name).collect(Collectors.joining("
 String pretty = employees.stream().map(Employee::name)
     .collect(Collectors.joining(", ", "[", "]"));
 // "[Alice, Bob, Charlie, Dave, Eve]"
-```
-
-### Realistic example: word frequency count
-
-```java
-String text = "the cat sat on the mat the cat ran";
-
-Map<String, Long> wordCount = Arrays.stream(text.split(" "))   // stream of words
-    .collect(Collectors.groupingBy(
-        word -> word,                  // group by the word itself
-        Collectors.counting()));       // count occurrences in each group
-// {the=3, cat=2, sat=1, on=1, mat=1, ran=1}
 ```
 
 ### Common Collectors summary
@@ -752,14 +657,6 @@ String name3 = opt.orElseThrow(() -> new UserNotFoundException("No user"));
 // Throws your exception if empty. orElseThrow() with no args throws NoSuchElementException.
 ```
 
-```java
-// WHY the difference matters — proof:
-Optional<String> present = Optional.of("real");
-
-String a = present.orElse(makeDefault());      // makeDefault() RUNS even though we don't need it (wasteful!)
-String b = present.orElseGet(() -> makeDefault()); // makeDefault() does NOT run — value is present
-```
-
 > **Interview Tip**: `orElse` eagerly evaluates its argument; `orElseGet` is lazy. If the default is a constant, `orElse` is fine. If the default is expensive (DB call, object creation), use `orElseGet` to avoid wasted work.
 
 ### The `.get()` anti-pattern
@@ -799,11 +696,7 @@ OptionalDouble avg = IntStream.of(10, 20, 30).average(); // OptionalDouble[20.0]
 
 // summaryStatistics — get count, sum, min, max, average all at once
 IntSummaryStatistics stats = IntStream.of(3, 7, 2, 9, 5).summaryStatistics();
-System.out.println(stats.getCount());    // 5
-System.out.println(stats.getSum());      // 26
-System.out.println(stats.getMin());      // 2
-System.out.println(stats.getMax());      // 9
-System.out.println(stats.getAverage());  // 5.2
+// stats.getCount()=5, getSum()=26, getMin()=2, getMax()=9, getAverage()=5.2
 ```
 
 ### Converting between object and primitive streams
@@ -862,11 +755,7 @@ long count = hugeList.parallelStream()      // split work across CPU cores
 List<Integer> results = new ArrayList<>();          // ArrayList is NOT thread-safe
 IntStream.range(0, 1000).parallel()
     .forEach(results::add);   // multiple threads call add() at once → lost data or exception!
-
-// CORRECT — let the stream collect safely; no shared mutable state
-List<Integer> safe = IntStream.range(0, 1000).parallel()
-    .boxed()
-    .collect(Collectors.toList());   // collect() handles thread-safe accumulation for you
+// CORRECT: collect() instead — it handles thread-safe accumulation for you.
 ```
 
 > **Interview Tip**: The honest answer to "should I use parallel streams?" is **"rarely, and only after measuring."** Default to sequential. Reach for parallel only for large, CPU-heavy, independent workloads — and never inside a request-handling thread of a web server without understanding the shared ForkJoinPool implications.
@@ -911,14 +800,10 @@ Stream.of("apple", "avocado", "banana")
     .collect(Collectors.toMap(s -> s.charAt(0), s -> s)); // two words start with 'a' → BOOM
 // FIX: supply a merge function: toMap(key, val, (a, b) -> a)
 
-// 7. Optional.get() WITHOUT CHECKING — defeats the purpose, can throw
-Optional<String> opt = Optional.empty();
-opt.get();   // NoSuchElementException
-// FIX: orElse / orElseGet / orElseThrow / ifPresent.
-
-// 8. orElse RUNNING EXPENSIVE CODE NEEDLESSLY
-opt.orElse(expensiveCall());   // expensiveCall() runs even when opt has a value
-// FIX: opt.orElseGet(() -> expensiveCall());  — runs only when empty.
+// 7. Optional.get() WITHOUT CHECKING — throws NoSuchElementException when empty.
+//    FIX: orElse / orElseGet / orElseThrow / ifPresent.
+// 8. orElse RUNNING EXPENSIVE CODE NEEDLESSLY — orElse(expensiveCall()) runs even when
+//    a value is present. FIX: orElseGet(() -> expensiveCall()) runs only when empty.
 ```
 
 ---
@@ -953,8 +838,7 @@ Laziness lets Java optimize the pipeline. Operations are **fused** so each eleme
 
 ### Q: What is the difference between `reduce` and `collect`?
 
-- `reduce` folds elements into a **single immutable result** using an identity and a combine function (sum, max, concatenation). It's a *reduction* to one value.
-- `collect` accumulates elements into a **mutable container** (List, Set, Map, String) using a `Collector`. It's designed for mutable, possibly-parallel accumulation. Use `collect` to build collections; use `reduce` to compute a single scalar value.
+`reduce` folds elements into a **single immutable result** (sum, max, concatenation). `collect` accumulates into a **mutable container** (List, Set, Map, String) via a `Collector`. Use `collect` to build collections; use `reduce` to compute a single scalar value.
 
 ---
 
@@ -966,25 +850,25 @@ No. A stream is **single-use**. Once a terminal operation runs, the stream is co
 
 ### Q: What is the difference between a Collection and a Stream?
 
-A **Collection** stores elements in memory, is reusable, and you iterate it externally (you write the loop). A **Stream** stores nothing — it's a lazy, single-use pipeline that pulls from a source and iterates internally (the library loops for you). Collections are about **storing** data; streams are about **computing** over it.
+A **Collection** stores elements in memory, is reusable, and you iterate it externally. A **Stream** stores nothing — it's a lazy, single-use pipeline that iterates internally. Collections are about **storing** data; streams are about **computing** over it.
 
 ---
 
 ### Q: What is the difference between `findFirst` and `findAny`?
 
-`findFirst()` returns the **first** element in encounter order (deterministic). `findAny()` returns **any** matching element — in a sequential stream usually the first, but in a **parallel** stream it can return whatever a thread finds first, which is faster because it doesn't enforce ordering.
+`findFirst()` returns the **first** element in encounter order (deterministic). `findAny()` returns **any** matching element — usually the first in a sequential stream, but in a **parallel** stream whatever a thread finds first, which is faster.
 
 ---
 
 ### Q: What is the difference between `Optional.orElse` and `Optional.orElseGet`?
 
-`orElse(value)` **always evaluates** its argument, even when the Optional has a value — wasteful if the default is expensive. `orElseGet(supplier)` is **lazy** — it calls the supplier **only when the Optional is empty**. Use `orElse` for cheap constants, `orElseGet` for expensive fallbacks.
+`orElse(value)` **always evaluates** its argument, even when a value is present — wasteful if the default is expensive. `orElseGet(supplier)` is **lazy**, calling the supplier **only when empty**. Use `orElse` for cheap constants, `orElseGet` for expensive fallbacks.
 
 ---
 
 ### Q: When should you use parallel streams?
 
-Rarely, and only after measuring. They help only with **large, CPU-bound, independent** workloads over a source that splits well (`ArrayList`, arrays). Avoid them for small data, ordered results, shared mutable state, I/O-bound work, and especially inside web-server request threads (they share the JVM-wide common ForkJoinPool, which can starve other work). Default to sequential.
+Rarely, and only after measuring. They help only with **large, CPU-bound, independent** workloads over a source that splits well (`ArrayList`, arrays). Avoid them for small data, ordered results, shared mutable state, I/O-bound work, and especially inside web-server request threads (shared JVM-wide ForkJoinPool can starve other work). Default to sequential.
 
 ---
 
@@ -1027,19 +911,6 @@ METHOD REFERENCES (::)
   instance::method           -> () -> instance.method()          // particular object
   ClassName::instanceMethod  -> x -> x.instanceMethod()          // arbitrary object
   ClassName::new             -> () -> new ClassName()            // constructor
-```
-
-```
-FUNCTIONAL INTERFACES (java.util.function)
-  Function<T,R>      R apply(T)        transform 1 in -> 1 out
-  BiFunction<T,U,R>  R apply(T,U)      2 in -> 1 out
-  Consumer<T>        void accept(T)    use a value, no return
-  BiConsumer<T,U>    void accept(T,U)  use two values, no return
-  Supplier<T>        T get()           produce a value, no input
-  Predicate<T>       boolean test(T)   yes/no question
-  BiPredicate<T,U>   boolean test(T,U) yes/no on two values
-  UnaryOperator<T>   T apply(T)        Function where in/out same type
-  BinaryOperator<T>  T apply(T,T)      BiFunction, all same type (reduce)
 ```
 
 ```
@@ -1090,14 +961,6 @@ OPTIONAL
            orElseGet(sup)   lazy — only if empty (expensive defaults)
            orElseThrow(sup) throw if empty
   AVOID:   .get() without checking (can throw NoSuchElementException)
-```
-
-```
-PARALLEL STREAMS — do / don't
-  DO:    large, CPU-bound, independent work; splittable source (ArrayList, arrays)
-  DON'T: small data; order-sensitive ops; shared mutable state (race conditions);
-         I/O-bound work; inside web-request threads (shared common ForkJoinPool)
-  Rule of thumb: default to sequential; go parallel only after measuring.
 ```
 
 ---

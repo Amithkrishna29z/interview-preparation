@@ -2,21 +2,6 @@
 
 ---
 
-## Table of Contents
-
-1. [Reactive Programming Fundamentals](#1-reactive-programming-fundamentals)
-2. [Reactive Streams Specification](#2-reactive-streams-specification)
-3. [Project Reactor — Deep Dive](#3-project-reactor--deep-dive)
-4. [Spring WebFlux](#4-spring-webflux)
-5. [R2DBC — Reactive Relational Database](#5-r2dbc--reactive-relational-database)
-6. [WebFlux Security](#6-webflux-security)
-7. [WebFlux Testing](#7-webflux-testing)
-8. [Reactive Patterns](#8-reactive-patterns)
-9. [Interview Questions & Answers](#9-interview-questions--answers)
-10. [Quick Reference — Comparison Tables](#10-quick-reference--comparison-tables)
-
----
-
 ## 1. Reactive Programming Fundamentals
 
 ### 1.1 Why Reactive Programming?
@@ -113,27 +98,9 @@ public interface Processor<T, R> extends Subscriber<T>, Publisher<R> {
 }
 ```
 
-### 2.2 The Full Lifecycle
+### 2.2 The Lifecycle
 
-```
-Publisher                          Subscriber
-   |                                   |
-   |<------- subscribe(subscriber) ----|  (1) subscriber subscribes
-   |                                   |
-   |------- onSubscribe(subscription) ->|  (2) publisher sends subscription handle
-   |                                   |
-   |<------- request(10) --------------|  (3) subscriber requests 10 items (PULL model)
-   |                                   |
-   |------- onNext(item1) ------------>|  (4) publisher emits item
-   |------- onNext(item2) ------------>|
-   |------- ...                        |
-   |------- onNext(item10) ----------->|
-   |                                   |
-   |<------- request(5) ---------------|  (5) subscriber requests 5 more
-   |                                   |
-   |------- onNext(item11..15) ------->|
-   |------- onComplete() ------------->|  (6) publisher signals completion
-```
+The flow: subscriber calls `subscribe()` → publisher sends a `Subscription` via `onSubscribe()` → subscriber calls `request(n)` (the PULL model) → publisher emits up to `n` items via `onNext()` → subscriber can `request()` more → publisher finishes with `onComplete()` (or `onError()`).
 
 ### 2.3 Backpressure — The Core Concept
 
@@ -160,17 +127,7 @@ Consumer: (processes 100 items)
 
 ### 2.4 Java 9 Flow API
 
-Java 9 added `java.util.concurrent.Flow` — a direct copy of the Reactive Streams interfaces into the JDK. Project Reactor bridges to this automatically.
-
-```java
-// These are equivalent:
-org.reactivestreams.Publisher<T>
-java.util.concurrent.Flow.Publisher<T>
-
-// Reactor provides adapters:
-Flux<T> flux = JdkFlowAdapter.flowPublisherToFlux(flowPublisher);
-Flow.Publisher<T> fp = JdkFlowAdapter.publisherToFlowPublisher(flux);
-```
+Java 9 copied the same Reactive Streams interfaces into the JDK as `java.util.concurrent.Flow` (so `Flow.Publisher<T>` ≈ `org.reactivestreams.Publisher<T>`). Reactor bridges to it via `JdkFlowAdapter` — awareness is enough.
 
 ### 2.5 Contract Rules (Important for Interviews)
 
@@ -193,58 +150,31 @@ Project Reactor is the reactive library used by Spring WebFlux. It implements th
 // MONO — 0 or 1 asynchronous item
 // ============================================================
 
-// Factory methods
+// Common factory methods
 Mono<String> just = Mono.just("hello");                    // always emits "hello"
 Mono<String> empty = Mono.empty();                         // emits nothing, completes
 Mono<String> error = Mono.error(new RuntimeException());   // immediately errors
-Mono<String> never = Mono.never();                         // never emits or completes
 
-// Deferred creation (evaluated on each subscription)
-Mono<String> deferred = Mono.defer(() -> Mono.just(fetchFromDB()));
-
-// From callable (lazy, runs on subscription)
+// Lazy creation (runs on subscription)
 Mono<String> fromCallable = Mono.fromCallable(() -> blockingDbCall());
-
-// From CompletableFuture
 Mono<String> fromFuture = Mono.fromFuture(CompletableFuture.supplyAsync(() -> "async result"));
-
-// From Supplier
-Mono<String> fromSupplier = Mono.fromSupplier(() -> "value");
+// Also: Mono.defer(...), Mono.fromSupplier(...), Mono.never()
 
 // ============================================================
 // FLUX — 0 to N asynchronous items
 // ============================================================
 
-// Factory methods
+// Common factory methods
 Flux<Integer> just = Flux.just(1, 2, 3, 4, 5);
 Flux<Integer> range = Flux.range(1, 10);                      // 1, 2, 3...10
 Flux<String> fromList = Flux.fromIterable(List.of("a", "b", "c"));
-Flux<String> fromArray = Flux.fromArray(new String[]{"x", "y", "z"});
-Flux<String> fromStream = Flux.fromStream(Stream.of("a", "b"));
-
-// Periodic emission
 Flux<Long> interval = Flux.interval(Duration.ofSeconds(1));   // 0, 1, 2... every second
-
-// Empty and error
 Flux<String> empty = Flux.empty();
 Flux<String> error = Flux.error(new RuntimeException("failed"));
+// Also: Flux.fromArray(...), Flux.fromStream(...)
 
-// Programmatic creation
-Flux<String> generated = Flux.generate(
-    () -> 0,                                           // initial state
-    (state, sink) -> {
-        sink.next("item-" + state);                    // emit one item
-        if (state == 9) sink.complete();               // signal completion
-        return state + 1;                              // new state
-    }
-);
-
-// Create: bridge to callback-based APIs
-Flux<String> created = Flux.create(sink -> {
-    eventEmitter.onEvent(event -> sink.next(event.getValue()));
-    eventEmitter.onError(err -> sink.error(err));
-    eventEmitter.onComplete(() -> sink.complete());
-});
+// Programmatic creation (awareness): Flux.generate(...) for synchronous
+// state-based emission; Flux.create(sink -> ...) to bridge callback-based APIs.
 ```
 
 ### 3.2 Subscribing — Terminal Operations
@@ -259,30 +189,8 @@ flux.subscribe(
     ()    -> System.out.println("Complete!")           // onComplete
 );
 
-// Subscribe with custom BaseSubscriber (controls backpressure)
-flux.subscribe(new BaseSubscriber<Integer>() {
-    @Override
-    protected void hookOnSubscribe(Subscription subscription) {
-        System.out.println("Subscribed!");
-        request(5);  // request first 5 items
-    }
-
-    @Override
-    protected void hookOnNext(Integer value) {
-        System.out.println("Got: " + value);
-        request(1);  // request one more after each item
-    }
-
-    @Override
-    protected void hookOnComplete() {
-        System.out.println("All done!");
-    }
-
-    @Override
-    protected void hookOnError(Throwable throwable) {
-        System.err.println("Failed: " + throwable.getMessage());
-    }
-});
+// For manual backpressure control, subscribe with a custom BaseSubscriber and
+// override hookOnSubscribe/hookOnNext to call request(n) yourself (advanced).
 
 // block() — converts reactive to blocking (AVOID in production reactive code)
 String result = mono.block();                           // blocks current thread
@@ -327,13 +235,7 @@ Flux<Result> limited = Flux.fromIterable(ids)
 Flux<SearchResult> searchResults = searchTerms
     .switchMap(term -> searchService.search(term));
 
-// cast: unchecked type cast
-Flux<Object> objects = Flux.just("a", "b");
-Flux<String> strings = objects.cast(String.class);
-
-// ofType: filter by type and cast
-Flux<String> stringsOnly = Flux.just("a", 1, "b", 2)
-    .ofType(String.class);  // a, b
+// Also (awareness): cast(Class) for an unchecked cast, ofType(Class) to filter+cast by type.
 ```
 
 #### Filtering Operators
@@ -346,40 +248,21 @@ Flux<Integer> evens = Flux.range(1, 10)
 // take: keep first N items
 Flux<Integer> first5 = Flux.range(1, 100).take(5);        // 1..5
 
-// takeLast: keep last N items (must buffer)
-Flux<Integer> last3 = Flux.range(1, 10).takeLast(3);      // 8, 9, 10
-
 // takeWhile: take items while predicate is true
 Flux<Integer> belowFive = Flux.range(1, 10)
     .takeWhile(n -> n < 5);  // 1, 2, 3, 4
 
-// takeUntil: take items until predicate is true (inclusive)
-Flux<Integer> untilFive = Flux.range(1, 10)
-    .takeUntil(n -> n == 5);  // 1, 2, 3, 4, 5
-
 // skip: skip first N items
 Flux<Integer> skip5 = Flux.range(1, 10).skip(5);          // 6..10
 
-// skipWhile: skip while predicate is true
-Flux<Integer> fromFive = Flux.range(1, 10)
-    .skipWhile(n -> n < 5);  // 5, 6, 7, 8, 9, 10
-
-// distinct: remove duplicates (keeps all seen items in memory)
+// distinct: remove duplicates
 Flux<Integer> distinct = Flux.just(1, 2, 1, 3, 2).distinct();  // 1, 2, 3
 
-// distinctUntilChanged: remove consecutive duplicates only
-Flux<Integer> duc = Flux.just(1, 1, 2, 3, 3, 2)
-    .distinctUntilChanged();  // 1, 2, 3, 2
-
-// elementAt: get item at specific index
-Mono<Integer> third = Flux.range(1, 10).elementAt(2);     // Mono<3>
-
-// first: take the first item
+// next: take the first item as a Mono
 Mono<Integer> first = Flux.range(1, 10).next();           // Mono<1>
 
-// single: expect exactly 1 item, error if 0 or >1
-Mono<User> single = userRepository.findByEmail(email)
-    .single();  // errors if not exactly 1 result
+// Also (awareness): takeLast(n), takeUntil(pred), skipWhile(pred),
+// distinctUntilChanged(), elementAt(i), single() (expect exactly 1, else error).
 ```
 
 #### Aggregation Operators
@@ -400,23 +283,14 @@ Mono<Long> count = Flux.range(1, 100).count();  // Mono<100>
 Mono<List<Integer>> list = Flux.range(1, 5).collectList();
 
 // collectMap: accumulate into a Map
-Mono<Map<Long, User>> userMap = userFlux
-    .collectMap(User::getId);
-
-// collectMultimap: multiple values per key
-Mono<Map<String, Collection<User>>> byCity = userFlux
-    .collectMultimap(User::getCity);
+Mono<Map<Long, User>> userMap = userFlux.collectMap(User::getId);
 
 // buffer: group items into lists
 Flux<List<Integer>> buffers = Flux.range(1, 10).buffer(3);
 // [1,2,3], [4,5,6], [7,8,9], [10]
 
-// window: group items into Flux windows
-Flux<Flux<Integer>> windows = Flux.range(1, 10).window(3);
-
-// groupBy: partition into groups
-Flux<GroupedFlux<String, User>> groups = userFlux
-    .groupBy(User::getDepartment);
+// Also (awareness): collectMultimap, window(n) (Flux of Flux windows),
+// groupBy(keyFn) (partition into GroupedFlux groups).
 ```
 
 #### Combining Operators
@@ -436,11 +310,6 @@ Flux<String> zipped = Flux.zip(
     (letter, number) -> letter + number
 );  // A1, B2, C3
 
-// zipWith: zip current publisher with another
-Flux<String> zippedWith = Flux.just("A", "B", "C")
-    .zipWith(Flux.just(1, 2, 3))
-    .map(tuple -> tuple.getT1() + tuple.getT2());  // A1, B2, C3
-
 // merge: subscribe to all concurrently, interleave outputs
 Flux<String> merged = Flux.merge(
     Flux.just("a1", "a2").delayElements(Duration.ofMillis(100)),
@@ -453,26 +322,8 @@ Flux<String> concatenated = Flux.concat(
     Flux.just("b1", "b2")
 );  // a1, a2, b1, b2 (always in this order)
 
-// mergeWith: merge current publisher with another
-Flux<String> merged2 = flux1.mergeWith(flux2);
-
-// concatWith: concat current publisher with another
-Flux<String> concatenated2 = flux1.concatWith(flux2);
-
-// startWith: prepend items to a flux
-Flux<Integer> withHeader = Flux.range(1, 5).startWith(0);  // 0, 1, 2, 3, 4, 5
-
-// combineLatest: whenever any publisher emits, combine with latest from others
-Flux<String> latest = Flux.combineLatest(
-    flux1, flux2,
-    (a, b) -> a + "-" + b
-);
-
-// amb / firstWithSignal: take items from whichever publisher emits first
-Mono<String> fastest = Mono.firstWithSignal(
-    callServiceA(),
-    callServiceB()
-);  // returns from whichever completes first
+// Also (awareness): zipWith / mergeWith / concatWith (instance variants),
+// startWith(items) to prepend, combineLatest, and firstWithSignal (fastest wins).
 ```
 
 #### Side Effect Operators (no transformation)
@@ -483,33 +334,17 @@ flux.doOnNext(item -> log.debug("Processing: {}", item))
 
 // doOnError: side effect on error
 flux.doOnError(err -> log.error("Pipeline failed", err))
-flux.doOnError(IOException.class, err -> log.warn("IO error", err))
 
 // doOnComplete: side effect on completion
 flux.doOnComplete(() -> log.info("Stream completed"))
 
-// doOnSubscribe: side effect when subscribed
-flux.doOnSubscribe(sub -> log.debug("New subscriber"))
-
-// doOnCancel: side effect when cancelled
-flux.doOnCancel(() -> log.warn("Subscription cancelled"))
-
-// doOnRequest: side effect when downstream requests items
-flux.doOnRequest(n -> log.debug("Downstream requested {} items", n))
-
-// doOnTerminate: side effect on either completion or error
-flux.doOnTerminate(() -> log.info("Stream terminated"))
-
 // doFinally: always called on termination or cancellation (like finally block)
-flux.doFinally(signalType -> {
-    if (signalType == SignalType.CANCEL) log.warn("Cancelled");
-    else if (signalType == SignalType.ON_ERROR) log.error("Error");
-    closeResources();
-})
+flux.doFinally(signalType -> closeResources())
 
-// log: built-in operator logging that prints all signals
+// log: built-in operator that logs all signals
 flux.log()
-flux.log("myFlux")  // with category prefix
+
+// Also (awareness): doOnSubscribe, doOnCancel, doOnRequest, doOnTerminate.
 ```
 
 #### Fallback and Default Operators
@@ -523,12 +358,8 @@ Mono<User> user = findById(id)
 Mono<User> withDefault = findById(id)
     .defaultIfEmpty(User.guestUser());
 
-// switchOnEmpty (Flux)
-Flux<User> users = findAll()
-    .switchIfEmpty(Flux.just(User.guestUser()));
-
-// or: use another publisher if this one is empty (Mono only)
-Mono<User> result = findInCache(id).or(findInDB(id));
+// Also (awareness): switchIfEmpty works on Flux too; Mono.or(other) falls back
+// to another publisher when empty.
 ```
 
 ### 3.4 Error Handling
@@ -538,10 +369,6 @@ Mono<User> result = findInCache(id).or(findInDB(id));
 Mono<String> safe = riskyOperation()
     .onErrorReturn("default-value");
 
-// onErrorReturn for specific exception type
-Mono<String> typed = riskyOperation()
-    .onErrorReturn(TimeoutException.class, "timed-out-fallback");
-
 // onErrorResume: replace error with a fallback publisher
 Mono<User> safe2 = findUser(id)
     .onErrorResume(NotFoundException.class, e -> Mono.just(User.guest()))
@@ -549,38 +376,23 @@ Mono<User> safe2 = findUser(id)
 
 // onErrorMap: transform exception type
 Mono<User> mapped = findUser(id)
-    .onErrorMap(DataAccessException.class,
-        e -> new ServiceException("DB error: " + e.getMessage(), e));
-
-// onErrorContinue: skip errored items in a Flux and continue
-// (use cautiously — can hide bugs)
-Flux<Integer> continued = Flux.just(1, 2, 0, 4, 5)
-    .map(n -> 10 / n)
-    .onErrorContinue(ArithmeticException.class,
-        (err, item) -> log.warn("Skipped item {} due to: {}", item, err.getMessage()));
-// emits: 10, 5, (skips 0), 2, 2
+    .onErrorMap(DataAccessException.class, e -> new ServiceException("DB error", e));
 
 // retry: resubscribe on error
 Mono<String> withRetry = callExternalApi()
     .retry(3);  // retry up to 3 times on ANY error
 
-// retryWhen: conditional retry with backoff
-Mono<String> smartRetry = callExternalApi()
-    .retryWhen(Retry.backoff(3, Duration.ofMillis(100))  // exponential backoff starting at 100ms
-        .maxBackoff(Duration.ofSeconds(5))
-        .jitter(0.5)                                     // add jitter to avoid thundering herd
-        .filter(e -> e instanceof IOException)           // only retry on IOException
-        .onRetryExhaustedThrow((spec, signal) ->         // custom error when retries exhausted
-            new ServiceException("Service unavailable after retries", signal.failure())));
-
 // timeout: error if no item within duration
 Mono<String> withTimeout = callExternalApi()
     .timeout(Duration.ofSeconds(5))
-    .onErrorReturn(TimeoutException.class, "timed-out");
+    .onErrorReturn("timed-out");
 
-// timeout with fallback publisher
-Mono<String> withFallback = callPrimaryService()
-    .timeout(Duration.ofSeconds(2), callFallbackService());
+// Also (awareness):
+//   onErrorReturn(ExType.class, value) for a specific exception type
+//   onErrorContinue((err, item) -> ...) skips errored items in a Flux (use cautiously)
+//   retryWhen(Retry.backoff(3, Duration.ofMillis(100)).maxBackoff(...).jitter(0.5)...)
+//     for exponential backoff with jitter and a filter on which errors to retry
+//   timeout(duration, fallbackPublisher) to fall back instead of erroring
 ```
 
 > **Common Pitfall:** `onErrorContinue` can be confusing because it affects operators upstream in the chain, not just the one it's attached to. Prefer `onErrorResume` in most cases for explicit, predictable error handling.
@@ -588,25 +400,6 @@ Mono<String> withFallback = callPrimaryService()
 ### 3.5 Backpressure in Depth
 
 ```java
-// Request N items at a time (manual backpressure control)
-flux.subscribe(new BaseSubscriber<Integer>() {
-    private static final int BATCH_SIZE = 10;
-
-    @Override
-    protected void hookOnSubscribe(Subscription subscription) {
-        request(BATCH_SIZE);  // request first batch
-    }
-
-    @Override
-    protected void hookOnNext(Integer value) {
-        process(value);
-        // After processing the batch, request more
-        if (currentIndex % BATCH_SIZE == 0) {
-            request(BATCH_SIZE);
-        }
-    }
-});
-
 // Overflow strategies when publisher is faster than subscriber
 Flux<Integer> fastProducer = Flux.range(1, 1_000_000);
 
@@ -642,38 +435,15 @@ Flux.fromCallable(() -> slowBlockingDbCall())  // runs on boundedElastic (due to
     .map(result -> transform(result))          // runs on boundedElastic
     .subscribe(System.out::println);
 
-// Multiple publishOn: switch threads at different points
-Flux.range(1, 100)
-    .publishOn(Schedulers.parallel())          // CPU-bound work on parallel pool
-    .map(i -> cpuIntensiveCalc(i))
-    .publishOn(Schedulers.boundedElastic())    // I/O-bound work on elastic pool
-    .flatMap(result -> saveToDb(result))
-    .subscribe();
-
 // Scheduler types — when to use each:
 Schedulers.immediate()            // current thread (no switching — default)
 Schedulers.single()               // single reusable background thread
 Schedulers.parallel()             // fixed pool = CPU cores, for CPU-bound
 Schedulers.boundedElastic()       // expandable pool (max 10x CPU cores), for blocking I/O
-Schedulers.fromExecutorService(executor)  // custom executor
-Schedulers.newBoundedElastic(     // custom bounded elastic
-    100,                          // max threads
-    100_000,                      // max task queue
-    "my-pool"                     // thread name prefix
-);
+// Also (awareness): fromExecutorService(executor) and newBoundedElastic(...) for custom pools.
 ```
 
 > **Interview Tip:** Always use `Schedulers.boundedElastic()` when wrapping legacy blocking code (JDBC, file I/O) in a reactive chain. NEVER block on a `Schedulers.parallel()` thread — those threads are shared for CPU-bound work and blocking them starves the entire reactive application.
-
-```java
-// CORRECT: wrap blocking call with subscribeOn
-Mono<User> user = Mono.fromCallable(() -> jdbcRepository.findById(id))
-    .subscribeOn(Schedulers.boundedElastic());
-
-// WRONG: blocking on parallel thread
-Mono<User> bad = Mono.fromCallable(() -> jdbcRepository.findById(id))
-    .subscribeOn(Schedulers.parallel());  // DO NOT DO THIS
-```
 
 ### 3.7 Context — Reactive Equivalent of ThreadLocal
 
@@ -682,36 +452,15 @@ In traditional Java, `ThreadLocal` stores request-scoped data (user ID, trace ID
 Reactor provides `Context` as the reactive replacement.
 
 ```java
-// Writing context (downstream operator provides context to upstream)
-// Context flows UPSTREAM (backwards through the chain)
+// Write context downstream with contextWrite(...); read it upstream with deferContextual(...)
 Mono<String> result = Mono.deferContextual(ctx -> {
         String traceId = ctx.getOrDefault("traceId", "unknown");
         return performWork(traceId);
     })
     .contextWrite(Context.of("traceId", "abc123", "userId", 42L));
-
-// Reading context in an operator
-Flux<String> withContext = Flux.range(1, 5)
-    .flatMap(i -> Mono.deferContextual(ctx ->
-        Mono.just("item-" + i + "-" + ctx.get("requestId"))
-    ));
-
-// Modifying context
-Mono<String> modified = mono
-    .contextWrite(ctx -> ctx.put("newKey", "newValue"))
-    .contextWrite(Context.of("initialKey", "initialValue"));
-
-// Practical example: tracing through reactive chain
-public Mono<Response> handleRequest(Request req) {
-    return processRequest(req)
-        .contextWrite(Context.of(
-            "traceId", req.getHeader("X-Trace-Id"),
-            "userId", req.getUserId()
-        ));
-}
 ```
 
-> **Common Pitfall:** Context propagation is BACKWARDS (from `contextWrite` to upstream). You write context downstream and read it upstream. This is the opposite of what most developers expect.
+> **Common Pitfall:** Context propagation is BACKWARDS (from `contextWrite` to upstream). You write context downstream and read it upstream. This is the opposite of what most developers expect. (Spring Security's reactive support uses this internally.)
 
 ### 3.8 Testing with StepVerifier
 
@@ -728,18 +477,11 @@ StepVerifier.create(Flux.just(1, 2, 3))
 
 // Verify with assertions
 StepVerifier.create(userService.findByEmail("john@example.com"))
-    .assertNext(user -> {
-        assertThat(user.getName()).isEqualTo("John");
-        assertThat(user.getEmail()).isEqualTo("john@example.com");
-    })
+    .assertNext(user -> assertThat(user.getName()).isEqualTo("John"))
     .expectComplete()
     .verify();
 
 // Verify error
-StepVerifier.create(Mono.error(new RuntimeException("expected")))
-    .expectErrorMessage("expected")
-    .verify();
-
 StepVerifier.create(findUser(-1L))
     .expectError(NotFoundException.class)
     .verify();
@@ -751,12 +493,6 @@ StepVerifier.withVirtualTime(() -> Flux.interval(Duration.ofHours(1)).take(3))
     .expectNext(0L, 1L, 2L)
     .expectComplete()
     .verify();
-
-// Verify with timeout
-StepVerifier.create(slowMono)
-    .expectNext("result")
-    .expectComplete()
-    .verify(Duration.ofSeconds(5));       // fail test if takes > 5s
 ```
 
 ---
@@ -980,14 +716,7 @@ public class UserHandler {
                     URI.create("/api/users/" + saved.getId()))
                 .bodyValue(saved));
     }
-
-    public Mono<ServerResponse> streamUsers(ServerRequest request) {
-        Flux<User> users = userRepository.findAll()
-            .delayElements(Duration.ofMillis(200));
-        return ServerResponse.ok()
-            .contentType(MediaType.TEXT_EVENT_STREAM)
-            .body(users, User.class);
-    }
+    // streamUsers, updateUser, deleteUser follow the same handler pattern.
 }
 ```
 
@@ -1036,12 +765,6 @@ Flux<Product> products = client.get()
     .retrieve()
     .bodyToFlux(Product.class);
 
-// GET — with response headers
-Mono<ResponseEntity<User>> withHeaders = client.get()
-    .uri("/users/{id}", userId)
-    .retrieve()
-    .toEntity(User.class);
-
 // POST — with request body
 Mono<Order> created = client.post()
     .uri("/orders")
@@ -1050,64 +773,11 @@ Mono<Order> created = client.post()
     .retrieve()
     .bodyToMono(Order.class);
 
-// POST — with reactive body (Mono/Flux as body)
-Mono<BatchResult> batch = client.post()
-    .uri("/users/batch")
-    .body(userFlux, User.class)  // stream body directly
-    .retrieve()
-    .bodyToMono(BatchResult.class);
-
-// PUT
-Mono<User> updated = client.put()
-    .uri("/users/{id}", userId)
-    .bodyValue(updateRequest)
-    .retrieve()
-    .bodyToMono(User.class);
-
-// DELETE — no body
-Mono<Void> deleted = client.delete()
-    .uri("/users/{id}", userId)
-    .retrieve()
-    .bodyToMono(Void.class);
-
-// ============================================================
-// WebClient Filters
-// ============================================================
-
-// Logging filter
-ExchangeFilterFunction logRequest = ExchangeFilterFunction.ofRequestProcessor(req -> {
-    log.debug("Request: {} {}", req.method(), req.url());
-    return Mono.just(req);
-});
-
-// Auth filter
-ExchangeFilterFunction authFilter = ExchangeFilterFunction.ofRequestProcessor(req ->
-    tokenService.getToken()
-        .map(token -> ClientRequest.from(req)
-            .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
-            .build())
-);
-
-// Retry filter
-ExchangeFilterFunction retryFilter = (request, next) ->
-    next.exchange(request)
-        .retry(3);
-
-// ============================================================
-// WebClient with connection pooling (production)
-// ============================================================
-
-HttpClient httpClient = HttpClient.create()
-    .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, 5000)
-    .responseTimeout(Duration.ofSeconds(10))
-    .doOnConnected(conn ->
-        conn.addHandlerLast(new ReadTimeoutHandler(10, TimeUnit.SECONDS))
-            .addHandlerLast(new WriteTimeoutHandler(10, TimeUnit.SECONDS)));
-
-WebClient client = WebClient.builder()
-    .clientConnector(new ReactorClientHttpConnector(httpClient))
-    .build();
+// PUT / DELETE follow the same pattern (.put()/.delete(), .bodyValue(...) as needed).
+// Use .toEntity(Type.class) instead of .bodyToMono to also read response headers/status.
 ```
+
+**Advanced (awareness):** `WebClient.builder()` accepts `.filter(...)` `ExchangeFilterFunction`s for cross-cutting concerns like logging, attaching auth tokens, or retry. For production you typically supply a custom Netty `HttpClient` via `clientConnector(...)` to configure connection/read/write timeouts and the connection pool.
 
 > **Common Pitfall:** `WebClient.create()` creates a new HTTP client with a new connection pool each time. Always use a singleton `WebClient` bean (or a `WebClient.Builder` bean and build from it) to share the connection pool.
 
@@ -1220,44 +890,20 @@ public interface UserRepository extends ReactiveCrudRepository<User, Long>,
 
 ### 5.4 Custom R2DBC Queries with DatabaseClient
 
+For anything derived queries can't express (joins, aggregations, generated keys), inject `DatabaseClient` and write SQL directly. Since R2DBC has no relationships, joins are manual.
+
 ```java
-@Repository
-public class UserRepositoryCustomImpl {
-
-    private final DatabaseClient databaseClient;
-
-    @Autowired
-    public UserRepositoryCustomImpl(DatabaseClient databaseClient) {
-        this.databaseClient = databaseClient;
-    }
-
-    // Complex query with joins (R2DBC doesn't auto-join)
-    public Flux<UserWithOrderCount> findUsersWithOrderCount() {
-        return databaseClient.sql("""
-                SELECT u.id, u.name, u.email, COUNT(o.id) as order_count
-                FROM users u
-                LEFT JOIN orders o ON u.id = o.user_id
-                GROUP BY u.id, u.name, u.email
-                """)
-            .map(row -> new UserWithOrderCount(
-                row.get("id", Long.class),
-                row.get("name", String.class),
-                row.get("email", String.class),
-                row.get("order_count", Long.class)
-            ))
-            .all();
-    }
-
-    // Insert with generated key
-    public Mono<User> insertAndReturn(User user) {
-        return databaseClient.sql("INSERT INTO users (name, email) VALUES (:name, :email)")
-            .bind("name", user.getName())
-            .bind("email", user.getEmail())
-            .filter(s -> s.returnGeneratedValues("id"))
-            .map(row -> row.get("id", Long.class))
-            .one()
-            .map(id -> { user.setId(id); return user; });
-    }
+public Flux<UserWithOrderCount> findUsersWithOrderCount() {
+    return databaseClient.sql("""
+            SELECT u.id, u.name, COUNT(o.id) as order_count
+            FROM users u LEFT JOIN orders o ON u.id = o.user_id
+            GROUP BY u.id, u.name
+            """)
+        .map(row -> new UserWithOrderCount(
+            row.get("id", Long.class),
+            row.get("name", String.class),
+            row.get("order_count", Long.class)))
+        .all();  // .one() for a single row; .bind("name", value) to bind params
 }
 ```
 
@@ -1281,36 +927,18 @@ public class UserRepositoryCustomImpl {
 
 ### 5.6 Reactive Transactions
 
+`@Transactional` works with R2DBC, but the transaction is reactive — it commits when the returned `Mono`/`Flux` completes and rolls back if any step in the chain errors.
+
 ```java
-// @Transactional works with R2DBC — but the transaction is reactive
 @Service
-@Transactional  // class-level — applies to all methods
 public class OrderService {
 
-    @Transactional  // method-level
+    @Transactional
     public Mono<Order> createOrder(CreateOrderRequest request) {
         return userRepository.findById(request.getUserId())
             .switchIfEmpty(Mono.error(new NotFoundException("User not found")))
-            .flatMap(user -> productRepository.findById(request.getProductId()))
-            .switchIfEmpty(Mono.error(new NotFoundException("Product not found")))
-            .flatMap(product -> {
-                Order order = new Order(request.getUserId(), request.getProductId());
-                return orderRepository.save(order);
-            });
+            .flatMap(user -> orderRepository.save(new Order(user.getId(), request.getProductId())));
         // If any step errors, the whole transaction rolls back
-    }
-
-    @Transactional(rollbackFor = Exception.class)
-    public Mono<Void> transferFunds(Long fromId, Long toId, BigDecimal amount) {
-        return accountRepository.findById(fromId)
-            .flatMap(from -> accountRepository.findById(toId)
-                .flatMap(to -> {
-                    from.debit(amount);
-                    to.credit(amount);
-                    return accountRepository.save(from)
-                        .then(accountRepository.save(to));
-                }))
-            .then();
     }
 }
 ```
@@ -1331,43 +959,17 @@ public class SecurityConfig {
         return http
             .authorizeExchange(auth -> auth
                 .pathMatchers("/api/public/**").permitAll()
-                .pathMatchers(HttpMethod.OPTIONS, "/**").permitAll()  // CORS preflight
                 .pathMatchers("/api/admin/**").hasRole("ADMIN")
                 .anyExchange().authenticated()
             )
-            .oauth2ResourceServer(oauth2 -> oauth2
-                .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthConverter()))
-            )
+            .oauth2ResourceServer(oauth2 -> oauth2.jwt(Customizer.withDefaults()))
             .csrf(csrf -> csrf.disable())  // disable for stateless REST APIs
-            .cors(cors -> cors.configurationSource(corsConfigurationSource()))
             .build();
-    }
-
-    @Bean
-    public ReactiveJwtAuthenticationConverter jwtAuthConverter() {
-        ReactiveJwtGrantedAuthoritiesConverter authConverter =
-            new ReactiveJwtGrantedAuthoritiesConverter();
-        authConverter.setAuthoritiesClaimName("roles");
-        authConverter.setAuthorityPrefix("ROLE_");
-
-        ReactiveJwtAuthenticationConverter converter = new ReactiveJwtAuthenticationConverter();
-        converter.setJwtGrantedAuthoritiesConverter(authConverter);
-        return converter;
-    }
-
-    @Bean
-    CorsConfigurationSource corsConfigurationSource() {
-        CorsConfiguration config = new CorsConfiguration();
-        config.setAllowedOrigins(List.of("https://myapp.com"));
-        config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE"));
-        config.setAllowedHeaders(List.of("*"));
-
-        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
-        source.registerCorsConfiguration("/api/**", config);
-        return source;
     }
 }
 ```
+
+The key differences from MVC security: the config bean is a `SecurityWebFilterChain` built from `ServerHttpSecurity`, and you use `authorizeExchange`/`pathMatchers` instead of `authorizeHttpRequests`/`requestMatchers`. To map JWT claims to roles, provide a `ReactiveJwtAuthenticationConverter` bean; CORS is configured via `.cors(...)` with a `CorsConfigurationSource` — both work the same way as MVC, just with reactive types.
 
 ### 6.2 Accessing Security Context in Reactive Chain
 
@@ -1434,103 +1036,24 @@ class UserControllerTest {
             .exchange()
             .expectStatus().isNotFound();
     }
-
-    @Test
-    void shouldCreateUser() {
-        CreateUserRequest req = new CreateUserRequest("Jane", "jane@example.com");
-        User savedUser = new User(2L, "Jane", "jane@example.com");
-
-        when(userRepository.save(any(User.class))).thenReturn(Mono.just(savedUser));
-
-        webTestClient.post()
-            .uri("/api/users")
-            .contentType(MediaType.APPLICATION_JSON)
-            .bodyValue(req)
-            .exchange()
-            .expectStatus().isCreated()
-            .expectBody()
-            .jsonPath("$.id").isEqualTo(2)
-            .jsonPath("$.name").isEqualTo("Jane");
-    }
-
-    @Test
-    void shouldStreamUsers() {
-        Flux<User> userStream = Flux.just(
-            new User(1L, "Alice", "alice@example.com"),
-            new User(2L, "Bob", "bob@example.com")
-        );
-        when(userRepository.findAll()).thenReturn(userStream);
-
-        webTestClient.get()
-            .uri("/api/users/stream")
-            .accept(MediaType.TEXT_EVENT_STREAM)
-            .exchange()
-            .expectStatus().isOk()
-            .expectBodyList(User.class)
-            .hasSize(2);
-    }
+    // POST/streaming follow the same pattern, e.g. .post().bodyValue(req)
+    // ...expectStatus().isCreated(), or .expectBodyList(User.class).hasSize(n).
 }
 
-// ============================================================
-// Integration test with real server
-// ============================================================
-
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
-class UserControllerIntegrationTest {
-
-    @Autowired
-    private WebTestClient webTestClient;
-
-    @Test
-    void shouldReturnAllUsers() {
-        webTestClient.get()
-            .uri("/api/users")
-            .exchange()
-            .expectStatus().isOk()
-            .expectBodyList(User.class)
-            .consumeWith(result -> {
-                List<User> users = result.getResponseBody();
-                assertThat(users).isNotNull().isNotEmpty();
-            });
-    }
-}
+// Integration test against a real server: @SpringBootTest(webEnvironment = RANDOM_PORT)
+// auto-configures WebTestClient against the running app.
 
 // ============================================================
 // Unit testing service layer with StepVerifier
 // ============================================================
 
-class UserServiceTest {
+@Test
+void shouldThrowNotFound_whenUserMissing() {
+    when(userRepository.findById(99L)).thenReturn(Mono.empty());
 
-    @Mock
-    private UserRepository userRepository;
-
-    @InjectMocks
-    private UserService userService;
-
-    @BeforeEach
-    void setUp() {
-        MockitoAnnotations.openMocks(this);
-    }
-
-    @Test
-    void shouldFindUser() {
-        User expectedUser = new User(1L, "John", "john@example.com");
-        when(userRepository.findById(1L)).thenReturn(Mono.just(expectedUser));
-
-        StepVerifier.create(userService.findById(1L))
-            .expectNext(expectedUser)
-            .expectComplete()
-            .verify();
-    }
-
-    @Test
-    void shouldThrowNotFound_whenUserMissing() {
-        when(userRepository.findById(99L)).thenReturn(Mono.empty());
-
-        StepVerifier.create(userService.findById(99L))
-            .expectError(NotFoundException.class)
-            .verify();
-    }
+    StepVerifier.create(userService.findById(99L))
+        .expectError(NotFoundException.class)
+        .verify();
 }
 ```
 
@@ -1567,34 +1090,14 @@ public Flux<ProductDetails> enrichProducts(List<Long> productIds) {
 
 ### 8.2 Circuit Breaker with Resilience4j
 
+With the `resilience4j-reactor` dependency, wrap a reactive call with `transformDeferred(CircuitBreakerOperator.of(circuitBreaker))` (and similarly `RateLimiterOperator`) to add a circuit breaker, then handle the open state with `onErrorReturn(CallNotPermittedException.class, fallback)`.
+
 ```java
-// Add dependency: resilience4j-reactor
-@Service
-public class ExternalPaymentService {
-
-    private final WebClient webClient;
-    private final CircuitBreaker circuitBreaker;
-
-    public ExternalPaymentService(WebClient webClient,
-                                   CircuitBreakerRegistry circuitBreakerRegistry) {
-        this.webClient = webClient;
-        this.circuitBreaker = circuitBreakerRegistry.circuitBreaker("payment-service");
-    }
-
-    public Mono<PaymentResult> processPayment(PaymentRequest request) {
-        return webClient.post()
-            .uri("/payments")
-            .bodyValue(request)
-            .retrieve()
-            .bodyToMono(PaymentResult.class)
-            .transformDeferred(CircuitBreakerOperator.of(circuitBreaker))
-            .transformDeferred(RateLimiterOperator.of(rateLimiter))
-            .onErrorReturn(CallNotPermittedException.class,
-                PaymentResult.circuitOpen("Payment service unavailable"))
-            .onErrorResume(WebClientResponseException.class,
-                e -> Mono.error(new PaymentException("Payment failed: " + e.getMessage())));
-    }
-}
+return webClient.post().uri("/payments").bodyValue(request).retrieve()
+    .bodyToMono(PaymentResult.class)
+    .transformDeferred(CircuitBreakerOperator.of(circuitBreaker))
+    .onErrorReturn(CallNotPermittedException.class,
+        PaymentResult.circuitOpen("Payment service unavailable"));
 ```
 
 ### 8.3 Hot vs Cold Publishers
@@ -1631,83 +1134,29 @@ hot.connect();  // NOW items start flowing to both subscribers simultaneously
 Flux<StockPrice> liveStream = stockPriceService.getLivePrices()
     .share();  // shared: new subscribers see items from subscription point forward
 
-// Sinks — programmatically push to hot publishers
+// Sinks — programmatically push to a hot publisher from imperative code
 Sinks.Many<String> sink = Sinks.many().multicast().onBackpressureBuffer();
 Flux<String> hotFlux = sink.asFlux();
-
-// Subscribe multiple consumers
-hotFlux.subscribe(s -> System.out.println("Consumer1: " + s));
-hotFlux.subscribe(s -> System.out.println("Consumer2: " + s));
-
-// Push items from anywhere
-sink.tryEmitNext("event1");
-sink.tryEmitNext("event2");
+sink.tryEmitNext("event1");   // push items from anywhere
 sink.tryEmitComplete();
 ```
 
 ### 8.4 Caching Reactive Results
 
+The simplest cache is the `cache()` operator — the first subscriber fetches, later subscribers get the replayed result. `cache(Duration)` adds a TTL. For per-key caching, check a Caffeine cache first and fall back to the repository.
+
 ```java
-// cache() — reuse result for all subscribers (like multicast + replay)
-Mono<Config> cachedConfig = configService.loadConfig()
-    .cache();  // first subscriber fetches, subsequent subscribers get cached result
-
-// cache with TTL
-Mono<Config> timedCache = configService.loadConfig()
-    .cache(Duration.ofMinutes(5));  // cached for 5 minutes, then refetched
-
-// Caffeine cache with reactive
-@Service
-public class UserCacheService {
-
-    private final Cache<Long, User> caffeineCache = Caffeine.newBuilder()
-        .maximumSize(1000)
-        .expireAfterWrite(10, TimeUnit.MINUTES)
-        .build();
-
-    public Mono<User> findById(Long id) {
-        User cached = caffeineCache.getIfPresent(id);
-        if (cached != null) {
-            return Mono.just(cached);
-        }
-        return userRepository.findById(id)
-            .doOnNext(user -> caffeineCache.put(id, user));
-    }
-}
+Mono<Config> cachedConfig = configService.loadConfig().cache();           // cache forever
+Mono<Config> timedCache  = configService.loadConfig().cache(Duration.ofMinutes(5));
 ```
 
 ### 8.5 Rate Limiting / Throttling
 
-```java
-// Limit emission rate with delayElements
-Flux<String> throttled = userEvents
-    .delayElements(Duration.ofMillis(100));  // max 10 per second
-
-// Window rate limiting
-Flux<String> windowed = userEvents
-    .window(Duration.ofSeconds(1))
-    .flatMap(window -> window.take(100));  // max 100 per second
-
-// Using Resilience4j RateLimiter
-Mono<Response> rateLimited = callService()
-    .transformDeferred(RateLimiterOperator.of(rateLimiter));
-```
+Throttle emissions with `delayElements(Duration)`, cap items per time window with `window(Duration).flatMap(w -> w.take(n))`, or use Resilience4j via `transformDeferred(RateLimiterOperator.of(rateLimiter))`.
 
 ### 8.6 Reactive Caching with `@Cacheable`
 
-```java
-// Spring Cache + Reactor (requires reactor-cache support)
-@Service
-public class ProductService {
-
-    @Cacheable(cacheNames = "products", key = "#id")
-    public Mono<Product> findById(Long id) {
-        return productRepository.findById(id);
-        // NOTE: @Cacheable with Mono requires special cache configuration
-        // Use ReactorCacheAspect or Caffeine reactive support
-    }
-}
-```
+`@Cacheable` can wrap methods returning `Mono`/`Flux`, but it needs reactor-aware cache support (e.g. a reactive cache manager / Caffeine reactive support) to cache the emitted value rather than the publisher. Awareness that this requires extra configuration is enough.
 
 ---
 
@@ -1969,47 +1418,6 @@ The `MediaType.TEXT_EVENT_STREAM_VALUE` content type tells Spring to use SSE enc
 | Transform exception | `onErrorMap` |
 | Switch thread downstream | `publishOn` |
 | Switch thread for source | `subscribeOn` |
-
-### Thread Scheduler Selection Guide
-
-| Scenario | Scheduler |
-|---|---|
-| CPU-bound computation | `Schedulers.parallel()` |
-| Blocking I/O (JDBC, file, legacy) | `Schedulers.boundedElastic()` |
-| Single background task | `Schedulers.single()` |
-| Run inline, no switch | `Schedulers.immediate()` |
-| Custom executor | `Schedulers.fromExecutorService(exec)` |
-
-### Error Handling Selection Guide
-
-| Scenario | Operator |
-|---|---|
-| Return default value on error | `onErrorReturn` |
-| Switch to fallback publisher on error | `onErrorResume` |
-| Convert exception type | `onErrorMap` |
-| Skip errored items, continue stream | `onErrorContinue` |
-| Retry immediately | `retry(n)` |
-| Retry with delay/backoff | `retryWhen(Retry.backoff(...))` |
-| Timeout with no fallback | `timeout(duration)` |
-| Timeout with fallback publisher | `timeout(duration, fallbackMono)` |
-
-### WebFlux Setup Checklist
-
-```
-Dependencies needed:
-  spring-boot-starter-webflux      ← WebFlux + Netty + Reactor
-  spring-boot-starter-data-r2dbc   ← Reactive DB (if using relational DB)
-  r2dbc-postgresql (or r2dbc-mysql) ← R2DBC driver
-
-  NOT needed / replaced:
-  spring-boot-starter-web          ← DO NOT add alongside webflux (MVC conflict)
-  spring-boot-starter-data-jpa     ← Use r2dbc instead
-  RestTemplate                     ← Use WebClient
-
-Testing:
-  WebTestClient                    ← Auto-configured with @WebFluxTest
-  StepVerifier                     ← For testing service layer Mono/Flux
-```
 
 ### Common Pitfalls Summary
 

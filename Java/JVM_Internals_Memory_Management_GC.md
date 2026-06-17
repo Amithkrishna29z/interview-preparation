@@ -13,25 +13,6 @@ You write your speech in one language (Java). You don't care what language each 
 
 ---
 
-## Table of Contents
-
-1. [Overview & The Journey of Java Code](#overview--the-journey-of-java-code)
-2. [JVM Architecture](#jvm-architecture)
-3. [Class Loading](#class-loading)
-4. [Runtime Memory Areas](#runtime-memory-areas)
-5. [Stack vs Heap](#stack-vs-heap)
-6. [Heap Structure & Object Lifecycle](#heap-structure--object-lifecycle)
-7. [Garbage Collection](#garbage-collection)
-8. [GC Algorithms](#gc-algorithms)
-9. [Memory Leaks in Java](#memory-leaks-in-java)
-10. [Errors: OutOfMemoryError & StackOverflowError](#errors-outofmemoryerror--stackoverflowerror)
-11. [JVM Tuning Flags](#jvm-tuning-flags)
-12. [Monitoring & Troubleshooting Tools](#monitoring--troubleshooting-tools)
-13. [Common Interview Questions](#common-interview-questions)
-14. [Quick Reference Cheat Sheet](#quick-reference-cheat-sheet)
-
----
-
 ## Overview & The Journey of Java Code
 
 The famous Java slogan is **"Write Once, Run Anywhere" (WORA)**. Here's how that magic actually works.
@@ -124,12 +105,7 @@ The JVM has **three big subsystems** that work together:
 
 ## Class Loading
 
-Before any class can be used, it must be loaded into memory. This happens in **3 phases**.
-
-**Think of class loading like a new employee's first day:**
-- **Loading** = HR finds your file and brings it into the building.
-- **Linking** = They verify your documents are real (verify), set up your default desk and badge (prepare), and connect you to the teams you'll work with (resolve).
-- **Initialization** = You actually start working — your `static` setup runs.
+Before any class can be used, it must be loaded into memory. This happens in **3 phases** (think of a new employee's first day: HR brings in your file → they verify documents, set up your desk, connect you to teams → you actually start working).
 
 ### The 3 Phases
 
@@ -343,11 +319,6 @@ So the JVM optimizes by separating short-lived from long-lived objects.
 **Why two survivor spaces (S0 and S1)?**
 At any moment, **one is always empty.** During a Minor GC, live objects from Eden + the *occupied* survivor space are all copied into the *empty* survivor space. Then the roles flip. This "copying collector" approach automatically compacts memory (no fragmentation) and is very fast.
 
-**Think of the heap like a hospital:**
-- **Eden** = the emergency intake ward. Everyone arrives here. Most are treated and discharged quickly (die young).
-- **Survivor spaces (S0/S1)** = the observation rooms. Patients who need more monitoring get moved here, possibly several times.
-- **Old Generation** = long-term care. Patients who've been around a long time are clearly staying — move them somewhere stable so we stop re-checking them constantly.
-
 This is the whole point: GC checks Eden constantly (cheap, lots of garbage), but rarely bothers the Old Gen (expensive, mostly live objects).
 
 ---
@@ -405,9 +376,7 @@ Notice that **D points to E** — they reference each other. But since no GC Roo
               └─────┘└─────┘
 ```
 
-- **Mark** finds what's alive.
-- **Sweep** deletes what's dead.
-- **Compact** removes the resulting "holes" so future allocations are fast (no fragmentation). Not every collector compacts, but generational young-gen collection effectively does via copying.
+**Mark** finds what's alive, **Sweep** deletes what's dead, and **Compact** removes the resulting "holes" so future allocations are fast (no fragmentation). Not every collector compacts, but generational young-gen collection effectively does via copying.
 
 ### Minor GC vs Major/Full GC
 
@@ -445,9 +414,7 @@ Different collectors make different trade-offs between **throughput** (total wor
 
 ## Memory Leaks in Java
 
-**Yes — Java can absolutely have memory leaks**, even with a garbage collector. A leak happens when objects you no longer need are still **reachable** from a GC Root, so the GC won't collect them. They pile up until you hit `OutOfMemoryError`.
-
-**Think of it like:** the office cleaner only throws away unreachable trash. If you accidentally keep a "reference rope" tied to a pile of junk, the cleaner sees it's "still in use" and leaves it forever — even though you'll never look at it again.
+**Yes — Java can absolutely have memory leaks**, even with a garbage collector. A leak happens when objects you no longer need are still **reachable** from a GC Root, so the GC won't collect them — like accidentally keeping a "reference rope" tied to a pile of junk, so the cleaner leaves it forever. They pile up until you hit `OutOfMemoryError`.
 
 ### Common causes
 
@@ -462,17 +429,9 @@ Different collectors make different trade-offs between **throughput** (total wor
 
 ### How to spot them
 
-```
-Symptom: heap usage trends UP over time and never comes back down,
-         Full GCs become more frequent, eventually OutOfMemoryError.
+**Symptom:** heap usage trends UP over time and never comes back down, Full GCs become more frequent, eventually `OutOfMemoryError`.
 
-Steps:
-  1. -verbose:gc / GC logs  → see if memory keeps climbing after Full GC
-  2. jmap -histo <pid>      → which class has a growing instance count?
-  3. Take a heap dump (jmap -dump or -XX:+HeapDumpOnOutOfMemoryError)
-  4. Open in Eclipse MAT / VisualVM → run "Dominator Tree" / leak suspect report
-  5. Trace the reference chain back to the GC Root that's wrongly holding the objects
-```
+**Steps:** check GC logs (memory keeps climbing after Full GC) → `jmap -histo` (which class has a growing instance count?) → take a heap dump (`jmap -dump` or `-XX:+HeapDumpOnOutOfMemoryError`) → open in Eclipse MAT / VisualVM and run the leak-suspect / Dominator Tree report → trace the reference chain back to the GC Root wrongly holding the objects.
 
 ---
 
@@ -536,15 +495,15 @@ You pass these on the command line: `java -Xmx512m -XX:+UseG1GC MyApp`.
 | `-verbose:gc` / `-Xlog:gc*` | Print GC activity to the log (Java 9+ uses `-Xlog:gc*`) so you can see pauses and memory trends. |
 | `-XX:MaxGCPauseMillis=<ms>` | Target maximum GC pause (a hint to G1). |
 
-Example production startup:
+Example production startup (fixed 2GB heap, G1, <200ms pause target, dump + log on issues):
 
 ```bash
-java -Xms2g -Xmx2g \              # fixed 2GB heap, no resizing
-     -XX:+UseG1GC \               # G1 collector
-     -XX:MaxGCPauseMillis=200 \   # aim for <200ms pauses
-     -XX:+HeapDumpOnOutOfMemoryError \   # dump on OOM for post-mortem
+java -Xms2g -Xmx2g \
+     -XX:+UseG1GC \
+     -XX:MaxGCPauseMillis=200 \
+     -XX:+HeapDumpOnOutOfMemoryError \
      -XX:HeapDumpPath=/var/log/app/ \
-     -Xlog:gc*:file=/var/log/app/gc.log \  # log GC activity
+     -Xlog:gc*:file=/var/log/app/gc.log \
      -jar myapp.jar
 ```
 
@@ -565,14 +524,7 @@ These ship with the JDK (in the `bin/` folder). Know what each is for.
 | **`jcmd`** | Swiss-army-knife: send many diagnostic commands to a JVM (GC, dumps, flags) from one tool. |
 | **Eclipse MAT** | Best tool for **reading a heap dump** — finds leak suspects and shows the reference chain (dominator tree) holding objects alive. |
 
-**Typical workflow for a memory problem:**
-```
-jps              → find the PID
-jstat -gcutil    → confirm heap is filling / GC thrashing
-jmap -histo      → which class is growing?
-jmap -dump       → capture a heap dump (.hprof)
-Eclipse MAT      → open dump, find leak suspect & the GC Root holding it
-```
+**Typical workflow for a memory problem:** `jps` (find PID) → `jstat -gcutil` (confirm heap filling / GC thrashing) → `jmap -histo` (which class is growing?) → `jmap -dump` (capture `.hprof`) → Eclipse MAT (find leak suspect & the GC Root holding it).
 
 ---
 
@@ -645,13 +597,7 @@ When a class needs to be loaded, the classloader first **delegates the request u
 
 ### Q: Which garbage collector is the default, and what makes it good?
 
-**G1 (Garbage-First)** has been the default since **Java 9**. It divides the heap into many equal-sized **regions** and prioritizes collecting the regions with the most garbage first. It does most work concurrently and lets you set a **target pause time**, giving a good balance of low latency and high throughput for typical server applications.
-
----
-
-### Q: What is a "stop-the-world" pause?
-
-It's when the GC **pauses all application threads** so it can safely walk the object graph without it changing mid-collection. Short pauses are unnoticeable; long ones (e.g., a Full GC on a huge heap) freeze the app and cause latency spikes. Modern collectors (G1, ZGC, Shenandoah) aim to minimize STW time by doing more work concurrently.
+**G1 (Garbage-First)** has been the default since **Java 9**. It divides the heap into many equal-sized **regions** and prioritizes collecting the regions with the most garbage first. It does most work concurrently and lets you set a **target pause time**, giving a good balance of low latency and high throughput for typical server applications. A **stop-the-world** pause is when the GC pauses all application threads to safely walk the object graph; G1, ZGC, and Shenandoah minimize it by working concurrently.
 
 ---
 
@@ -665,7 +611,7 @@ It's when the GC **pauses all application threads** so it can safely walk the ob
 
 ### Q: Are static variables stored on the heap or somewhere else?
 
-Class-level metadata and the static fields' "slots" are associated with **Metaspace** (the class's runtime data, off-heap since Java 8). The actual **objects** that static reference variables point to still live on the **heap**. Static fields are themselves GC Roots, which is why static collections are a classic leak source.
+The static fields' "slots" live with the class metadata in **Metaspace** (off-heap since Java 8), but the actual **objects** that static reference variables point to live on the **heap**. Static fields are themselves GC Roots, which is why static collections are a classic leak source.
 
 ---
 
@@ -673,94 +619,37 @@ Class-level metadata and the static fields' "slots" are associated with **Metasp
 
 ```
 JOURNEY OF CODE:
-  .java  --javac-->  .class (bytecode)  --JVM-->  interpret + JIT  -->  native machine code
-  JDK ⊃ JRE ⊃ JVM   (build) (run) (execute)
+  .java --javac--> .class (bytecode) --JVM--> interpret + JIT --> native code
+  JDK ⊃ JRE ⊃ JVM   |   JVM = ClassLoader + Runtime Data Areas + Execution Engine
 
-JVM ARCHITECTURE (3 parts):
-  1. ClassLoader Subsystem  → Loading → Linking → Initialization
-  2. Runtime Data Areas     → memory regions
-  3. Execution Engine       → Interpreter + JIT + Garbage Collector
-```
-
-```
-CLASS LOADING:
-  Phases : Loading → Linking (Verify, Prepare, Resolve) → Initialization
-  Loaders: Bootstrap → Platform(Extension) → Application
-  Parent Delegation: ask parent first (security + no duplicate core classes)
-```
-
-```
 MEMORY AREAS — SHARED vs PER-THREAD:
   SHARED      → Heap (objects), Metaspace (class metadata, off-heap since Java 8)
   PER-THREAD  → JVM Stack, PC Register, Native Method Stack
-```
 
-```
 STACK vs HEAP:
-                STACK                         HEAP
-  stores   local vars, frames, refs      objects, arrays, instance vars
-  scope    per-thread                    shared
-  speed    very fast (LIFO)              slower (GC managed)
-  thread   inherently safe               NOT safe (needs sync)
-  error    StackOverflowError            OutOfMemoryError
-  flag     -Xss                          -Xms / -Xmx
-```
+  Stack → per-thread; local vars, frames, refs; LIFO/fast; StackOverflowError; -Xss
+  Heap  → shared; objects/arrays; GC-managed; OutOfMemoryError; -Xms/-Xmx
 
-```
 HEAP GENERATIONS:
-  Young Gen = Eden + S0 + S1   → new objects; cleaned by Minor GC (fast, frequent)
-  Old Gen   = Tenured          → survivors; cleaned by Major/Full GC (slow, rare)
-  Rule: "most objects die young" (Weak Generational Hypothesis)
-  Lifecycle: Eden → Survivor (age++) → promoted to Old Gen at threshold
-```
+  Young (Eden+S0+S1) → Minor GC (fast, frequent) | Old (Tenured) → Major/Full GC (slow, rare)
+  "Most objects die young." Eden → Survivor (age++) → promoted to Old Gen at threshold
 
-```
 GARBAGE COLLECTION:
   Alive = reachable from a GC Root (stack locals, static vars, threads, JNI)
-  Algorithm: MARK (find alive) → SWEEP (delete dead) → COMPACT (defragment)
-  Minor GC = Young | Major GC = Old | Full GC = whole heap
-  Stop-the-world = pause all app threads during collection
-```
+  MARK (find alive) → SWEEP (delete dead) → COMPACT (defragment)
+  GC ALGOS: Serial=tiny | Parallel=throughput | G1=default(Java 9) | ZGC/Shenandoah=huge heaps
 
-```
-GC ALGORITHMS (one-liners):
-  Serial      → tiny heaps / single CPU
-  Parallel    → max throughput, longer pauses OK (batch)
-  CMS         → DEPRECATED (Java 9) / REMOVED (Java 14) — don't use
-  G1          → DEFAULT since Java 9; region-based; balanced
-  ZGC         → huge heaps, sub-ms pauses
-  Shenandoah  → low-latency concurrent compaction, large heaps
-```
-
-```
 ERRORS:
-  StackOverflowError       → stack exhausted (deep/infinite recursion) → add base case / use loop
-  OOM: Java heap space     → heap full / leak → raise -Xmx, fix leak
-  OOM: GC overhead limit   → GC thrashing (heap effectively full)
-  OOM: Metaspace           → too many classes / classloader leak
-```
+  StackOverflowError    → deep/infinite recursion → add base case / use loop
+  OOM: Java heap space  → heap full / leak → raise -Xmx, fix leak
+  OOM: Metaspace        → too many classes / classloader leak
 
-```
-KEY TUNING FLAGS:
-  -Xms / -Xmx                       initial / max heap (set equal to avoid resize)
-  -Xss                              stack size per thread
-  -XX:+UseG1GC                      G1 collector
-  -XX:MaxMetaspaceSize              cap class-metadata memory
-  -XX:+HeapDumpOnOutOfMemoryError   dump heap on OOM (for leak analysis)
-  -verbose:gc / -Xlog:gc*           log GC activity
-```
+KEY FLAGS: -Xms/-Xmx (heap), -Xss (stack), -XX:+UseG1GC,
+           -XX:+HeapDumpOnOutOfMemoryError, -Xlog:gc*
 
-```
-COMMON LEAK CAUSES:
-  - static collections that grow forever
-  - unclosed resources (streams, connections) → use try-with-resources
-  - listeners/callbacks never deregistered
-  - ThreadLocal never remove()'d in pooled threads
-  - caches without eviction (use bounded/LRU/Caffeine)
-
-TOOLS WORKFLOW:
-  jps → jstat -gcutil → jmap -histo → jmap -dump → Eclipse MAT (find leak suspect)
-  jstack → thread dump (deadlocks/hangs)   |   jconsole / VisualVM → live monitoring
+LEAK CAUSES: static collections, unclosed resources, underegistered listeners,
+             ThreadLocal not remove()'d in pools, unbounded caches
+TOOLS: jps → jstat -gcutil → jmap -histo → jmap -dump → Eclipse MAT
 ```
 
 ---

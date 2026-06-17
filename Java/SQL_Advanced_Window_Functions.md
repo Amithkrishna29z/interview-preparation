@@ -3,27 +3,6 @@
 
 ---
 
-## Table of Contents
-1. [Window Functions — Complete Guide](#1-window-functions--complete-guide)
-2. [Ranking Functions](#2-ranking-functions)
-3. [Offset Functions](#3-offset-functions)
-4. [Aggregate Window Functions](#4-aggregate-window-functions)
-5. [PARTITION BY Clause](#5-partition-by-clause)
-6. [ORDER BY in Window Functions](#6-order-by-in-window-functions)
-7. [Frame Specification: ROWS vs RANGE](#7-frame-specification-rows-vs-range)
-8. [Complex Window Function Examples](#8-complex-window-function-examples)
-9. [Common Table Expressions (CTEs)](#9-common-table-expressions-ctes)
-10. [Recursive CTEs](#10-recursive-ctes)
-11. [Advanced Query Techniques](#11-advanced-query-techniques)
-12. [EXPLAIN and Query Optimization](#12-explain-and-query-optimization)
-13. [Advanced Aggregation](#13-advanced-aggregation)
-14. [JSON in SQL](#14-json-in-sql)
-15. [Transactions and Locking](#15-transactions-and-locking)
-16. [Classic SQL Interview Problems](#16-classic-sql-interview-problems)
-17. [Interview Questions & Answers (40+)](#17-interview-questions--answers-40)
-
----
-
 ## 1. Window Functions — Complete Guide
 
 ### What Are Window Functions?
@@ -203,23 +182,7 @@ WHERE rn = 1;
 **Use Case 2: Deduplicate rows — keep one row per duplicate group**
 
 ```sql
--- Suppose orders table has duplicate rows; keep only one per (customer_id, order_date)
-CREATE TABLE orders_raw (
-    order_id    INT,
-    customer_id INT,
-    order_date  DATE,
-    amount      DECIMAL(10,2)
-);
-
--- Deduplication: delete all but the row with the lowest order_id in each group
-DELETE FROM orders_raw
-WHERE order_id NOT IN (
-    SELECT MIN(order_id)
-    FROM orders_raw
-    GROUP BY customer_id, order_date
-);
-
--- Alternative using ROW_NUMBER (works in databases that support CTEs with DELETE):
+-- Keep only the lowest order_id per (customer_id, order_date)
 WITH deduped AS (
     SELECT order_id,
            ROW_NUMBER() OVER (
@@ -236,40 +199,21 @@ WHERE order_id IN (SELECT order_id FROM deduped WHERE rn > 1);
 
 ```sql
 CREATE TABLE orders (
-    order_id    INT PRIMARY KEY,
-    customer_id INT,
-    order_date  DATE,
-    amount      DECIMAL(10,2)
+    order_id INT PRIMARY KEY, customer_id INT, order_date DATE, amount DECIMAL(10,2)
 );
-
 INSERT INTO orders VALUES
-(1, 101, '2024-01-10', 150.00),
-(2, 101, '2024-03-15', 200.00),
-(3, 101, '2024-05-20', 350.00),
-(4, 102, '2024-02-01', 100.00),
-(5, 102, '2024-04-10', 250.00),
-(6, 103, '2024-06-01', 500.00);
+(1, 101, '2024-01-10', 150.00), (2, 101, '2024-03-15', 200.00), (3, 101, '2024-05-20', 350.00),
+(4, 102, '2024-02-01', 100.00), (5, 102, '2024-04-10', 250.00), (6, 103, '2024-06-01', 500.00);
 
+-- Same rn = 1 pattern, partitioned by customer with most recent first
 SELECT customer_id, order_id, order_date, amount
 FROM (
-    SELECT
-        customer_id, order_id, order_date, amount,
-        ROW_NUMBER() OVER (
-            PARTITION BY customer_id
-            ORDER BY order_date DESC
-        ) AS rn
+    SELECT customer_id, order_id, order_date, amount,
+        ROW_NUMBER() OVER (PARTITION BY customer_id ORDER BY order_date DESC) AS rn
     FROM orders
 ) t
 WHERE rn = 1;
 ```
-
-**Result:**
-
-| customer_id | order_id | order_date | amount |
-|---|---|---|---|
-| 101         | 3        | 2024-05-20 | 350.00 |
-| 102         | 5        | 2024-04-10 | 250.00 |
-| 103         | 6        | 2024-06-01 | 500.00 |
 
 ---
 
@@ -429,24 +373,8 @@ WHERE department = 'Engineering';
 **Use Case: Percentile grouping for A/B testing, commission tiers**
 
 ```sql
--- Assign customers to performance tiers (top 20%, next 30%, bottom 50%)
--- Use NTILE(10) then group those deciles
-SELECT
-    customer_id,
-    total_spend,
-    NTILE(10) OVER (ORDER BY total_spend DESC) AS decile,
-    CASE
-        WHEN NTILE(10) OVER (ORDER BY total_spend DESC) <= 2  THEN 'Platinum'
-        WHEN NTILE(10) OVER (ORDER BY total_spend DESC) <= 5  THEN 'Gold'
-        ELSE 'Standard'
-    END AS tier
-FROM (
-    SELECT customer_id, SUM(amount) AS total_spend
-    FROM orders
-    GROUP BY customer_id
-) customer_totals;
-
--- Better: use CTE to avoid repeating the window function
+-- Assign customers to tiers via deciles. Use a CTE so the NTILE window
+-- isn't repeated inside the CASE.
 WITH customer_deciles AS (
     SELECT
         customer_id,
@@ -539,16 +467,8 @@ INSERT INTO user_logins VALUES
 (1, '2024-01-01'), (1, '2024-01-02'), (1, '2024-01-04'),
 (1, '2024-01-05'), (1, '2024-01-08'), (1, '2024-01-09');
 
--- Find dates where a user was absent (gap > 1 day)
-SELECT
-    user_id,
-    LAG(login_date) OVER (PARTITION BY user_id ORDER BY login_date) AS prev_login,
-    login_date AS curr_login,
-    login_date - LAG(login_date) OVER (PARTITION BY user_id ORDER BY login_date) AS gap_days
-FROM user_logins
-HAVING gap_days > 1;  -- or wrap in subquery with WHERE
-
--- Cleaner with subquery:
+-- Find dates where a user was absent (gap > 1 day).
+-- Remember: window results can't go in WHERE directly, so wrap in a subquery.
 SELECT user_id, prev_login, curr_login, gap_days
 FROM (
     SELECT
@@ -561,28 +481,7 @@ FROM (
 WHERE gap_days > 1;
 ```
 
-**Use Case: Compare with same period last year**
-
-```sql
--- Monthly revenue with YoY comparison
-WITH monthly_revenue AS (
-    SELECT
-        DATE_TRUNC('month', sale_date) AS month,
-        SUM(revenue) AS monthly_rev
-    FROM daily_sales
-    GROUP BY DATE_TRUNC('month', sale_date)
-)
-SELECT
-    month,
-    monthly_rev,
-    LAG(monthly_rev, 12) OVER (ORDER BY month) AS same_month_last_year,
-    ROUND(
-        (monthly_rev - LAG(monthly_rev, 12) OVER (ORDER BY month))
-        / LAG(monthly_rev, 12) OVER (ORDER BY month) * 100,
-        1
-    ) AS yoy_growth_pct
-FROM monthly_revenue;
-```
+A year-over-year comparison is the same idea with a larger offset: `LAG(monthly_rev, 12) OVER (ORDER BY month)` compares each month to the same month last year.
 
 ---
 
@@ -618,27 +517,7 @@ SELECT
 FROM page_views;
 ```
 
-**Use Case: Churn prediction — find last purchase before customer went silent**
-
-```sql
--- Find customers whose most recent order was followed by no orders in 90 days
-WITH order_gaps AS (
-    SELECT
-        customer_id,
-        order_date,
-        LEAD(order_date) OVER (PARTITION BY customer_id ORDER BY order_date) AS next_order_date,
-        ROW_NUMBER() OVER (PARTITION BY customer_id ORDER BY order_date DESC) AS rn
-    FROM orders
-)
-SELECT
-    customer_id,
-    order_date AS last_order_date,
-    next_order_date,
-    COALESCE(next_order_date, CURRENT_DATE) - order_date AS days_since_last_order
-FROM order_gaps
-WHERE rn = 1  -- most recent order
-  AND (next_order_date IS NULL OR next_order_date - order_date > 90);
-```
+LEAD is also handy for churn analysis: compute `LEAD(order_date)` per customer to measure the gap to each customer's next order, then flag customers whose most recent order has no follow-up within N days.
 
 ---
 
@@ -678,29 +557,13 @@ SELECT
 FROM employees;
 ```
 
-**Practical use: attach department min/max salary to every row**
-
-```sql
-SELECT
-    name,
-    department,
-    salary,
-    FIRST_VALUE(salary) OVER (
-        PARTITION BY department ORDER BY salary DESC
-        ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
-    ) AS dept_max_salary,
-    LAST_VALUE(salary) OVER (
-        PARTITION BY department ORDER BY salary ASC
-        ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
-    ) AS dept_min_salary
-FROM employees;
-```
+With the full-partition frame, you can attach the department min/max salary to every row — `FIRST_VALUE(salary)` for the max (ORDER BY DESC) and `LAST_VALUE(salary)` for the min.
 
 ---
 
 ### NTH_VALUE(column, n)
 
-Returns the value of `column` from the nth row in the window frame.
+Returns the value of `column` from the nth row in the window frame (remember to extend the frame to the full partition).
 
 ```sql
 -- Get the 2nd highest salary in each department
@@ -712,18 +575,6 @@ SELECT DISTINCT
         ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
     ) AS second_highest_salary
 FROM employees;
-
--- Get the 3rd most recent order per customer
-SELECT
-    customer_id,
-    order_id,
-    order_date,
-    NTH_VALUE(order_date, 3) OVER (
-        PARTITION BY customer_id
-        ORDER BY order_date DESC
-        ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
-    ) AS third_most_recent_order_date
-FROM orders;
 ```
 
 ---
@@ -789,52 +640,9 @@ FROM daily_sales;
 
 Note: `SUM(revenue) OVER ()` — empty OVER clause means the entire result set is one partition, giving the grand total.
 
-### Running Count and Running Min/Max
+### Other Aggregate Windows (same patterns)
 
-```sql
-SELECT
-    sale_date,
-    revenue,
-    COUNT(*) OVER (ORDER BY sale_date
-                   ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
-                  ) AS running_count,
-    MIN(revenue) OVER (ORDER BY sale_date
-                       ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
-                      ) AS running_min,
-    MAX(revenue) OVER (ORDER BY sale_date
-                       ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
-                      ) AS running_max
-FROM daily_sales;
-```
-
-### Moving Sum (Fixed Window)
-
-```sql
--- 3-day rolling revenue sum
-SELECT
-    sale_date,
-    revenue,
-    SUM(revenue) OVER (
-        ORDER BY sale_date
-        ROWS BETWEEN 2 PRECEDING AND CURRENT ROW
-    ) AS rolling_3day_sum
-FROM daily_sales;
-```
-
-### Per-Partition vs Grand Total in Same Query
-
-```sql
--- Revenue per region, % of department total, % of grand total — all in one query
-SELECT
-    region,
-    sale_date,
-    revenue,
-    SUM(revenue) OVER (PARTITION BY region) AS region_total,
-    SUM(revenue) OVER ()                    AS grand_total,
-    ROUND(revenue / SUM(revenue) OVER (PARTITION BY region) * 100, 1) AS pct_of_region,
-    ROUND(revenue / SUM(revenue) OVER () * 100, 1)                    AS pct_of_grand_total
-FROM daily_sales;
-```
+`COUNT`, `MIN`, and `MAX` work as running aggregates the same way — just swap the function in the `ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW` frame. A fixed moving sum uses a bounded frame, e.g. `SUM(revenue) OVER (ORDER BY sale_date ROWS BETWEEN 2 PRECEDING AND CURRENT ROW)` for a 3-day rolling sum. You can also mix scopes in one query: `SUM(revenue) OVER (PARTITION BY region)` for a per-region total alongside `SUM(revenue) OVER ()` for the grand total, then divide to get percentages.
 
 ---
 
@@ -951,105 +759,49 @@ The frame clause defines the subset of rows within the partition that the window
 
 ### ROWS: Physical Row Count
 
-ROWS counts actual rows — it is exact and predictable.
+ROWS counts actual rows — it is exact and predictable. The common frames:
 
 ```sql
--- Last 3 rows (2 preceding + current)
-SUM(revenue) OVER (ORDER BY sale_date ROWS BETWEEN 2 PRECEDING AND CURRENT ROW)
-
--- All rows from start to current (running total)
+-- Running total (start to current)
 SUM(revenue) OVER (ORDER BY sale_date ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)
 
--- Current row to end (reverse running total / suffix sum)
-SUM(revenue) OVER (ORDER BY sale_date ROWS BETWEEN CURRENT ROW AND UNBOUNDED FOLLOWING)
+-- Trailing 3-row window (2 preceding + current)
+SUM(revenue) OVER (ORDER BY sale_date ROWS BETWEEN 2 PRECEDING AND CURRENT ROW)
 
--- Entire partition (same as no frame clause, but explicit)
-SUM(revenue) OVER (ORDER BY sale_date ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING)
-
--- Sliding window: 1 before, current, 1 after (3-row centered moving average)
+-- 3-row centered window (1 before, current, 1 after)
 AVG(revenue) OVER (ORDER BY sale_date ROWS BETWEEN 1 PRECEDING AND 1 FOLLOWING)
+
+-- Entire partition (explicit)
+SUM(revenue) OVER (ORDER BY sale_date ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING)
 ```
 
 ### RANGE: Logical Range Based on Values
 
-RANGE operates on the **values** of the ORDER BY column, not physical row positions. Rows with equal ORDER BY values are treated as a single group.
+RANGE operates on the **values** of the ORDER BY column, not physical row positions. Rows with equal ORDER BY values are treated as "peers" and included together.
 
 ```sql
--- RANGE with equal values: all rows with the same value are included
+-- ROWS treats each row separately; RANGE groups equal-valued rows
 SELECT
-    sale_date,
-    revenue,
-    -- ROWS: only rows up to current physical row
-    SUM(revenue) OVER (ORDER BY sale_date ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS rows_sum,
-    -- RANGE: includes all rows with same sale_date as current row (peers)
-    SUM(revenue) OVER (ORDER BY sale_date RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS range_sum
-FROM daily_sales;
-```
-
-**The critical difference with ties:**
-
-```sql
-CREATE TABLE tied_example (
-    group_name VARCHAR(10),
-    score INT
-);
-INSERT INTO tied_example VALUES
-('A', 10), ('A', 10), ('A', 20), ('A', 30);
-
-SELECT
-    group_name,
     score,
     SUM(score) OVER (ORDER BY score ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)  AS rows_cumsum,
     SUM(score) OVER (ORDER BY score RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS range_cumsum
-FROM tied_example;
+FROM tied_example;  -- rows with score=10,10,20,30
 ```
 
-| score | rows_cumsum | range_cumsum |
-|---|---|---|
-| 10    | 10          | 20           |
-| 10    | 20          | 20           |
-| 20    | 40          | 40           |
-| 30    | 70          | 70           |
+For two rows with score=10, both `range_cumsum` values are 20 (peers summed together), while `rows_cumsum` gives 10 then 20. Prefer ROWS for predictability; reach for RANGE only when equal values should be one group.
 
-RANGE includes BOTH rows with score=10 when evaluating either of them (they are "peers"). ROWS treats each physical row independently.
+### Awareness: GROUPS and Named Windows
 
-### GROUPS (PostgreSQL 11+)
-
-GROUPS is like ROWS but counts by groups of equal values:
-
-```sql
--- Include 2 preceding groups and current group
-SUM(score) OVER (ORDER BY score GROUPS BETWEEN 2 PRECEDING AND CURRENT ROW)
-```
-
-### Named Windows (WINDOW Clause)
-
-When you use the same window definition multiple times, define it once with the WINDOW clause:
-
-```sql
-SELECT
-    name,
-    department,
-    salary,
-    ROW_NUMBER()  OVER dept_salary_window AS row_num,
-    RANK()        OVER dept_salary_window AS rnk,
-    DENSE_RANK()  OVER dept_salary_window AS dense_rnk,
-    LAG(salary)   OVER dept_salary_window AS prev_salary,
-    AVG(salary)   OVER dept_salary_window AS avg_salary
-FROM employees
-WINDOW dept_salary_window AS (
-    PARTITION BY department
-    ORDER BY salary DESC
-);
-```
-
-This is cleaner, more readable, and the optimizer can reuse the window computation.
+- **GROUPS** (PostgreSQL 11+) is like ROWS but counts by groups of equal values, e.g. `GROUPS BETWEEN 2 PRECEDING AND CURRENT ROW`.
+- **Named windows** let you define a window once and reuse it: add `WINDOW w AS (PARTITION BY department ORDER BY salary DESC)` after the FROM clause and write `RANK() OVER w`, `LAG(salary) OVER w`, etc. Cleaner when the same window repeats.
 
 ---
 
 ## 8. Complex Window Function Examples
 
 ### Top N Per Group
+
+The most common interview pattern: rank inside a subquery/CTE, then filter.
 
 ```sql
 -- Top 2 highest-paid employees per department
@@ -1061,142 +813,19 @@ FROM (
     FROM employees
 ) ranked
 WHERE rnk <= 2;
-
--- ROW_NUMBER variant: exactly 2 rows per dept (arbitrary tiebreak)
-SELECT department, name, salary
-FROM (
-    SELECT
-        department, name, salary,
-        ROW_NUMBER() OVER (PARTITION BY department ORDER BY salary DESC, employee_id) AS rn
-    FROM employees
-) ranked
-WHERE rn <= 2;
 ```
 
-### Running Total and Percent of Total in One Query
+Use `DENSE_RANK` to include ties, or `ROW_NUMBER() OVER (... ORDER BY salary DESC, employee_id)` for exactly N rows with a deterministic tiebreak.
 
-```sql
-SELECT
-    sale_date,
-    revenue,
-    SUM(revenue) OVER (ORDER BY sale_date
-                       ROWS UNBOUNDED PRECEDING) AS running_total,
-    SUM(revenue) OVER ()                          AS grand_total,
-    ROUND(
-        SUM(revenue) OVER (ORDER BY sale_date ROWS UNBOUNDED PRECEDING)
-        / SUM(revenue) OVER () * 100,
-        2
-    ) AS cumulative_pct
-FROM daily_sales;
-```
+### Awareness: Advanced Patterns
 
-### Detect Consecutive Sequences / Islands and Gaps
+These come up in senior interviews; know the idea, not the exact syntax:
 
-```sql
--- Classic "islands and gaps" problem
--- Find consecutive sequences of login dates per user
-WITH numbered AS (
-    SELECT
-        user_id,
-        login_date,
-        ROW_NUMBER() OVER (PARTITION BY user_id ORDER BY login_date) AS rn
-    FROM user_logins
-),
-grouped AS (
-    SELECT
-        user_id,
-        login_date,
-        -- If dates are consecutive, date - rn stays constant (the "island key")
-        login_date - CAST(rn AS INT) * INTERVAL '1 day' AS island_key
-    FROM numbered
-)
-SELECT
-    user_id,
-    MIN(login_date) AS island_start,
-    MAX(login_date) AS island_end,
-    COUNT(*) AS consecutive_days
-FROM grouped
-GROUP BY user_id, island_key
-ORDER BY user_id, island_start;
-```
-
-### Moving Average Over N Days
-
-```sql
--- 7-day centered moving average (3 before, current, 3 after)
-SELECT
-    sale_date,
-    revenue,
-    ROUND(
-        AVG(revenue) OVER (
-            ORDER BY sale_date
-            ROWS BETWEEN 3 PRECEDING AND 3 FOLLOWING
-        ),
-        2
-    ) AS centered_7d_avg,
-
-    -- Trailing 7-day (last 7 days including today)
-    ROUND(
-        AVG(revenue) OVER (
-            ORDER BY sale_date
-            ROWS BETWEEN 6 PRECEDING AND CURRENT ROW
-        ),
-        2
-    ) AS trailing_7d_avg
-FROM daily_sales;
-```
-
-### Year-over-Year Comparison
-
-```sql
-WITH monthly AS (
-    SELECT
-        DATE_TRUNC('month', sale_date)::DATE AS month,
-        SUM(revenue) AS monthly_revenue
-    FROM daily_sales
-    GROUP BY 1
-)
-SELECT
-    month,
-    monthly_revenue,
-    LAG(monthly_revenue, 12) OVER (ORDER BY month) AS prev_year_revenue,
-    monthly_revenue - LAG(monthly_revenue, 12) OVER (ORDER BY month) AS yoy_absolute_change,
-    ROUND(
-        (monthly_revenue - LAG(monthly_revenue, 12) OVER (ORDER BY month))
-        / NULLIF(LAG(monthly_revenue, 12) OVER (ORDER BY month), 0) * 100,
-        1
-    ) AS yoy_pct_change
-FROM monthly;
-```
-
-### Median Using PERCENTILE_CONT
-
-```sql
--- Median salary per department (PostgreSQL)
-SELECT
-    department,
-    PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY salary) AS median_salary,
-    PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY salary) AS q1_salary,
-    PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY salary) AS q3_salary
-FROM employees
-GROUP BY department;
-```
-
-### Mode Using Window Functions
-
-```sql
--- Find the most common salary (mode)
-SELECT salary AS mode_salary
-FROM (
-    SELECT
-        salary,
-        COUNT(*) AS freq,
-        RANK() OVER (ORDER BY COUNT(*) DESC) AS freq_rank
-    FROM employees
-    GROUP BY salary
-) t
-WHERE freq_rank = 1;
-```
+- **Islands and gaps**: number consecutive rows with `ROW_NUMBER()`, then group by `date - rn` (the constant "island key") to collapse consecutive runs into ranges.
+- **Centered vs trailing moving average**: `ROWS BETWEEN 3 PRECEDING AND 3 FOLLOWING` (centered) vs `ROWS BETWEEN 6 PRECEDING AND CURRENT ROW` (trailing 7-day).
+- **Year-over-year**: aggregate to monthly, then compare with `LAG(revenue, 12)` (guard the denominator with `NULLIF`).
+- **Median / quartiles**: `PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY salary)` per group.
+- **Mode**: group + count, then keep the top `RANK() OVER (ORDER BY COUNT(*) DESC)`.
 
 ---
 
@@ -1367,109 +996,15 @@ ORDER BY path;
 | 3           | Charlie | 1     | Alice -> Charlie            |
 | 4           | Diana   | 2     | Alice -> Bob -> Diana       |
 
-### Use Case 2: Category Tree (e-commerce)
+### Awareness: Other Recursive Patterns
 
-```sql
-CREATE TABLE categories (
-    category_id   INT PRIMARY KEY,
-    name          VARCHAR(100),
-    parent_id     INT REFERENCES categories(category_id)
-);
+The same anchor + recursive-member structure solves many problems:
 
-INSERT INTO categories VALUES
-(1, 'Electronics', NULL),
-(2, 'Computers', 1),
-(3, 'Phones', 1),
-(4, 'Laptops', 2),
-(5, 'Desktops', 2),
-(6, 'Gaming Laptops', 4),
-(7, 'Business Laptops', 4);
+- **Category tree** (e-commerce): walk `parent_id` from a root category down to all descendants, carrying a `level` and `path` for display.
+- **Generate a sequence**: `SELECT 1 AS n UNION ALL SELECT n + 1 FROM nums WHERE n < 100` produces numbers 1–100; the same trick with `d + INTERVAL '1 day'` generates date ranges.
+- **Bill of materials**: explode a multi-level component hierarchy, multiplying quantities down each level to get total cost.
 
--- Get all descendants of 'Electronics'
-WITH RECURSIVE category_tree AS (
-    -- Anchor: start at root
-    SELECT category_id, name, parent_id, 0 AS level,
-           ARRAY[category_id] AS path
-    FROM categories
-    WHERE category_id = 1  -- Electronics
-
-    UNION ALL
-
-    SELECT c.category_id, c.name, c.parent_id,
-           ct.level + 1,
-           ct.path || c.category_id
-    FROM categories c
-    JOIN category_tree ct ON c.parent_id = ct.category_id
-)
-SELECT
-    REPEAT('  ', level) || name AS indented_name,
-    level,
-    category_id
-FROM category_tree
-ORDER BY path;
-```
-
-### Use Case 3: Generate a Number Sequence
-
-```sql
--- Generate numbers 1 through 100
-WITH RECURSIVE nums AS (
-    SELECT 1 AS n
-    UNION ALL
-    SELECT n + 1 FROM nums WHERE n < 100
-)
-SELECT n FROM nums;
-
--- Generate dates for a full year
-WITH RECURSIVE dates AS (
-    SELECT '2024-01-01'::DATE AS d
-    UNION ALL
-    SELECT d + INTERVAL '1 day' FROM dates WHERE d < '2024-12-31'
-)
-SELECT d FROM dates;
-```
-
-### Use Case 4: Bill of Materials (Multi-level Product Components)
-
-```sql
-CREATE TABLE bom (
-    component_id INT,
-    parent_id    INT,
-    quantity     INT,
-    unit_cost    DECIMAL(10,2)
-);
-
--- Find total cost to build a product (flatten hierarchy with quantities)
-WITH RECURSIVE bom_exploded AS (
-    SELECT
-        component_id,
-        parent_id,
-        quantity,
-        unit_cost,
-        quantity AS total_quantity
-    FROM bom
-    WHERE parent_id = 1  -- top-level product
-
-    UNION ALL
-
-    SELECT
-        b.component_id,
-        b.parent_id,
-        b.quantity,
-        b.unit_cost,
-        be.total_quantity * b.quantity AS total_quantity
-    FROM bom b
-    JOIN bom_exploded be ON b.parent_id = be.component_id
-)
-SELECT
-    component_id,
-    total_quantity,
-    unit_cost,
-    total_quantity * unit_cost AS total_cost
-FROM bom_exploded;
-```
-
-**Infinite loop prevention:** Always ensure your recursive member has a WHERE clause that will eventually return no rows. PostgreSQL also has a `max_recursion_depth` setting (default 100).
+**Infinite loop prevention:** Always ensure the recursive member has a WHERE clause that eventually returns no rows. PostgreSQL also caps depth via `max_recursion_depth` (default 100).
 
 ---
 
@@ -1477,23 +1012,10 @@ FROM bom_exploded;
 
 ### LATERAL Joins
 
-A LATERAL join allows a subquery on the right side to reference columns from tables on the left side (like a correlated subquery, but used in a FROM clause).
+A LATERAL join lets a subquery on the right side reference columns from tables on the left (like a correlated subquery, but in the FROM clause). Useful for top-N per group and for table functions that take parameters from the outer query.
 
 ```sql
--- PostgreSQL syntax
-SELECT ...
-FROM table1
-CROSS JOIN LATERAL (subquery referencing table1) sub;
-
--- or equivalently
-SELECT ...
-FROM table1, LATERAL (subquery) sub;
-```
-
-**Use Case: Top-N per group with LATERAL (often faster than window functions on large tables)**
-
-```sql
--- Get top 2 orders per customer using LATERAL
+-- Top 2 orders per customer (often faster than window functions on large tables)
 SELECT c.customer_id, c.name, o.order_id, o.amount
 FROM customers c
 CROSS JOIN LATERAL (
@@ -1505,80 +1027,46 @@ CROSS JOIN LATERAL (
 ) o;
 ```
 
-**Use Case: PostgreSQL unnest with LATERAL**
-
-```sql
--- Unnest an array column into rows
-SELECT
-    customer_id,
-    tag
-FROM customers,
-LATERAL UNNEST(tags_array) AS tag
-WHERE tag LIKE 'premium%';
-```
+It also pairs with set-returning functions, e.g. `FROM customers, LATERAL UNNEST(tags_array) AS tag` to expand an array column into rows.
 
 ---
 
 ### Self Joins
 
-A self join joins a table to itself. Uses: hierarchies, finding relationships between rows in the same table.
+A self join joins a table to itself — for hierarchies or comparing rows within the same table.
 
 ```sql
 -- Employees who earn MORE than their direct manager
 SELECT
-    e.name AS employee,
-    e.salary AS emp_salary,
-    m.name AS manager,
-    m.salary AS mgr_salary
+    e.name AS employee, e.salary AS emp_salary,
+    m.name AS manager,  m.salary AS mgr_salary
 FROM employees e
 JOIN employees m ON e.manager_id = m.employee_id
 WHERE e.salary > m.salary;
-
--- Find all pairs of employees in the same department with salary difference < 10000
-SELECT
-    e1.name AS emp1,
-    e2.name AS emp2,
-    e1.department,
-    ABS(e1.salary - e2.salary) AS salary_diff
-FROM employees e1
-JOIN employees e2
-    ON e1.department = e2.department
-    AND e1.employee_id < e2.employee_id  -- avoid duplicates and self-pairs
-WHERE ABS(e1.salary - e2.salary) < 10000;
 ```
+
+To compare pairs within a group (e.g. employees in the same department), join the table to itself on the group column and add `e1.employee_id < e2.employee_id` to avoid duplicate and self-pairs.
 
 ### Anti-Join Pattern
 
-Find rows in table A that have NO match in table B.
+Find rows in table A that have NO match in table B. Two safe, generally-equivalent approaches:
 
 ```sql
--- Three equivalent approaches — performance differs significantly
-
--- Approach 1: NOT EXISTS (usually fastest — optimizer can use index)
+-- NOT EXISTS (handles NULLs correctly, optimizer can use an index)
 SELECT c.customer_id, c.name
 FROM customers c
 WHERE NOT EXISTS (
     SELECT 1 FROM orders o WHERE o.customer_id = c.customer_id
 );
 
--- Approach 2: LEFT JOIN ... IS NULL (same performance as NOT EXISTS in most optimizers)
+-- LEFT JOIN ... IS NULL (same performance in most optimizers)
 SELECT c.customer_id, c.name
 FROM customers c
 LEFT JOIN orders o ON c.customer_id = o.customer_id
 WHERE o.customer_id IS NULL;
-
--- Approach 3: NOT IN — DANGEROUS with NULLs (avoid)
--- If any order has customer_id = NULL, this returns NO rows (NULL comparison)
-SELECT customer_id, name
-FROM customers
-WHERE customer_id NOT IN (SELECT customer_id FROM orders);
--- SAFE version: add WHERE customer_id IS NOT NULL in subquery
-WHERE customer_id NOT IN (
-    SELECT customer_id FROM orders WHERE customer_id IS NOT NULL
-);
 ```
 
-**Performance:** NOT EXISTS and LEFT JOIN ... IS NULL are generally equivalent. NOT IN can be significantly slower because the database must handle NULL semantics.
+Avoid `NOT IN` here: if the subquery returns a single NULL, the whole query returns no rows. If you must use it, add `WHERE customer_id IS NOT NULL` to the subquery.
 
 ### Non-Equi Joins
 
@@ -1607,84 +1095,29 @@ JOIN salary_grades sg
 
 ### Reading EXPLAIN ANALYZE (PostgreSQL)
 
-```sql
-EXPLAIN ANALYZE
-SELECT e.name, d.department_name
-FROM employees e
-JOIN departments d ON e.department_id = d.department_id
-WHERE e.salary > 80000;
-```
+Run `EXPLAIN ANALYZE <query>` to see the real execution plan. The numbers per node read as `(cost=startup..total rows=estimated width=bytes)` plus `actual time=... rows=... loops=...`. What to watch for as a junior:
 
-**Sample output:**
-```
-Hash Join  (cost=1.09..2.28 rows=5 width=32) (actual time=0.045..0.052 rows=5 loops=1)
-  Hash Cond: (e.department_id = d.department_id)
-  ->  Seq Scan on employees e  (cost=0.00..1.14 rows=5 width=20) (actual time=0.008..0.012 rows=5 loops=1)
-        Filter: (salary > 80000)
-        Rows Removed by Filter: 7
-  ->  Hash  (cost=1.04..1.04 rows=4 width=20) (actual time=0.018..0.018 rows=4 loops=1)
-        ->  Seq Scan on departments d  (cost=0.00..1.04 rows=4 width=20) (actual time=0.005..0.008 rows=4 loops=1)
-Planning Time: 0.215 ms
-Execution Time: 0.092 ms
-```
+- **Seq Scan on a large table** → likely a missing index.
+- **estimated rows far from actual rows** → stale statistics (run `ANALYZE`).
+- **high-cost nodes** → focus optimization there first.
 
-**Reading the cost notation:** `(cost=startup..total rows=estimated width=bytes)`
-- **startup cost**: work done before first row is returned (relevant for LIMIT queries)
-- **total cost**: cost to return all rows (planner's estimate, not milliseconds)
-- **rows**: estimated row count (compare to "actual... rows=" — big discrepancy = stale stats)
-- **loops**: how many times this node was executed
-
-### Scan Types
-
-| Scan Type | When Used | Performance |
-|---|---|---|
-| **Seq Scan** | No usable index, small table, high selectivity | O(n) — scans entire table |
-| **Index Scan** | Good index, low selectivity (<15% rows) | O(log n) + random I/O |
-| **Index Only Scan** | All needed columns in index (covering index) | O(log n), no heap access |
-| **Bitmap Heap Scan** | Medium selectivity, reorders random I/O | Between seq and index scan |
-
-```sql
--- Force different scan types for testing (PostgreSQL)
-SET enable_seqscan = OFF;      -- force index scans
-SET enable_indexscan = OFF;    -- force seq scans
-SET enable_hashjoin = OFF;     -- test merge join vs nested loop
-```
-
-### Join Types in EXPLAIN
-
-| Join Type | When Used | Memory |
-|---|---|---|
-| **Nested Loop** | Small outer table, inner side has index | O(1) |
-| **Hash Join** | Larger tables, equality join, no sort needed | O(n) — builds hash table |
-| **Merge Join** | Both inputs already sorted or sortable | O(n log n) |
+(Awareness only: scan types are Seq Scan, Index Scan, Index-Only Scan, and Bitmap Heap Scan; join types are Nested Loop, Hash Join, and Merge Join — the planner picks based on table size, selectivity, and available indexes.)
 
 ### Indexing Strategy
 
+The default **B-tree** index covers `=`, `<`, `>`, `BETWEEN`, `ORDER BY`, and `LIKE 'prefix%'`:
+
 ```sql
--- B-tree index: the default, handles =, <, >, BETWEEN, ORDER BY, LIKE 'prefix%'
 CREATE INDEX idx_employees_salary ON employees(salary);
 CREATE INDEX idx_employees_dept_salary ON employees(department, salary);  -- composite
-
--- Hash index: equality only (=), smaller than B-tree
-CREATE INDEX idx_employees_email_hash ON employees USING HASH (email);
-
--- Partial index: only index rows matching a condition (smaller, faster)
-CREATE INDEX idx_active_orders ON orders(customer_id, order_date)
-WHERE status = 'ACTIVE';
-
--- Expression/functional index: index on a transformed column
-CREATE INDEX idx_employees_lower_email ON employees(LOWER(email));
--- Query must use the same expression to use this index:
-SELECT * FROM employees WHERE LOWER(email) = 'alice@example.com';
-
--- Covering index: include extra columns to enable index-only scans
-CREATE INDEX idx_emp_dept_covering ON employees(department)
-INCLUDE (name, salary);  -- INCLUDE is PostgreSQL 11+; MySQL uses covering naturally
-
--- GIN index for full-text search, arrays, JSONB
-CREATE INDEX idx_products_tags ON products USING GIN(tags);
-CREATE INDEX idx_products_data ON products USING GIN(metadata jsonb_path_ops);
 ```
+
+Other index types you should recognize:
+
+- **Partial** — only rows matching a condition: `CREATE INDEX ... ON orders(customer_id) WHERE status = 'ACTIVE'` (smaller, faster).
+- **Expression** — index a transformed column: `CREATE INDEX ... ON employees(LOWER(email))` (the query must use the same expression).
+- **Covering** — `CREATE INDEX ... ON employees(department) INCLUDE (name, salary)` enables index-only scans.
+- **GIN** — for arrays, full-text, and JSONB containment queries.
 
 ### Left-Prefix Rule for Composite Indexes
 
@@ -1777,19 +1210,7 @@ FROM customers c
 WHERE EXISTS (SELECT 1 FROM orders o WHERE o.customer_id = c.customer_id);
 ```
 
-**6. ANALYZE and VACUUM (PostgreSQL):**
-```sql
--- Update statistics so the query planner makes good decisions
-ANALYZE employees;
-
--- Reclaim space from dead tuples + update statistics
-VACUUM ANALYZE employees;
-
--- Check when tables were last analyzed
-SELECT relname, last_analyze, last_autoanalyze, n_dead_tup
-FROM pg_stat_user_tables
-ORDER BY n_dead_tup DESC;
-```
+**6. ANALYZE and VACUUM (PostgreSQL):** Run `ANALYZE employees` to refresh planner statistics after big data loads, and `VACUUM ANALYZE employees` to also reclaim space from dead tuples. Autovacuum usually handles this in the background.
 
 ---
 
@@ -1816,28 +1237,13 @@ GROUP BY GROUPING SETS (
 Generates subtotals and a grand total (hierarchical aggregation):
 
 ```sql
--- Sales report with subtotals at each hierarchy level
-SELECT
-    region,
-    department,
-    SUM(revenue) AS total_revenue
-FROM regional_sales
-GROUP BY ROLLUP(region, department);
--- Produces:
--- region + department totals
--- region subtotals (department = NULL)
--- grand total (region = NULL, department = NULL)
-
--- Use GROUPING() function to distinguish NULLs from actual NULLs:
-SELECT
-    COALESCE(region, 'ALL REGIONS') AS region,
-    COALESCE(department, 'ALL DEPTS') AS department,
-    SUM(revenue) AS total_revenue,
-    GROUPING(region) AS is_region_subtotal,
-    GROUPING(department) AS is_dept_subtotal
+-- region+department totals, region subtotals (department=NULL), and grand total
+SELECT region, department, SUM(revenue) AS total_revenue
 FROM regional_sales
 GROUP BY ROLLUP(region, department);
 ```
+
+(The `GROUPING(col)` function returns 1 for subtotal rows, useful to replace the NULLs with a label like `'ALL REGIONS'`.)
 
 ### CUBE
 
@@ -1865,30 +1271,20 @@ FROM employees
 GROUP BY department;
 ```
 
-### PERCENTILE_CONT and PERCENTILE_DISC
+### PERCENTILE_CONT / PERCENTILE_DISC
+
+`PERCENTILE_CONT` interpolates between values (continuous); `PERCENTILE_DISC` returns an actual value (discrete). Both use the `WITHIN GROUP (ORDER BY ...)` syntax:
 
 ```sql
--- PERCENTILE_CONT: interpolates (continuous)
--- PERCENTILE_DISC: returns actual value (discrete)
 SELECT
     department,
-    PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY salary) AS median_salary_continuous,
-    PERCENTILE_DISC(0.5) WITHIN GROUP (ORDER BY salary) AS median_salary_discrete,
+    PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY salary) AS median_salary,
     PERCENTILE_CONT(0.9) WITHIN GROUP (ORDER BY salary) AS p90_salary
 FROM employees
 GROUP BY department;
 ```
 
-### Hypothetical-Set Aggregates
-
-```sql
--- "What rank WOULD a value of 85000 get in Engineering?"
-SELECT
-    department,
-    RANK(85000) WITHIN GROUP (ORDER BY salary DESC) AS hypothetical_rank
-FROM employees
-GROUP BY department;
-```
+(Awareness: **hypothetical-set aggregates** like `RANK(85000) WITHIN GROUP (ORDER BY salary DESC)` answer "what rank would this value get?" — rarely needed at junior level.)
 
 ---
 
@@ -1919,45 +1315,17 @@ FROM products;
 SELECT * FROM products
 WHERE metadata @> '{"brand": "Dell"}';
 
--- Array elements
-SELECT name, tag
-FROM products, jsonb_array_elements_text(metadata -> 'tags') AS tag;
-
--- Expand all key-value pairs
-SELECT name, key, value
-FROM products, jsonb_each_text(metadata) AS kv(key, value);
-
--- Update nested JSON
-UPDATE products
-SET metadata = jsonb_set(metadata, '{specs,ram}', '32')
-WHERE product_id = 1;
-
 -- GIN index for fast JSONB queries
 CREATE INDEX idx_products_metadata ON products USING GIN(metadata);
-CREATE INDEX idx_products_metadata_ops ON products USING GIN(metadata jsonb_path_ops);
--- jsonb_path_ops: faster for @> but doesn't support key existence checks
 ```
+
+Awareness: other handy JSONB tools include `jsonb_array_elements_text(...)` to expand an array into rows, `jsonb_each_text(...)` to expand key/value pairs, and `jsonb_set(...)` to update a nested value.
 
 ### MySQL JSON
 
+MySQL uses functions instead of operators: `JSON_EXTRACT(metadata, '$.brand')`, the `->>'$.brand'` shorthand (unquoted text), and `JSON_ARRAYAGG` / `JSON_OBJECTAGG` for aggregation. To index a JSON value, add a generated column and index that:
+
 ```sql
--- MySQL JSON functions
-SELECT
-    name,
-    JSON_EXTRACT(metadata, '$.brand')           AS brand,
-    metadata->>'$.brand'                         AS brand_unquoted,  -- shorthand for JSON_UNQUOTE(JSON_EXTRACT())
-    JSON_EXTRACT(metadata, '$.specs.ram')        AS ram
-FROM products;
-
--- Aggregate JSON
-SELECT
-    department,
-    JSON_ARRAYAGG(name) AS employee_names,
-    JSON_OBJECTAGG(employee_id, name) AS id_name_map
-FROM employees
-GROUP BY department;
-
--- Index on JSON value (MySQL 5.7+)
 ALTER TABLE products ADD COLUMN brand VARCHAR(100)
     GENERATED ALWAYS AS (metadata->>'$.brand') STORED;
 CREATE INDEX idx_brand ON products(brand);
@@ -2043,47 +1411,9 @@ WHERE account_id = 1 AND version = 5;  -- fails if version changed concurrently
 
 ### Deadlock Detection and Prevention
 
-```sql
--- Deadlock scenario:
--- Transaction 1: locks row A, then tries to lock row B
--- Transaction 2: locks row B, then tries to lock row A
--- -> deadlock
+A deadlock happens when transaction 1 holds row A and wants row B, while transaction 2 holds row B and wants row A. The main prevention rule: **always acquire locks in the same order** (e.g. ascending ID). Databases also auto-detect deadlocks and kill one transaction (PostgreSQL `deadlock_timeout`, default 1s); your app should catch the error and retry.
 
--- Prevention: always acquire locks in the same order
--- If two transactions always lock rows in ascending ID order, no deadlock possible
-
--- PostgreSQL deadlock timeout (automatically detects and kills one transaction)
-SET deadlock_timeout = '1s';
-
--- Check for current locks (PostgreSQL)
-SELECT
-    pid,
-    usename,
-    query,
-    state,
-    wait_event_type,
-    wait_event
-FROM pg_stat_activity
-WHERE wait_event_type = 'Lock';
-```
-
-### Advisory Locks (PostgreSQL)
-
-```sql
--- Application-level locks not tied to a specific table/row
--- Useful for: distributed cron jobs, ensuring single execution
-
--- Session-level (auto-released when session ends)
-SELECT pg_advisory_lock(12345);          -- exclusive lock
--- ... critical section ...
-SELECT pg_advisory_unlock(12345);
-
--- Transaction-level (auto-released at transaction end)
-SELECT pg_advisory_xact_lock(12345);
-
--- Non-blocking: returns false if lock not available
-SELECT pg_try_advisory_lock(12345);
-```
+(Awareness: PostgreSQL **advisory locks** — `pg_advisory_lock(key)` / `pg_try_advisory_lock(key)` — are application-level locks not tied to a row, handy for ensuring a single instance of a distributed cron job runs.)
 
 ---
 
@@ -2100,16 +1430,8 @@ INSERT INTO emp_salaries VALUES
 (1,'Alice','Eng',95000),(2,'Bob','Eng',85000),(3,'Charlie','Eng',85000),
 (4,'Diana','Eng',75000),(5,'Eve','Mkt',70000),(6,'Frank','Mkt',65000);
 
--- Approach 1: Correlated subquery
-SELECT dept, name, salary
-FROM emp_salaries e1
-WHERE 1 = (
-    SELECT COUNT(DISTINCT salary)
-    FROM emp_salaries e2
-    WHERE e2.dept = e1.dept AND e2.salary > e1.salary
-);
-
--- Approach 2: Window function (most elegant)
+-- Window function (most elegant) — DENSE_RANK so ties on top salary still
+-- yield the right "second" tier; filter dr = 2 in a subquery or CTE.
 SELECT dept, name, salary
 FROM (
     SELECT dept, name, salary,
@@ -2117,15 +1439,9 @@ FROM (
     FROM emp_salaries
 ) t
 WHERE dr = 2;
-
--- Approach 3: CTE
-WITH ranked AS (
-    SELECT dept, name, salary,
-           DENSE_RANK() OVER (PARTITION BY dept ORDER BY salary DESC) AS dr
-    FROM emp_salaries
-)
-SELECT dept, name, salary FROM ranked WHERE dr = 2;
 ```
+
+(Without window functions, a correlated subquery works: keep rows where exactly one distinct salary in the same dept is higher — `WHERE 1 = (SELECT COUNT(DISTINCT salary) FROM emp_salaries e2 WHERE e2.dept = e1.dept AND e2.salary > e1.salary)`.)
 
 ### Problem 2: Employees Who Earn More Than Their Manager
 
@@ -2211,41 +1527,14 @@ WHERE curr_id - prev_id > 1;
 
 ### Problem 6: Cohort Retention Analysis
 
-```sql
--- Find % of users from each signup cohort still active each month
-WITH cohorts AS (
-    SELECT
-        user_id,
-        DATE_TRUNC('month', first_order_date) AS cohort_month
-    FROM users
-),
-user_activity AS (
-    SELECT DISTINCT
-        o.customer_id AS user_id,
-        DATE_TRUNC('month', o.order_date) AS activity_month
-    FROM orders o
-)
-SELECT
-    c.cohort_month,
-    ua.activity_month,
-    EXTRACT(YEAR FROM AGE(ua.activity_month, c.cohort_month)) * 12 +
-    EXTRACT(MONTH FROM AGE(ua.activity_month, c.cohort_month)) AS months_since_signup,
-    COUNT(DISTINCT ua.user_id) AS active_users,
-    COUNT(DISTINCT c.user_id) AS cohort_size,
-    ROUND(COUNT(DISTINCT ua.user_id)::DECIMAL / COUNT(DISTINCT c.user_id) * 100, 1) AS retention_pct
-FROM cohorts c
-LEFT JOIN user_activity ua ON c.user_id = ua.user_id
-GROUP BY c.cohort_month, ua.activity_month
-ORDER BY c.cohort_month, months_since_signup;
-```
+(Senior-level; awareness only.) Build a `cohorts` CTE mapping each user to their signup month, a `user_activity` CTE of distinct (user, active month) pairs, then `LEFT JOIN` them, compute `months_since_signup`, and divide `COUNT(DISTINCT active users)` by `COUNT(DISTINCT cohort users)` for the retention percentage.
 
 ### Problem 7: Pivot Table
 
-```sql
--- Pivot: rows to columns
--- Before: (dept, year, revenue) — After: dept | 2022 | 2023 | 2024
+The portable way to pivot rows to columns is conditional aggregation:
 
--- PostgreSQL: using conditional aggregation
+```sql
+-- (dept, year, revenue) -> dept | 2022 | 2023 | 2024
 SELECT
     department,
     SUM(CASE WHEN year = 2022 THEN revenue ELSE 0 END) AS "2022",
@@ -2253,25 +1542,9 @@ SELECT
     SUM(CASE WHEN year = 2024 THEN revenue ELSE 0 END) AS "2024"
 FROM dept_revenue
 GROUP BY department;
-
--- PostgreSQL crosstab (tablefunc extension):
-CREATE EXTENSION IF NOT EXISTS tablefunc;
-
-SELECT *
-FROM crosstab(
-    'SELECT department, year::TEXT, revenue FROM dept_revenue ORDER BY 1, 2',
-    'SELECT DISTINCT year::TEXT FROM dept_revenue ORDER BY 1'
-) AS ct(department TEXT, "2022" DECIMAL, "2023" DECIMAL, "2024" DECIMAL);
-
--- Unpivot: columns to rows (PostgreSQL)
-SELECT department, year, revenue
-FROM dept_revenue_wide
-CROSS JOIN LATERAL (VALUES
-    (2022, rev_2022),
-    (2023, rev_2023),
-    (2024, rev_2024)
-) AS t(year, revenue);
 ```
+
+(PostgreSQL also has the `crosstab` function in the `tablefunc` extension; to unpivot columns back to rows, use `CROSS JOIN LATERAL (VALUES ...)`.)
 
 ### Problem 8: Customers Who Bought A But Not B
 
@@ -2730,17 +2003,7 @@ A:
 
 **Q31: What is index bloat and how do you fix it?**
 
-A: Index bloat occurs when deleted or updated rows leave dead entries in the index, wasting space and slowing queries. In PostgreSQL, autovacuum handles this, but you can also:
-```sql
--- Reclaim space and rebuild index
-REINDEX INDEX idx_employees_salary;
-REINDEX TABLE employees;  -- rebuilds all indexes
-
--- Check index bloat
-SELECT indexname, pg_size_pretty(pg_relation_size(indexrelid))
-FROM pg_stat_user_indexes
-WHERE relname = 'employees';
-```
+A: Index bloat is dead entries left in an index by deleted/updated rows, wasting space and slowing queries. PostgreSQL autovacuum normally handles it; you can also rebuild manually with `REINDEX INDEX idx_name` or `REINDEX TABLE employees`.
 
 ---
 
@@ -2911,42 +2174,13 @@ PostgreSQL also has the `crosstab` function in the tablefunc extension for dynam
 
 **Q43: What is a materialized CTE vs a regular CTE?**
 
-A: By default, PostgreSQL may or may not materialize a CTE (it decides based on cost). A **materialized CTE** is computed once and stored in memory; a non-materialized CTE is "inlined" into the query (like a subquery). PostgreSQL 12+ allows explicit control:
-
-```sql
-WITH expensive_cte AS MATERIALIZED (
-    -- computed once, even if referenced multiple times
-    SELECT ... FROM large_table WHERE ...
-)
-SELECT * FROM expensive_cte e1
-JOIN expensive_cte e2 ON e1.id = e2.parent_id;
-
-WITH cheap_cte AS NOT MATERIALIZED (
-    -- inlined — optimizer can push predicates through it
-    SELECT * FROM small_table
-)
-SELECT * FROM cheap_cte WHERE id = 1;
-```
-
-Materialization is useful when the CTE is expensive and referenced multiple times. NOT MATERIALIZED allows predicate pushdown optimization.
+A: A **materialized CTE** is computed once and stored; a non-materialized one is "inlined" into the query like a subquery so the optimizer can push predicates through it. PostgreSQL 12+ lets you force either with `WITH x AS MATERIALIZED (...)` or `AS NOT MATERIALIZED (...)`. Use MATERIALIZED when the CTE is expensive and referenced multiple times.
 
 ---
 
 **Q44: How would you detect and fix slow queries in a production PostgreSQL database?**
 
-A:
-1. **Find slow queries**: Check `pg_stat_statements` extension for queries sorted by total_time or mean_time:
-```sql
-SELECT query, calls, mean_exec_time, total_exec_time
-FROM pg_stat_statements
-ORDER BY mean_exec_time DESC
-LIMIT 20;
-```
-2. **Run EXPLAIN ANALYZE** on the slow query to get the execution plan
-3. **Look for**: sequential scans on large tables, bad row estimates (stale statistics), expensive sorts, nested loops with many iterations
-4. **Fix**: add missing indexes, run ANALYZE to update statistics, rewrite query to avoid correlated subqueries, add covering indexes for frequently-used column sets
-5. **Check for locking issues**: `pg_stat_activity` for blocked queries
-6. **Monitor ongoing**: set `log_min_duration_statement` to log queries slower than a threshold
+A: Find the worst offenders via the `pg_stat_statements` extension (sort by `mean_exec_time`), run `EXPLAIN ANALYZE` on them, and look for sequential scans on large tables, stale row estimates, expensive sorts, and nested loops with many iterations. Fix by adding missing/covering indexes, running `ANALYZE`, and rewriting correlated subqueries. Check `pg_stat_activity` for locking, and set `log_min_duration_statement` to log slow queries going forward.
 
 ---
 

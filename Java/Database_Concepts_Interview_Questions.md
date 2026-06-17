@@ -1,23 +1,5 @@
 # Database Concepts Interview Questions & Answers
 
-## Table of Contents
-1. [Database Fundamentals](#database-fundamentals)
-2. [ACID Properties](#acid-properties)
-3. [Normalization](#normalization)
-4. [SQL Fundamentals](#sql-fundamentals)
-5. [Advanced SQL Concepts](#advanced-sql-concepts)
-6. [Database Design](#database-design)
-7. [Transaction Management](#transaction-management)
-8. [Concurrency Control](#concurrency-control)
-9. [Database Indexing](#database-indexing)
-10. [Query Optimization](#query-optimization)
-11. [Database Security](#database-security)
-12. [NoSQL vs SQL](#nosql-vs-sql)
-13. [Common Database Mistakes](#common-database-mistakes)
-14. [Short Revision Summary](#short-revision-summary-3)
-
----
-
 ## Database Fundamentals
 
 ### Q1: What is a database and what are the different types of databases?
@@ -83,59 +65,10 @@ CREATE TABLE orders (
 
 **Answer:** DBMS (Database Management System) is software that allows users to define, create, maintain, and control access to the database.
 
-**DBMS Components:**
-
-```
-┌─────────────────────────────────────────┐
-│         Users / Applications            │
-└──────────────────┬──────────────────────┘
-                   │
-┌──────────────────▼──────────────────────┐
-│         Query Processor                 │
-│  ┌──────────────────────────────────┐  │
-│  │  - DML Parser                   │  │
-│  │  - DDL Parser                   │  │
-│  │  - Query Optimizer              │  │
-│  │  - Query Executor               │  │
-│  └──────────────────────────────────┘  │
-└──────────────────┬──────────────────────┘
-                   │
-┌──────────────────▼──────────────────────┐
-│         Storage Manager                 │
-│  ┌──────────────────────────────────┐  │
-│  │  - Buffer Manager               │  │
-│  │  - Transaction Manager          │  │
-│  │  - Log Manager                  │  │
-│  │  - Recovery Manager             │  │
-│  └──────────────────────────────────┘  │
-└──────────────────┬──────────────────────┘
-                   │
-┌──────────────────▼──────────────────────┐
-│         Data Files                      │
-│  ┌──────────┐  ┌──────────┐            │
-│  │  Data    │  │  Index   │            │
-│  │  Files   │  │  Files   │            │
-│  └──────────┘  └──────────┘            │
-└─────────────────────────────────────────┘
-```
-
-**Key Components:**
-
-**1. Query Processor:**
-- **Parser**: Validates SQL syntax and converts to parse tree
-- **Optimizer**: Chooses most efficient execution plan
-- **Executor**: Executes the query plan
-
-**2. Storage Manager:**
-- **Buffer Manager**: Manages data transfer between disk and memory
-- **Transaction Manager**: Ensures ACID properties
-- **Log Manager**: Maintains transaction logs for recovery
-- **Recovery Manager**: Restores database after failures
-
-**3. Data Files:**
-- Store actual data and indexes
-- Organized in pages/blocks
-- Managed by file system
+**Key Components (awareness level):**
+- **Query Processor**: Parser (validates SQL), Optimizer (picks execution plan), Executor (runs the plan).
+- **Storage Manager**: Buffer Manager (disk↔memory), Transaction Manager (ACID), Log/Recovery Manager (logs + restore after failure).
+- **Data Files**: Store actual data and indexes, organized in pages/blocks.
 
 ### Q3: What are the different levels of data independence?
 
@@ -158,40 +91,8 @@ CREATE TABLE orders (
 - User views, security, access control
 - Example: Sales view sees only order data, HR view sees employee data
 
-```
-┌─────────────────────────────────────────┐
-│         View Level                      │
-│    (User Views, External Schema)        │
-└──────────────────┬──────────────────────┘
-                   │ Logical Independence
-┌──────────────────▼──────────────────────┐
-│         Logical Level                   │
-│    (Conceptual Schema, Tables)          │
-└──────────────────┬──────────────────────┘
-                   │ Physical Independence
-┌──────────────────▼──────────────────────┐
-│         Physical Level                  │
-│    (Internal Schema, Storage)           │
-└─────────────────────────────────────────┘
-```
-
-**Examples:**
-
-```sql
--- Physical Independence: Change storage without affecting logical schema
--- Original: Table stored as heap file
--- Modified: Table stored with B-tree index
--- Logical schema (tables, columns) remains unchanged
-
--- Logical Independence: Change logical schema without affecting views
--- Original: Single customer table
--- Modified: Split into customer and address tables
--- Views can be created to maintain same interface
-CREATE VIEW customer_view AS
-SELECT c.*, a.street, a.city
-FROM customers c
-LEFT JOIN addresses a ON c.id = a.customer_id;
-```
+- **Physical independence**: change storage (e.g. add a B-tree index) without altering the logical schema.
+- **Logical independence**: change the logical schema (e.g. split a table) without altering user views.
 
 ---
 
@@ -267,24 +168,6 @@ COMMIT;
 BEGIN TRANSACTION;
 INSERT INTO orders (user_id, total) VALUES (1, 99.99);
 COMMIT;  -- Even if system crashes immediately, order is saved
-```
-
-**ACID Violation Examples:**
-
-```sql
--- Atomicity Violation (partial update):
--- Money deducted but not credited if system fails between two UPDATEs
-
--- Consistency Violation:
--- Referential integrity broken if foreign key constraint violated
-
--- Isolation Violation:
--- Dirty reads: Reading uncommitted data
--- Non-repeatable reads: Same query returns different results
--- Phantom reads: New rows appear in subsequent queries
-
--- Durability Violation:
--- Committed data lost if system crashes before write to disk
 ```
 
 ---
@@ -497,17 +380,11 @@ REVOKE ALL PRIVILEGES ON mydb.* FROM 'admin'@'localhost';
 - Commands: COMMIT, ROLLBACK, SAVEPOINT
 
 ```sql
--- COMMIT: Save changes
+-- COMMIT saves changes; ROLLBACK undoes them
 BEGIN TRANSACTION;
 UPDATE accounts SET balance = balance - 100 WHERE id = 1;
 UPDATE accounts SET balance = balance + 100 WHERE id = 2;
-COMMIT;  -- Changes are permanent
-
--- ROLLBACK: Undo changes
-BEGIN TRANSACTION;
-UPDATE accounts SET balance = balance - 100 WHERE id = 1;
--- Something went wrong
-ROLLBACK;  -- Changes are undone
+COMMIT;  -- or ROLLBACK to undo
 
 -- SAVEPOINT: Create rollback point within transaction
 SAVEPOINT before_delete;
@@ -665,39 +542,7 @@ GROUP BY YEAR(order_date), MONTH(order_date), status
 ORDER BY year, month, status;
 ```
 
-**Advanced Aggregation:**
-
-```sql
--- ROLLUP: Create subtotals and grand totals
-SELECT
-    COALESCE(region, 'All Regions') as region,
-    COALESCE(category, 'All Categories') as category,
-    SUM(sales) as total_sales
-FROM sales_data
-GROUP BY ROLLUP(region, category);
-
--- CUBE: Create all possible combinations
-SELECT
-    COALESCE(region, 'All') as region,
-    COALESCE(category, 'All') as category,
-    COALESCE(product, 'All') as product,
-    SUM(sales) as total_sales
-FROM sales_data
-GROUP BY CUBE(region, category, product);
-
--- GROUPING SETS: Specify custom groupings
-SELECT
-    region,
-    category,
-    SUM(sales) as total_sales
-FROM sales_data
-GROUP BY GROUPING SETS (
-    (region, category),  -- Group by region and category
-    (region),            -- Group by region only
-    (category),          -- Group by category only
-    ()                   -- Grand total
-);
-```
+**Advanced aggregation (awareness level):** `ROLLUP` adds subtotals + grand total, `CUBE` adds all combinations, and `GROUPING SETS` lets you specify custom grouping levels in one query.
 
 ### Q9: What are subqueries and correlated subqueries?
 
@@ -712,22 +557,6 @@ GROUP BY GROUPING SETS (
 SELECT name, price
 FROM products
 WHERE price > (SELECT AVG(price) FROM products);
-
--- Find users with order count above average
-SELECT username, order_count
-FROM (
-    SELECT
-        u.username,
-        COUNT(o.id) as order_count
-    FROM users u
-    LEFT JOIN orders o ON u.id = o.user_id
-    GROUP BY u.id, u.username
-) user_orders
-WHERE order_count > (SELECT AVG(order_count) FROM (
-    SELECT COUNT(*) as order_count
-    FROM orders
-    GROUP BY user_id
-) order_counts);
 ```
 
 **2. Row Subquery (returns single row):**
@@ -788,16 +617,6 @@ WHERE o.total > (
     WHERE o2.user_id = u.id  -- Correlated with outer query
 );
 
--- Find products more expensive than all products in their category
-SELECT p1.name, p1.price, p1.category
-FROM products p1
-WHERE p1.price > ALL (
-    SELECT p2.price
-    FROM products p2
-    WHERE p2.category = p1.category  -- Correlated
-    AND p2.id != p1.id
-);
-
 -- EXISTS with correlated subquery
 SELECT u.username
 FROM users u
@@ -808,30 +627,7 @@ WHERE EXISTS (
 );
 ```
 
-**Performance Considerations:**
-
-```sql
--- ❌ BAD: Correlated subquery can be slow
-SELECT u.username
-FROM users u
-WHERE EXISTS (
-    SELECT 1 FROM orders o
-    WHERE o.user_id = u.id
-);
-
--- ✅ GOOD: JOIN is usually faster
-SELECT DISTINCT u.username
-FROM users u
-JOIN orders o ON u.id = o.user_id;
-
--- ✅ GOOD: Use IN with subquery for single column
-SELECT * FROM users
-WHERE id IN (SELECT user_id FROM orders WHERE total > 1000);
-
--- ✅ GOOD: Use EXISTS for existence check
-SELECT * FROM users u
-WHERE EXISTS (SELECT 1 FROM orders o WHERE o.user_id = u.id);
-```
+> Note: correlated subqueries run per outer row and can be slow — a `JOIN` or `IN`/`EXISTS` is often faster (see Query Optimization).
 
 ---
 
@@ -934,33 +730,9 @@ CREATE TABLE employees (
 -- Each manager can have multiple employees
 ```
 
-**Relationship Cardinality and Participation:**
-
-```sql
--- Cardinality: Maximum number of relationships
--- - One-to-One: 1:1
--- - One-to-Many: 1:N or N:1
--- - Many-to-Many: N:M
-
--- Participation: Minimum number of relationships
--- - Total (Mandatory): Every entity must participate
--- - Partial (Optional): Entity may or may not participate
-
--- Example: Total participation
-CREATE TABLE orders (
-    id INT PRIMARY KEY,
-    user_id INT NOT NULL,  -- Every order must have a user
-    total DECIMAL(10,2),
-    FOREIGN KEY (user_id) REFERENCES users(id)
-);
-
--- Example: Partial participation
-CREATE TABLE users (
-    id INT PRIMARY KEY,
-    username VARCHAR(50),
-    phone VARCHAR(20)  -- Phone is optional
-);
-```
+**Cardinality vs participation (awareness level):**
+- **Cardinality** = max relationships (1:1, 1:N, N:M).
+- **Participation** = min relationships: *total* (mandatory, e.g. `user_id INT NOT NULL`) vs *partial* (optional, e.g. a nullable `phone` column).
 
 ---
 
@@ -1090,43 +862,10 @@ SELECT * FROM products WHERE id = 1 FOR UPDATE;  -- PostgreSQL/MySQL
 -- No other transaction can hold any lock on same data
 ```
 
-**3. Intention Locks:**
-- Indicate intention to acquire shared/exclusive locks
-- IS (Intention Shared): Intends to read some rows
-- IX (Intention Exclusive): Intends to write some rows
-
-```sql
--- When transaction locks row with X-lock:
--- - Acquires IX lock on table
--- - Acquires X lock on row
-
--- When transaction locks row with S-lock:
--- - Acquires IS lock on table
--- - Acquires S lock on row
-```
-
-**4. Other Lock Types:**
-
-```sql
--- Update Lock (U-Lock): Prevents deadlocks in concurrent updates
-SELECT * FROM products WITH (UPDLOCK) WHERE id = 1;  -- SQL Server
-
--- Gap Locks: Locks gap between index records
--- Prevents phantom reads
--- Used in Repeatable Read isolation level
-
--- Next-Key Locks: Combination of record lock and gap lock
--- Prevents phantom reads and insertion of new records
-```
-
-**Lock Compatibility:**
-
-| | IS | IX | S | X |
-|---|----|----|---|---|
-| **IS** | ✓ | ✓ | ✓ | ✗ |
-| **IX** | ✓ | ✓ | ✗ | ✗ |
-| **S** | ✓ | ✗ | ✓ | ✗ |
-| **X** | ✗ | ✗ | ✗ | ✗ |
+**Other lock types (awareness level):**
+- **Intention locks (IS/IX)**: table-level flags signalling intent to lock rows shared/exclusive; let the engine check table vs row conflicts efficiently.
+- **Update lock (U)**: held while reading a row you plan to update, to avoid deadlocks.
+- **Gap / Next-key locks**: lock the gap between index records to block phantom inserts (used at Repeatable Read in MySQL InnoDB).
 
 **Deadlock:**
 
@@ -1149,23 +888,7 @@ UPDATE accounts SET balance = balance + 100 WHERE id = 1;
 -- Database detects deadlock and rolls back one transaction
 ```
 
-**Deadlock Prevention:**
-
-```sql
--- 1. Always access tables in same order
--- ❌ BAD: Different order
--- T1: UPDATE accounts SET ... WHERE id = 1; UPDATE accounts SET ... WHERE id = 2;
--- T2: UPDATE accounts SET ... WHERE id = 2; UPDATE accounts SET ... WHERE id = 1;
-
--- ✅ GOOD: Same order
--- T1: UPDATE accounts SET ... WHERE id = 1; UPDATE accounts SET ... WHERE id = 2;
--- T2: UPDATE accounts SET ... WHERE id = 1; UPDATE accounts SET ... WHERE id = 2;
-
--- 2. Keep transactions short
--- 3. Use appropriate isolation level
--- 4. Add indexes to reduce lock time
--- 5. Use lower isolation level when possible
-```
+**Deadlock prevention:** always lock rows/tables in the same order across transactions, keep transactions short, index columns to reduce lock time, and use the lowest isolation level that's safe.
 
 ---
 
@@ -1186,66 +909,17 @@ UPDATE accounts SET balance = balance + 100 WHERE id = 1;
 -- Create B-tree index
 CREATE INDEX idx_users_email ON users(email);
 
--- Used for:
-SELECT * FROM users WHERE email = 'user@example.com';  -- Equality
-SELECT * FROM users WHERE email > 'a@b.c';              -- Range
-SELECT * FROM users WHERE email LIKE 'user%';          -- Prefix
+-- Good for: equality, range, and prefix (LIKE 'user%')
+SELECT * FROM users WHERE email = 'user@example.com';
+SELECT * FROM users WHERE email > 'a@b.c';
 
--- Not efficient for:
-SELECT * FROM users WHERE email LIKE '%user%';         -- Leading wildcard
-SELECT * FROM users WHERE LOWER(email) = 'USER@EXAMPLE.COM';  -- Function on column
+-- Not efficient for: leading wildcard (LIKE '%user%') or a function on the column (LOWER(email) = ...)
 ```
 
-**2. Hash Index:**
-- Hash table structure
-- Only for equality operations
-- Faster than B-tree for equality
-
-```sql
--- Create hash index
-CREATE INDEX idx_products_hash ON products USING HASH (name);
-
--- Used for:
-SELECT * FROM products WHERE name = 'Laptop';  -- Equality only
-
--- Not for:
-SELECT * FROM products WHERE name > 'L';       -- Range
-SELECT * FROM products WHERE name LIKE 'Lap%';  -- Pattern
-```
-
-**3. Bitmap Index:**
-- Uses bitmaps for each key value
-- Good for low-cardinality columns
-- Common in data warehouses
-
-```sql
--- Create bitmap index
-CREATE BITMAP INDEX idx_users_gender ON users(gender);
-
--- Good for:
-SELECT * FROM users WHERE gender = 'M';
--- WHERE gender IN ('M', 'F')
-
--- Not good for:
--- High-cardinality columns (like email, ID)
--- Frequent updates
-```
-
-**4. Full-Text Index:**
-- Specialized for text search
-- Supports linguistic search
-
-```sql
--- Create full-text index
-CREATE FULLTEXT INDEX idx_articles_content ON articles(content);
-
--- Used for:
-SELECT * FROM articles
-WHERE MATCH(content) AGAINST('database search' IN NATURAL LANGUAGE MODE);
-
-SELECT * FROM articles
-WHERE MATCH(content) AGAINST('+"database" +"search"' IN BOOLEAN MODE);
-```
+**Other index types (awareness level):**
+- **Hash index**: hash table; equality lookups only (no ranges), e.g. `... USING HASH (name)`.
+- **Bitmap index**: bitmaps per value; good for low-cardinality columns in data warehouses, poor for frequent updates.
+- **Full-text index**: text search via `MATCH(content) AGAINST(...)`; supports linguistic/boolean search.
 
 **5. Composite Index:**
 - Index on multiple columns
@@ -1327,33 +1001,20 @@ EXPLAIN SELECT * FROM users WHERE email = 'user@example.com';
 -- Index columns used in WHERE, JOIN, ORDER BY, GROUP BY
 CREATE INDEX idx_users_email ON users(email);
 CREATE INDEX idx_orders_user_date ON orders(user_id, order_date);
-
--- Use covering indexes
-CREATE INDEX idx_orders_covering ON orders(user_id, status, total);
-
--- Use partial indexes (PostgreSQL)
-CREATE INDEX idx_active_users ON users(email) WHERE is_active = true;
 ```
+
+> Awareness: covering indexes (include all selected columns) and partial indexes (`... WHERE is_active = true` in PostgreSQL) further reduce work.
 
 **3. Optimize SELECT statements:**
 
 ```sql
--- ❌ BAD: SELECT * retrieves all columns
-SELECT * FROM users;
-
--- ✅ GOOD: Select only needed columns
+-- ✅ Select only needed columns instead of SELECT *
 SELECT id, name, email FROM users;
 
--- ❌ BAD: No WHERE clause
-SELECT * FROM orders;
-
--- ✅ GOOD: Use WHERE to filter
+-- ✅ Filter with WHERE instead of scanning the whole table
 SELECT * FROM orders WHERE order_date >= '2024-01-01';
 
--- ❌ BAD: Leading wildcard in LIKE
-SELECT * FROM products WHERE name LIKE '%laptop%';
-
--- ✅ GOOD: Use full-text search
+-- ✅ Avoid leading-wildcard LIKE '%laptop%'; use full-text search instead
 SELECT * FROM products
 WHERE MATCH(name) AGAINST('laptop' IN NATURAL LANGUAGE MODE);
 ```
@@ -1365,38 +1026,13 @@ WHERE MATCH(name) AGAINST('laptop' IN NATURAL LANGUAGE MODE);
 CREATE INDEX idx_orders_user_id ON orders(user_id);
 CREATE INDEX idx_users_id ON users(id);
 
--- Use INNER JOIN when possible (faster)
+-- Use INNER JOIN when possible (faster); avoid joins when an EXISTS check suffices
 SELECT u.name, o.order_date
 FROM users u
 INNER JOIN orders o ON u.id = o.user_id;
-
--- Avoid unnecessary joins
--- ❌ BAD: Join when subquery would suffice
-SELECT u.*
-FROM users u
-JOIN orders o ON u.id = o.user_id
-WHERE o.total > 100;
-
--- ✅ GOOD: Use EXISTS
-SELECT u.* FROM users u
-WHERE EXISTS (SELECT 1 FROM orders o WHERE o.user_id = u.id AND o.total > 100);
 ```
 
-**5. Optimize subqueries:**
-
-```sql
--- ❌ BAD: Correlated subquery (executed for each row)
-SELECT u.*
-FROM users u
-WHERE (SELECT COUNT(*) FROM orders o WHERE o.user_id = u.id) > 5;
-
--- ✅ GOOD: JOIN with GROUP BY
-SELECT u.*, COUNT(o.id) as order_count
-FROM users u
-JOIN orders o ON u.id = o.user_id
-GROUP BY u.id
-HAVING COUNT(o.id) > 5;
-```
+**5. Optimize subqueries:** replace a per-row correlated subquery with a `JOIN ... GROUP BY ... HAVING` when counting/aggregating related rows.
 
 **6. Use LIMIT for pagination:**
 
@@ -1426,54 +1062,25 @@ LIMIT 20;
 **1. User Authentication:**
 
 ```sql
--- Create users with strong passwords
+-- Create users with strong passwords and grant least privilege
 CREATE USER 'app_user'@'localhost' IDENTIFIED BY 'StrongPassword123!';
-
--- Use least privilege principle
 GRANT SELECT, INSERT ON app_db.users TO 'app_user'@'localhost';
 
--- Regularly review and remove unused accounts
+-- Remove unused accounts; consider password expiration policies
 DROP USER IF EXISTS 'old_user'@'localhost';
-
--- Enable password expiration
-ALTER USER 'app_user'@'localhost' PASSWORD EXPIRE INTERVAL 90 DAY;
 ```
 
 **2. Access Control:**
 
 ```sql
--- Grant specific permissions only
+-- Grant specific permissions only (least privilege)
 GRANT SELECT ON app_db.* TO 'read_only_user'@'%';
 GRANT SELECT, INSERT, UPDATE ON app_db.* TO 'app_user'@'%';
-GRANT ALL PRIVILEGES ON app_db.* TO 'admin'@'localhost';
 
--- Use views to restrict data access
-CREATE VIEW customer_orders AS
-SELECT o.id, o.order_date, o.total
-FROM orders o
-JOIN users u ON o.user_id = u.id
-WHERE u.id = CURRENT_USER_ID();
-
-GRANT SELECT ON customer_orders TO 'customer_user'@'%';
+-- Use views to expose only the rows/columns a role should see
 ```
 
-**3. Data Encryption:**
-
-```sql
--- Encrypt sensitive data
--- MySQL: Use AES_ENCRYPT
-INSERT INTO users (username, password_hash, ssn)
-VALUES ('user1', SHA2('password', 256), AES_ENCRYPT('123-45-6789', 'encryption_key'));
-
--- PostgreSQL: Use pgcrypto extension
-CREATE EXTENSION pgcrypto;
-INSERT INTO users (username, password_hash, ssn)
-VALUES ('user1', crypt('password', gen_salt('bf')), encrypt('123-45-6789', 'encryption_key'));
-
--- Enable TLS/SSL for connections
--- Require SSL for specific users
-CREATE USER 'secure_user'@'%' IDENTIFIED BY 'password' REQUIRE SSL;
-```
+**3. Data Encryption (awareness level):** hash passwords (e.g. bcrypt / `SHA2`), encrypt sensitive columns at rest (MySQL `AES_ENCRYPT`, PostgreSQL `pgcrypto`), and require TLS/SSL for connections (`REQUIRE SSL`).
 
 **4. SQL Injection Prevention:**
 
@@ -1491,21 +1098,7 @@ $stmt->bind_param("s", $email);
 $stmt->execute();
 ```
 
-**5. Regular Backups:**
-
-```sql
--- Logical backup
-mysqldump -u root -p --single-transaction --quick --lock-tables=false app_db > backup.sql
-
--- Physical backup
-pg_dump -U postgres app_db > backup.sql
-
--- Automated backup script
-#!/bin/bash
-DATE=$(date +%Y%m%d_%H%M%S)
-BACKUP_DIR="/backups"
-mysqldump -u root -p'password' app_db > $BACKUP_DIR/app_db_$DATE.sql
-```
+**5. Regular Backups (awareness level):** take scheduled logical backups (`mysqldump`, `pg_dump`) and/or physical backups, and verify restores periodically.
 
 ---
 
@@ -1681,25 +1274,3 @@ COMMIT;  -- or ROLLBACK;
 CREATE INDEX idx_name ON table(column);
 CREATE INDEX idx_composite ON table(col1, col2);
 ```
-
-### Critical Points for Interviews:
-
-1. **ACID**: Atomicity, Consistency, Isolation, Durability - fundamental for transactions
-2. **Normalization**: 1NF, 2NF, 3NF - reduce redundancy, prevent anomalies
-3. **SQL Commands**: DDL, DML, DCL, TCL - different purposes
-4. **Joins**: Understand each type and when to use them
-5. **Indexing**: B-tree is default, choose based on query patterns
-6. **Transaction Isolation**: Read Uncommitted → Read Committed → Repeatable Read → Serializable
-7. **Query Optimization**: Use EXPLAIN, appropriate indexes, avoid SELECT *
-8. **Database Design**: Relationships (1:1, 1:N, N:M), foreign keys
-9. **Concurrency Control**: Locks (shared, exclusive), deadlocks
-10. **Security**: Least privilege, prepared statements, encryption
-
----
-
-**Next Topics to Study:**
-- Database-Specific Interview Questions (MySQL, PostgreSQL, MongoDB)
-- Database Administration and Maintenance
-- Cloud Database Services
-- Data Warehousing and Business Intelligence
-- Big Data and Distributed Databases

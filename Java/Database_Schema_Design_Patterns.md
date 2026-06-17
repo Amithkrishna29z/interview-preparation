@@ -1,23 +1,5 @@
 # Database Schema Design Patterns — Full Stack Java Developer Interview Preparation
 
-## Table of Contents
-1. [Entity-Relationship Design Fundamentals](#entity-relationship-design-fundamentals)
-2. [Normalization](#normalization)
-3. [Primary Key Strategies](#primary-key-strategies)
-4. [Relationship Patterns](#relationship-patterns)
-5. [Soft Delete Pattern](#soft-delete-pattern)
-6. [Audit Tables Pattern](#audit-tables-pattern)
-7. [Multi-Tenancy Patterns](#multi-tenancy-patterns)
-8. [Hierarchical Data](#hierarchical-data)
-9. [Pagination Patterns](#pagination-patterns)
-10. [Common Domain Schemas](#common-domain-schemas)
-11. [Polymorphic Associations and JPA Inheritance](#polymorphic-associations-and-jpa-inheritance)
-12. [Schema Migrations with Flyway and Liquibase](#schema-migrations-with-flyway-and-liquibase)
-13. [Indexing Strategies](#indexing-strategies)
-14. [Interview Questions and Answers](#interview-questions-and-answers)
-
----
-
 ## Entity-Relationship Design Fundamentals
 
 ### What is an Entity-Relationship Diagram (ERD)?
@@ -490,73 +472,17 @@ public class Order {
 
 ### UUID Variants: v4 vs v7 vs ULID vs Snowflake
 
-**The B-tree fragmentation problem with UUID v4:**
+**Awareness summary (architect-level):** UUID v4 is random, so inserting rows scatters them across a B-tree clustered index, causing page splits, write amplification, and fragmentation. Time-ordered alternatives fix this:
 
-UUID v4 is random. When you insert a new row, its UUID is random across the entire 128-bit space. In a clustered index (InnoDB in MySQL, any B-tree index), new rows must be inserted at a random position in the index, causing:
-- Page splits (B-tree nodes must be split and rebalanced)
-- Write amplification
-- Poor cache locality (random disk seeks)
-- Index fragmentation over time
+| ID Type | Ordered? | Size | Notes |
+|---------|----------|------|-------|
+| BIGSERIAL (auto-increment) | Yes | 8 bytes | Best performance, guessable |
+| UUID v4 | No (random) | 16 bytes | Fragmentation problem |
+| UUID v7 | Yes (time-ordered) | 16 bytes | Fixes fragmentation, RFC 9562 |
+| ULID | Yes (lexicographic) | 16 bytes | 48-bit time + 80-bit random, URL-safe |
+| Snowflake ID | Yes (time-ordered) | 8 bytes | Twitter/Discord; 41-bit time + worker + sequence |
 
-**Comparison:**
-
-| ID Type | Ordered? | URL Safe? | DB Dependency? | Size | Notes |
-|---------|----------|-----------|----------------|------|-------|
-| BIGSERIAL (auto-increment) | Yes | N/A | Yes (DB sequence) | 8 bytes | Best performance, guessable |
-| UUID v4 | No (random) | No (with dashes) | No | 16 bytes | Fragmentation problem |
-| UUID v7 | Yes (time-ordered) | No (with dashes) | No | 16 bytes | Fixes fragmentation, RFC 9562 |
-| ULID | Yes (lexicographic) | Yes | No | 16 bytes | 48-bit time + 80-bit random |
-| Snowflake ID | Yes (time-ordered) | N/A | Worker config needed | 8 bytes | Twitter/Discord approach |
-
-```java
-// UUID v7 in Java (Java 24+ has built-in; earlier requires library)
-// Using java-uuid-generator library
-import com.fasterxml.uuid.Generators;
-
-UUID uuidV7 = Generators.timeBasedEpochGenerator().generate();
-// Time-ordered: sequential inserts, no fragmentation
-
-// ULID in Java
-import de.huxhorn.sulky.ulid.ULID;
-ULID ulid = new ULID();
-String ulidStr = ulid.nextULID();  // "01ARZ3NDEKTSV4RRFFQ69G5FAV"
-```
-
-**Snowflake ID structure (64-bit):**
-```
-| 1 bit (sign) | 41 bits (timestamp ms) | 10 bits (worker/machine ID) | 12 bits (sequence) |
-```
-Gives ~69 years of timestamps, 1024 workers, 4096 IDs/ms per worker. Used by Twitter, Discord, Instagram.
-
-```java
-// Simple Snowflake ID generator
-public class SnowflakeIdGenerator {
-    private final long workerId;
-    private long lastTimestamp = -1L;
-    private long sequence = 0L;
-
-    private static final long SEQUENCE_BITS = 12L;
-    private static final long WORKER_BITS = 10L;
-    private static final long MAX_SEQUENCE = ~(-1L << SEQUENCE_BITS);  // 4095
-
-    public synchronized long nextId() {
-        long timestamp = System.currentTimeMillis();
-        if (timestamp == lastTimestamp) {
-            sequence = (sequence + 1) & MAX_SEQUENCE;
-            if (sequence == 0) {
-                // Wait for next millisecond
-                while ((timestamp = System.currentTimeMillis()) <= lastTimestamp) {}
-            }
-        } else {
-            sequence = 0L;
-        }
-        lastTimestamp = timestamp;
-        return (timestamp << (WORKER_BITS + SEQUENCE_BITS))
-             | (workerId << SEQUENCE_BITS)
-             | sequence;
-    }
-}
-```
+For a junior role: know that auto-increment BIGINT is the default best choice for single-node systems, and reach for UUID v7/ULID when you need distributed, unguessable, sortable IDs.
 
 ---
 
@@ -1038,300 +964,40 @@ public class Order extends Auditable {
 
 ### Full Audit Trail (History Table / Change Log)
 
-For compliance-heavy domains (banking, healthcare), you need a full history of every change, including who changed what and what the previous value was.
-
-```sql
--- Audit table for the orders table
-CREATE TABLE orders_audit (
-    audit_id BIGSERIAL PRIMARY KEY,
-    order_id BIGINT NOT NULL,
-    operation VARCHAR(10) NOT NULL CHECK (operation IN ('INSERT', 'UPDATE', 'DELETE')),
-    changed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    changed_by BIGINT,
-    client_ip INET,
-    old_data JSONB,    -- previous state (NULL for INSERT)
-    new_data JSONB,    -- new state (NULL for DELETE)
-    changed_columns TEXT[]  -- which columns actually changed (UPDATE only)
-);
-
-CREATE INDEX idx_orders_audit_order_id ON orders_audit(order_id);
-CREATE INDEX idx_orders_audit_changed_at ON orders_audit(changed_at);
-
--- Trigger function
-CREATE OR REPLACE FUNCTION fn_audit_orders()
-RETURNS TRIGGER AS $$
-DECLARE
-    changed_cols TEXT[] := '{}';
-    col_name TEXT;
-BEGIN
-    -- For UPDATE: detect which columns changed
-    IF TG_OP = 'UPDATE' THEN
-        FOREACH col_name IN ARRAY (
-            SELECT column_name FROM information_schema.columns
-            WHERE table_name = 'orders'
-        )
-        LOOP
-            IF row_to_json(OLD)->col_name IS DISTINCT FROM row_to_json(NEW)->col_name THEN
-                changed_cols := array_append(changed_cols, col_name);
-            END IF;
-        END LOOP;
-    END IF;
-
-    INSERT INTO orders_audit (
-        order_id, operation, changed_by,
-        old_data, new_data, changed_columns
-    ) VALUES (
-        COALESCE(NEW.id, OLD.id),
-        TG_OP,
-        current_setting('app.current_user_id', true)::BIGINT,
-        CASE WHEN TG_OP != 'INSERT' THEN to_jsonb(OLD) END,
-        CASE WHEN TG_OP != 'DELETE' THEN to_jsonb(NEW) END,
-        CASE WHEN TG_OP = 'UPDATE' THEN changed_cols END
-    );
-
-    RETURN NULL;  -- AFTER trigger; return value is ignored for AFTER row triggers
-END;
-$$ LANGUAGE plpgsql;
-
-CREATE TRIGGER trg_orders_audit
-AFTER INSERT OR UPDATE OR DELETE ON orders
-FOR EACH ROW EXECUTE FUNCTION fn_audit_orders();
-```
+**Awareness summary (compliance-heavy / senior):** For domains like banking or healthcare you need a full change history — who changed what, and the previous value. The common pattern is a separate `*_audit` table (storing `operation`, `changed_at`, `changed_by`, `old_data JSONB`, `new_data JSONB`) populated by an `AFTER INSERT OR UPDATE OR DELETE` trigger that captures `to_jsonb(OLD)` and `to_jsonb(NEW)`. Know it exists; the per-column-diff trigger logic is advanced and rarely asked of juniors.
 
 ---
 
 ### Temporal Tables (Bitemporal Design)
 
-Bitemporal modeling tracks two dimensions of time:
-- **Valid time**: when the data was true in the real world
-- **Transaction time**: when the data was recorded in the database
+**Awareness summary (senior):** Temporal modeling tracks data over time across two dimensions — **valid time** (when the fact was true in the real world) and **transaction time** (when it was recorded). The practical pattern is effective dating: each row has `valid_from`/`valid_to`, with the current record using a `'9999-12-31'` sentinel; updates close the old row and open a new one. A PostgreSQL `EXCLUDE USING gist` constraint prevents overlapping periods. SQL:2011 temporal tables are native in MySQL 8.0+, MariaDB, and MS SQL Server; PostgreSQL needs manual implementation.
 
 ```sql
--- Product prices with valid time (effective dating)
-CREATE TABLE product_prices (
-    id BIGSERIAL PRIMARY KEY,
-    product_id BIGINT NOT NULL REFERENCES products(id),
-    price DECIMAL(10,2) NOT NULL,
-    valid_from DATE NOT NULL,
-    valid_to DATE NOT NULL DEFAULT '9999-12-31',  -- open-ended current records
-
-    -- Ensure no overlapping price periods for the same product
-    CONSTRAINT no_overlap EXCLUDE USING gist (
-        product_id WITH =,
-        daterange(valid_from, valid_to, '[)') WITH &&
-    )
-    -- Requires btree_gist extension: CREATE EXTENSION btree_gist;
-);
-
--- What is the current price?
-SELECT price FROM product_prices
-WHERE product_id = 1
-  AND valid_from <= CURRENT_DATE
-  AND valid_to > CURRENT_DATE;
-
--- What was the price on 2023-01-01?
 SELECT price FROM product_prices
 WHERE product_id = 1
   AND valid_from <= '2023-01-01'
-  AND valid_to > '2023-01-01';
-
--- Update price (close old record, open new record)
-BEGIN;
-UPDATE product_prices
-SET valid_to = CURRENT_DATE
-WHERE product_id = 1 AND valid_to = '9999-12-31';
-
-INSERT INTO product_prices (product_id, price, valid_from)
-VALUES (1, 29.99, CURRENT_DATE);
-COMMIT;
+  AND valid_to > '2023-01-01';  -- price as of a past date
 ```
-
-**SQL:2011 standard temporal tables** are supported natively in some DBs (MySQL 8.0+, MariaDB, MS SQL Server). PostgreSQL requires manual implementation as above.
 
 ---
 
 ## Multi-Tenancy Patterns
 
-Multi-tenancy means one software instance serves multiple customers (tenants), each with their own isolated data.
+Multi-tenancy means one software instance serves multiple customers (tenants), each with isolated data. This is an architect-level topic — a junior should know the three patterns exist and their trade-offs, not implement the wiring.
 
----
+**Awareness summary of the three patterns:**
 
-### Pattern 1: Database-per-Tenant
+1. **Database-per-tenant** — each tenant gets a separate database. Maximum isolation and easy per-tenant backup/restore, but very high cost at scale and migrations must run on every DB. Use for regulated industries with a small number of large tenants.
 
-Each tenant gets a completely separate database.
+2. **Schema-per-tenant** — one database, one schema per tenant; route with `SET search_path TO tenant_abc`. In Spring/Hibernate this uses a `MultiTenantConnectionProvider` plus a `CurrentTenantIdentifierResolver`, with a request filter reading a tenant header. Good isolation at medium cost; scales to hundreds of tenants.
 
-```
-Tenant A → database_a
-Tenant B → database_b
-Tenant C → database_c
-```
-
-**Pros:**
-- Maximum isolation: a bug or migration error in one tenant cannot affect others
-- Easy per-tenant backup, restore, and deletion
-- Can run on different hardware if needed
-- Compliance friendly (data sovereignty — tenant data can be stored in specific regions)
-
-**Cons:**
-- Very high cost at scale (hundreds of databases = hundreds of connection pools)
-- Complex connection management (need routing layer)
-- Schema migrations must be applied to every database
-
-**Use when:** healthcare, finance, government — high regulatory isolation requirements; small number of large enterprise tenants.
-
----
-
-### Pattern 2: Schema-per-Tenant
-
-One database, one schema per tenant.
-
-```
-database: saas_db
-  ├── schema: tenant_a
-  │     ├── orders
-  │     ├── products
-  │     └── users
-  ├── schema: tenant_b
-  │     ├── orders
-  │     └── ...
-```
+3. **Shared schema (row-level)** — all tenants share tables with a `tenant_id` column on every row; index it first (`(tenant_id, ...)`). Lowest cost, simplest migration, scales to thousands of tenants. PostgreSQL Row Level Security (RLS) adds a DB-level safety net so an app bug can't leak cross-tenant data:
 
 ```sql
--- Create a new tenant schema
-CREATE SCHEMA tenant_abc;
-
--- Create tables in that schema
-CREATE TABLE tenant_abc.users (
-    id BIGSERIAL PRIMARY KEY,
-    email VARCHAR(255) UNIQUE NOT NULL
-);
-
--- Set search_path to query tenant's tables without prefix
-SET search_path TO tenant_abc;
-SELECT * FROM users;  -- queries tenant_abc.users
-```
-
-```java
-// Spring Boot + Hibernate: schema-per-tenant
-// 1. MultiTenantConnectionProvider: switches schema per request
-public class SchemaMultiTenantConnectionProvider
-        extends AbstractMultiTenantConnectionProvider<String> {
-
-    private final DataSource dataSource;
-
-    @Override
-    protected DataSource selectAnyDataSource() { return dataSource; }
-
-    @Override
-    protected DataSource selectDataSource(String tenantIdentifier) { return dataSource; }
-
-    @Override
-    public Connection getConnection(String tenantIdentifier) throws SQLException {
-        Connection connection = dataSource.getConnection();
-        connection.createStatement().execute("SET search_path TO " + tenantIdentifier);
-        return connection;
-    }
-}
-
-// 2. CurrentTenantIdentifierResolver: gets tenant from request context
-@Component
-public class TenantIdentifierResolver implements CurrentTenantIdentifierResolver<String> {
-
-    @Override
-    public String resolveCurrentTenantIdentifier() {
-        return TenantContext.getCurrentTenant();
-    }
-
-    @Override
-    public boolean validateExistingCurrentSessions() { return true; }
-}
-
-// 3. Request filter: set tenant from request header
-@Component
-public class TenantFilter extends OncePerRequestFilter {
-
-    @Override
-    protected void doFilterInternal(HttpServletRequest request,
-            HttpServletResponse response, FilterChain filterChain)
-            throws ServletException, IOException {
-        String tenantId = request.getHeader("X-Tenant-ID");
-        TenantContext.setCurrentTenant(tenantId);
-        try {
-            filterChain.doFilter(request, response);
-        } finally {
-            TenantContext.clear();  // CRITICAL: clear after request to avoid thread leakage
-        }
-    }
-}
-```
-
----
-
-### Pattern 3: Shared Schema (Row-Level Multi-Tenancy)
-
-All tenants in the same tables, distinguished by a `tenant_id` column.
-
-```sql
--- Every tenant-scoped table has tenant_id
-CREATE TABLE orders (
-    id BIGSERIAL PRIMARY KEY,
-    tenant_id BIGINT NOT NULL REFERENCES tenants(id),
-    user_id BIGINT NOT NULL,
-    status VARCHAR(20) NOT NULL,
-    total DECIMAL(10,2),
-    created_at TIMESTAMPTZ DEFAULT NOW()
-);
-
--- Composite index: tenant_id first (most selective filter)
-CREATE INDEX idx_orders_tenant_status ON orders(tenant_id, status);
-CREATE INDEX idx_orders_tenant_user ON orders(tenant_id, user_id);
-```
-
-**PostgreSQL Row Level Security (RLS):**
-
-RLS is a database-level enforcement mechanism that prevents cross-tenant data access even if application code has a bug.
-
-```sql
--- Enable RLS on the table
 ALTER TABLE orders ENABLE ROW LEVEL SECURITY;
-ALTER TABLE orders FORCE ROW LEVEL SECURITY;  -- also applies to table owner
-
--- Create policy: users can only see their tenant's data
-CREATE POLICY tenant_isolation_policy ON orders
-    AS PERMISSIVE
-    FOR ALL
+CREATE POLICY tenant_isolation ON orders
     USING (tenant_id = current_setting('app.current_tenant_id')::BIGINT);
-
--- Application must set this before every query
-SET app.current_tenant_id = '42';
--- or in a transaction:
-BEGIN;
-SET LOCAL app.current_tenant_id = '42';
-SELECT * FROM orders;  -- automatically filtered to tenant 42
-COMMIT;
-```
-
-```java
-// Spring: set RLS variable in a Hibernate event listener or interceptor
-@Component
-public class TenantRlsInterceptor extends EmptyInterceptor {
-
-    @Override
-    public void beforeTransactionCompletion(Transaction tx) { }
-
-    // Better: use AOP or connection event listener
-    // Set on connection acquisition:
-    @Bean
-    public DataSourceConnectionProvider dataSourceConnectionProvider(DataSource dataSource) {
-        return new TenantAwareConnectionProvider(dataSource);
-    }
-}
-
-// Or use Hibernate's StatementInspector to prepend SET LOCAL
-@Component
-public class TenantStatementInspector implements StatementInspector {
-    // Intercept before each statement — set tenant context
-}
+-- App sets `SET LOCAL app.current_tenant_id = '42'` per request/transaction.
 ```
 
 **Comparison Table:**
@@ -1401,97 +1067,13 @@ SELECT * FROM ancestors;
 
 ### Nested Set Model
 
-Each node has `lft` and `rgt` values. All descendants have `lft`/`rgt` values between the parent's `lft` and `rgt`.
-
-```sql
-CREATE TABLE categories_ns (
-    id BIGSERIAL PRIMARY KEY,
-    name VARCHAR(100) NOT NULL,
-    lft INT NOT NULL,
-    rgt INT NOT NULL
-);
-
--- Example tree (Electronics → Computers → Laptops → Gaming Laptops):
--- Electronics:     lft=1, rgt=8
--- Computers:       lft=2, rgt=7
--- Laptops:         lft=3, rgt=6
--- Gaming Laptops:  lft=4, rgt=5
-
--- Get all descendants of Electronics (id=1, lft=1, rgt=8)
-SELECT c.* FROM categories_ns AS c, categories_ns AS parent
-WHERE c.lft BETWEEN parent.lft + 1 AND parent.rgt - 1
-  AND parent.id = 1
-ORDER BY c.lft;
-
--- Get all ancestors of Gaming Laptops (id=4, lft=4, rgt=5)
-SELECT parent.* FROM categories_ns AS node, categories_ns AS parent
-WHERE node.lft BETWEEN parent.lft AND parent.rgt
-  AND node.id = 4
-ORDER BY parent.lft;
-
--- Leaf nodes: rgt = lft + 1 (no children)
-SELECT * FROM categories_ns WHERE rgt = lft + 1;
-
--- Immediate children count: (rgt - lft - 1) / 2
-```
-
-**Pros**: Very fast reads for getting entire subtrees (range query, no recursion).
-**Cons**: Inserts and moves require updating `lft`/`rgt` values for many rows — O(n) writes.
+**Awareness summary (advanced):** Each node stores `lft`/`rgt` integers; all descendants fall numerically between the parent's `lft` and `rgt`, so fetching a subtree is a single range query with no recursion. The catch: every insert or move must renumber `lft`/`rgt` for many rows (O(n) writes). Best for mostly-static, read-heavy trees.
 
 ---
 
 ### Closure Table (Best Balance)
 
-Stores every ancestor-descendant pair explicitly in a separate table.
-
-```sql
-CREATE TABLE categories (
-    id BIGSERIAL PRIMARY KEY,
-    name VARCHAR(100) NOT NULL
-);
-
-CREATE TABLE category_closure (
-    ancestor_id BIGINT NOT NULL REFERENCES categories(id) ON DELETE CASCADE,
-    descendant_id BIGINT NOT NULL REFERENCES categories(id) ON DELETE CASCADE,
-    depth INT NOT NULL,  -- 0 = self-reference, 1 = parent-child, 2 = grandparent, etc.
-    PRIMARY KEY (ancestor_id, descendant_id)
-);
-
--- Create index on descendant for "find all ancestors" queries
-CREATE INDEX idx_closure_descendant ON category_closure(descendant_id);
-
--- Insert node "Electronics" (id=1): insert self-reference
-INSERT INTO category_closure (ancestor_id, descendant_id, depth) VALUES (1, 1, 0);
-
--- Insert child "Computers" (id=2) under "Electronics" (id=1):
--- 1. Self-reference for new node
-INSERT INTO category_closure VALUES (2, 2, 0);
--- 2. Copy ancestor's paths, increment depth
-INSERT INTO category_closure (ancestor_id, descendant_id, depth)
-SELECT ancestor_id, 2, depth + 1
-FROM category_closure
-WHERE descendant_id = 1;  -- all ancestors of parent (1), now become ancestors of new node (2)
-
--- All descendants of Electronics (id=1)
-SELECT c.* FROM categories c
-JOIN category_closure cc ON c.id = cc.descendant_id
-WHERE cc.ancestor_id = 1 AND cc.depth > 0
-ORDER BY cc.depth;
-
--- All ancestors of Gaming Laptops (id=4)
-SELECT c.* FROM categories c
-JOIN category_closure cc ON c.id = cc.ancestor_id
-WHERE cc.descendant_id = 4 AND cc.depth > 0
-ORDER BY cc.depth DESC;  -- root first
-
--- Immediate children only (depth = 1)
-SELECT c.* FROM categories c
-JOIN category_closure cc ON c.id = cc.descendant_id
-WHERE cc.ancestor_id = 1 AND cc.depth = 1;
-```
-
-**Pros**: Fast reads in all directions (descendants, ancestors, subtrees). Depth is directly available.
-**Cons**: More storage (O(n) rows per path). Inserts are O(depth) rows. Moves require deleting and reinserting paths — O(subtree size * average depth).
+**Awareness summary (advanced):** A separate `category_closure(ancestor_id, descendant_id, depth)` table stores every ancestor-descendant pair explicitly (depth 0 = self). Finding all descendants is `WHERE ancestor_id = X`; all ancestors is `WHERE descendant_id = X` — fast in both directions with no recursion and depth available directly. Cost: more storage (O(n) rows per path) and inserts/moves must rebuild paths. Best for read-heavy trees with frequent ancestor/descendant traversal.
 
 **Comparison Summary:**
 
@@ -2508,33 +2090,7 @@ This allows:
 
 **Q22: What is an EXCLUDE constraint in PostgreSQL and when would you use it?**
 
-`EXCLUDE` is a generalization of UNIQUE. While UNIQUE says "no two rows may have the same value," EXCLUDE says "no two rows may satisfy this comparison using this operator."
-
-The most common use is preventing overlapping date/time ranges using GiST index operators.
-
-```sql
--- Ensure no two bookings for the same room overlap in time
-CREATE TABLE room_bookings (
-    id BIGSERIAL PRIMARY KEY,
-    room_id BIGINT NOT NULL,
-    booked_during TSTZRANGE NOT NULL,  -- time range type
-
-    EXCLUDE USING gist (
-        room_id WITH =,                         -- same room
-        booked_during WITH &&                   -- overlapping ranges (&&)
-    )
-);
-
--- Insert succeeds: different time ranges
-INSERT INTO room_bookings VALUES (DEFAULT, 1, '[2024-01-01 09:00, 2024-01-01 10:00)');
-INSERT INTO room_bookings VALUES (DEFAULT, 1, '[2024-01-01 11:00, 2024-01-01 12:00)');
-
--- Insert fails: overlapping range for same room
-INSERT INTO room_bookings VALUES (DEFAULT, 1, '[2024-01-01 09:30, 2024-01-01 10:30)');
--- ERROR: conflicting key value violates exclusion constraint
-```
-
-This technique is also used in temporal tables to prevent overlapping price validity periods.
+**Awareness summary (advanced):** `EXCLUDE` generalizes UNIQUE — instead of "no two rows share a value," it says "no two rows satisfy this comparison." The classic use is preventing overlapping time ranges (e.g., room bookings, temporal price periods) via a GiST index: `EXCLUDE USING gist (room_id WITH =, booked_during WITH &&)`, where `&&` means "ranges overlap."
 
 ---
 
@@ -2835,42 +2391,13 @@ CREATE TABLE feature_flag_segments (
 
 **Q31: What is connection-level state in PostgreSQL and why does it matter for multi-tenancy?**
 
-PostgreSQL sessions maintain state at the connection level: `search_path`, `SET` variables (`app.current_tenant_id`), `SET LOCAL` variables (transaction-scoped), and other configuration parameters.
-
-In schema-per-tenant multi-tenancy, you `SET search_path TO tenant_abc` to route queries to the correct schema. In shared schema with RLS, you `SET LOCAL app.current_tenant_id = '42'` before queries.
-
-**The danger with connection pooling**: HikariCP reuses connections. If connection A was used for tenant 42 (with `search_path = tenant_42` set) and is returned to the pool, the next request using that connection might accidentally query the wrong schema.
-
-**Solutions:**
-1. Use `SET LOCAL` (transaction-scoped) instead of `SET` — automatically reverts after the transaction
-2. Use a connection pool wrapper that resets connection state after returning to pool
-3. Use Hibernate's `MultiTenantConnectionProvider` which sets the schema on every connection acquisition
-4. Use `DISCARD ALL` or `RESET ALL` when returning connections to pool (expensive, but safe)
+**Awareness summary (advanced):** PostgreSQL keeps state per connection — `search_path`, `SET`/`SET LOCAL` variables, etc. Multi-tenancy relies on this (`SET search_path TO tenant_abc`, or `SET LOCAL app.current_tenant_id = '42'`). The danger: pooled connections (HikariCP) are reused, so leftover state can leak one tenant's context into the next request. Fix by using transaction-scoped `SET LOCAL` (auto-reverts), resetting state on return to pool (`DISCARD ALL`), or letting Hibernate's `MultiTenantConnectionProvider` set the schema on every acquisition.
 
 ---
 
 **Q32: How do you handle schema evolution when you need to rename a column without downtime?**
 
-Renaming a column directly (`ALTER TABLE orders RENAME COLUMN old_name TO new_name`) causes an outage because deployed application code still references `old_name`.
-
-**Zero-downtime rename pattern (3-phase deployment):**
-
-```
-Phase 1 — Add new column, copy data, dual-write:
-  - Migration: ALTER TABLE orders ADD COLUMN new_col_name VARCHAR(255);
-  - Migration: UPDATE orders SET new_col_name = old_col_name;
-  - Migration: CREATE TRIGGER ... (sync writes to both columns)
-  - Deploy app version that writes to BOTH columns, reads from old
-
-Phase 2 — Switch reads to new column:
-  - Deploy app version that reads from new_col_name, writes to both
-
-Phase 3 — Remove old column:
-  - Migration: ALTER TABLE orders DROP COLUMN old_col_name;
-  - Deploy app version that only writes to new_col_name
-```
-
-This pattern ensures no version of the application ever reads a column that doesn't exist.
+**Awareness summary (senior/large-scale migration):** A direct `RENAME COLUMN` causes an outage because deployed code still references the old name. The zero-downtime pattern is a 3-phase, expand-then-contract deploy: (1) add the new column, copy the data, and dual-write to both; (2) deploy code that reads the new column while still writing both; (3) drop the old column once nothing reads it. No running app version ever references a column that doesn't exist.
 
 ---
 
@@ -2920,23 +2447,7 @@ REFRESH MATERIALIZED VIEW CONCURRENTLY daily_sales;
 
 **Q34: Explain the CAP theorem and its relevance to distributed database design.**
 
-The CAP theorem states that in a distributed system, you can guarantee at most 2 of 3 properties simultaneously:
-
-- **Consistency (C)**: Every read receives the most recent write (or an error). All nodes see the same data at the same time.
-- **Availability (A)**: Every request receives a response (not an error), even if the data might be stale.
-- **Partition tolerance (P)**: The system continues operating even if network partitions (node communication failures) occur.
-
-Since network partitions are unavoidable in distributed systems, real-world systems choose between **CP** (consistent, may be unavailable during partition) and **AP** (always available, may return stale data during partition).
-
-**Practical relevance for Java full-stack developers:**
-
-- **PostgreSQL (single node)**: CP — consistent, but not distributed natively
-- **PostgreSQL (read replicas)**: AP for reads — replicas may lag, but are always available
-- **Redis**: CP (single node) or AP (Redis Cluster)
-- **Cassandra**: AP — highly available, eventually consistent
-- **DynamoDB**: configurable (strongly consistent reads = CP, eventually consistent = AP)
-
-For schema design: eventual consistency requires careful handling of distributed writes — consider idempotency keys, distributed transactions (Saga pattern), or conflict-free replicated data types (CRDTs) depending on the consistency requirements.
+**Awareness summary (architect-level):** In a distributed system you can guarantee at most 2 of 3: **Consistency** (every read sees the latest write), **Availability** (every request gets a response), and **Partition tolerance** (keeps working despite network splits). Since partitions are unavoidable, real systems choose **CP** (consistent, may be unavailable during a partition) or **AP** (always available, may serve stale data). Examples: single-node PostgreSQL is effectively CP; Cassandra is AP/eventually consistent; DynamoDB is configurable. Eventual consistency pushes work onto the app (idempotency keys, Saga pattern).
 
 ---
 
@@ -2979,15 +2490,6 @@ Distributed system, no DB dependency needed?  → UUID v7 or ULID (time-ordered)
 Security: IDs must not be guessable?          → UUID v4 (random) or UUID v7
 High write throughput, sortable?              → Snowflake ID
 ```
-
-### Soft Delete Checklist
-
-- [ ] Add `deleted_at TIMESTAMPTZ` column (nullable)
-- [ ] Create partial index: `WHERE deleted_at IS NULL`
-- [ ] Create partial unique indexes for all UNIQUE constraints: `WHERE deleted_at IS NULL`
-- [ ] Add `@SQLDelete` + `@SQLRestriction` to JPA entities
-- [ ] Plan for GDPR: anonymize PII on soft delete or schedule hard delete
-- [ ] Implement archival for old soft-deleted records
 
 ### Hierarchy Model Selection
 

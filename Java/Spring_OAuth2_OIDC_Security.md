@@ -1,27 +1,6 @@
 # Spring OAuth2, OIDC & Security – Full Stack Java Developer Interview Guide
 
-> Complete reference for OAuth2, OpenID Connect, JWT, Spring Security OAuth2, and related security patterns. Covers concepts, code, and 40+ interview Q&A.
-
----
-
-## Table of Contents
-
-1. [OAuth2 Fundamentals](#1-oauth2-fundamentals)
-2. [OAuth2 Grant Types (Flows)](#2-oauth2-grant-types-flows)
-3. [OpenID Connect (OIDC)](#3-openid-connect-oidc)
-4. [JWT Deep Dive](#4-jwt-deep-dive)
-5. [Spring Security OAuth2 Resource Server](#5-spring-security-oauth2-resource-server)
-6. [Spring Security OAuth2 Client](#6-spring-security-oauth2-client)
-7. [Social Login: Google & GitHub](#7-social-login-google--github)
-8. [Spring Authorization Server](#8-spring-authorization-server)
-9. [Method-Level Security](#9-method-level-security)
-10. [CORS and CSRF](#10-cors-and-csrf)
-11. [Refresh Token Flow](#11-refresh-token-flow)
-12. [Security Best Practices](#12-security-best-practices)
-13. [Keycloak Integration](#13-keycloak-integration)
-14. [Microservice Security Patterns](#14-microservice-security-patterns)
-15. [Interview Questions & Answers (40+)](#15-interview-questions--answers-40)
-16. [Quick Revision Summary](#16-quick-revision-summary)
+> Complete reference for OAuth2, OpenID Connect, JWT, Spring Security OAuth2, and related security patterns. Covers concepts, code, and interview Q&A, trimmed to junior Spring Boot scope.
 
 ---
 
@@ -154,47 +133,21 @@ User         Browser         Your App (Client)     Auth Server      Resource Ser
  |              |                   |<---protected data----------------------|
 ```
 
-**HTTP Request Examples:**
+**Key HTTP steps:**
 
-Step 1 — Redirect user to Authorization Server:
-```
-GET https://auth.example.com/authorize?
-    response_type=code
-    &client_id=my-client-id
-    &redirect_uri=https://myapp.com/callback
-    &scope=openid%20profile%20email
-    &state=xK3mP9qRzY2n
-```
-
-Step 2 — Authorization Server redirects back with code:
-```
-GET https://myapp.com/callback?
-    code=SplxlOBeZQQYbYS6WxSbIA
-    &state=xK3mP9qRzY2n
-```
-
-Step 3 — Exchange code for tokens (server-to-server):
 ```http
+# 1. Redirect to /authorize (front channel)
+GET https://auth.example.com/authorize?response_type=code&client_id=my-client-id
+    &redirect_uri=https://myapp.com/callback&scope=openid%20profile%20email&state=xK3mP9qRzY2n
+
+# 2. Auth server redirects back: GET https://myapp.com/callback?code=...&state=xK3mP9qRzY2n
+
+# 3. Exchange code for tokens (back channel, server-to-server)
 POST https://auth.example.com/token
-Content-Type: application/x-www-form-urlencoded
+grant_type=authorization_code&code=...&redirect_uri=https://myapp.com/callback
+&client_id=my-client-id&client_secret=my-client-secret
 
-grant_type=authorization_code
-&code=SplxlOBeZQQYbYS6WxSbIA
-&redirect_uri=https://myapp.com/callback
-&client_id=my-client-id
-&client_secret=my-client-secret
-```
-
-Step 4 — Token response:
-```json
-{
-  "access_token": "eyJhbGciOiJSUzI1NiJ9...",
-  "token_type": "Bearer",
-  "expires_in": 3600,
-  "refresh_token": "tGzv3JOkF0XG5Qx2TlKWIA",
-  "id_token": "eyJhbGciOiJSUzI1NiJ9...",
-  "scope": "openid profile email"
-}
+# 4. Response: { access_token, token_type: "Bearer", expires_in, refresh_token, id_token, scope }
 ```
 
 **Why the `state` parameter?** Prevents CSRF attacks on the OAuth2 flow itself. Your app generates a random value, stores it in session, and verifies it matches when the redirect comes back.
@@ -231,44 +184,7 @@ Step 4 — Token response:
    If not → reject (the interceptor doesn't have code_verifier)
 ```
 
-**HTTP Request Examples:**
-
-Step 1 — Generate PKCE values (client-side):
-```javascript
-// JavaScript example
-const codeVerifier = generateRandomString(64); // store this
-const codeChallenge = base64UrlEncode(sha256(codeVerifier));
-```
-
-Step 2 — Authorization request with PKCE:
-```
-GET https://auth.example.com/authorize?
-    response_type=code
-    &client_id=my-spa-client
-    &redirect_uri=https://myapp.com/callback
-    &scope=openid%20profile
-    &state=abc123
-    &code_challenge=E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM
-    &code_challenge_method=S256
-```
-
-Step 3 — Token exchange with PKCE (no client_secret needed):
-```http
-POST https://auth.example.com/token
-Content-Type: application/x-www-form-urlencoded
-
-grant_type=authorization_code
-&code=SplxlOBeZQQYbYS6WxSbIA
-&redirect_uri=https://myapp.com/callback
-&client_id=my-spa-client
-&code_verifier=dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk
-```
-
-**Key point:** `code_challenge_method=S256` means SHA-256. Plain (`plain`) is also supported but not recommended.
-
-**PKCE vs no PKCE:**
-- Without PKCE: if attacker intercepts the code → can exchange for tokens (has client_secret from decompiled mobile app)
-- With PKCE: intercepted code is useless without the `code_verifier` which was never transmitted
+**Key HTTP steps:** the `/authorize` request adds `code_challenge=<hash>&code_challenge_method=S256`; the `/token` request adds `code_verifier=<original>` and needs **no** client_secret. Use `S256` (not `plain`). An intercepted code is useless without the `code_verifier`, which was never transmitted.
 
 ---
 
@@ -323,28 +239,7 @@ grant_type=client_credentials
 
 ### 2.4 Device Authorization Flow (Device Code)
 
-**Best for:** Devices with no browser or limited input (smart TVs, IoT, CLI tools)
-
-```
-Device (TV)                  Auth Server              User's Phone/Browser
-    |                             |                          |
-    |--POST /device_authorization>|                          |
-    |  client_id=tv-app           |                          |
-    |<-- device_code,             |                          |
-    |    user_code=BCDF-HKMP      |                          |
-    |    verification_uri=...     |                          |
-    |                             |                          |
-    | Show on TV:                 |                          |
-    | "Go to example.com/activate |                          |
-    |  and enter: BCDF-HKMP"      |                          |
-    |                             |<--user enters code--------|
-    |                             |<--user approves------------|
-    |                             |                          |
-    |--poll POST /token ---------->|                          |
-    |  grant_type=urn:ietf:..     |                          |
-    |  device_code=...            |                          |
-    |<-- access_token (when done)-|                          |
-```
+**Best for:** Devices with no browser or limited input (smart TVs, IoT, CLI tools). The device shows a short `user_code` and a URL; the user opens the URL on a phone, enters the code, and approves. Meanwhile the device polls `/token` with its `device_code` until tokens are issued. (Awareness-level — rarely needed for typical web work.)
 
 ---
 
@@ -671,40 +566,14 @@ Spring Boot's `NimbusJwtDecoder` fetches and caches these keys automatically.
 
 ---
 
-### 4.5 JWT Security Vulnerabilities
+### 4.5 JWT Security Vulnerabilities (awareness)
 
-#### 1. Algorithm Confusion Attack (none algorithm)
+Know these exist; Spring's `NimbusJwtDecoder` is safe against them when you pin the algorithm:
 
-Old JWT libraries accepted `"alg": "none"` — no signature required.
-
-```json
-// Attacker crafts:
-{
-  "alg": "none",
-  "typ": "JWT"
-}
-// with any claims, no signature
-```
-
-**Mitigation:** Always explicitly specify allowed algorithms. Never accept `none`.
-
-#### 2. RS256 → HS256 Confusion Attack
-
-If a library accepts both RS256 and HS256, attacker signs a JWT with HS256 using the *public key* as the HMAC secret (since the public key is publicly known).
-
-**Mitigation:** Pin the expected algorithm explicitly.
-
-#### 3. `jku` / `x5u` Header Injection
-
-Some libraries fetch the JWKS from the URL in the JWT header itself (`jku` claim). Attacker points to their own JWKS.
-
-**Mitigation:** Never trust key URLs from the JWT itself. Only use configured/trusted JWKS URIs.
-
-#### 4. JWT Leakage via Logs
-
-JWTs in URLs (Implicit flow) get logged in server access logs.
-
-**Mitigation:** Always put tokens in headers, never in URLs.
+- **`alg: none`** — old libraries accepted unsigned tokens. Never accept `none`; specify allowed algorithms explicitly.
+- **RS256 → HS256 confusion** — attacker signs with HS256 using the public key as the HMAC secret. Pin the expected algorithm.
+- **`jku`/`x5u` header injection** — never fetch keys from a URL inside the token; only use configured/trusted JWKS URIs.
+- **Token leakage via logs** — tokens in URLs end up in access logs. Always send tokens in headers, never URLs.
 
 ---
 
@@ -1139,169 +1008,28 @@ public class DataService {
 
 ## 7. Social Login: Google & GitHub
 
-### 7.1 Complete Google OAuth2 Login Example
+### 7.1 Google OAuth2 Login Example
 
-**Step 1: Google Cloud Console Setup**
-1. Go to https://console.cloud.google.com
-2. Create a project → Enable "Google+ API" or "People API"
-3. Credentials → Create OAuth 2.0 Client ID
-4. Application type: Web application
-5. Authorized redirect URIs: `http://localhost:8080/login/oauth2/code/google`
-6. Copy Client ID and Client Secret
+**Setup:** In Google Cloud Console, create an OAuth 2.0 Client ID (Web application) and add redirect URI `http://localhost:8080/login/oauth2/code/google`. Copy the client ID/secret into `application.yml` (see Section 6.2). GitHub is similar via Developer settings → OAuth Apps, callback `http://localhost:8080/login/oauth2/code/github`, scope `read:user, user:email`.
 
-**Step 2: application.yml**
-```yaml
-spring:
-  security:
-    oauth2:
-      client:
-        registration:
-          google:
-            client-id: 123456789-abcdefgh.apps.googleusercontent.com
-            client-secret: GOCSPX-xxxxxxxx
-            scope: openid, profile, email
-```
-
-**Step 3: SecurityConfig**
 ```java
-@Configuration
-@EnableWebSecurity
-public class SecurityConfig {
-
-    @Bean
-    public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
-        http
-            .authorizeHttpRequests(auth -> auth
-                .requestMatchers("/", "/login").permitAll()
-                .anyRequest().authenticated()
-            )
-            .oauth2Login(Customizer.withDefaults()); // uses default login page
-
-        return http.build();
-    }
+@Bean
+public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+    http
+        .authorizeHttpRequests(auth -> auth
+            .requestMatchers("/", "/login").permitAll()
+            .anyRequest().authenticated()
+        )
+        .oauth2Login(Customizer.withDefaults()); // auto-generated /login page with provider buttons
+    return http.build();
 }
 ```
 
-Spring Boot auto-generates a login page at `/login` with a "Sign in with Google" button.
+Authenticated user is available as `@AuthenticationPrincipal OidcUser` (Google, OIDC) or `OAuth2User` (GitHub, non-OIDC).
 
----
+### 7.2 Persisting Users (awareness)
 
-### 7.2 Custom OAuth2UserService — Persisting Users
-
-```java
-@Service
-public class CustomOAuth2UserService extends DefaultOAuth2UserService {
-
-    private final UserRepository userRepository;
-
-    public CustomOAuth2UserService(UserRepository userRepository) {
-        this.userRepository = userRepository;
-    }
-
-    @Override
-    public OAuth2User loadUser(OAuth2UserRequest userRequest) throws OAuth2AuthenticationException {
-        // Load user from OAuth2 provider (calls UserInfo endpoint)
-        OAuth2User oAuth2User = super.loadUser(userRequest);
-
-        String provider = userRequest.getClientRegistration().getRegistrationId(); // "google", "github"
-        String providerId = oAuth2User.getAttribute("sub");   // Google uses "sub"
-        // GitHub uses "id": providerId = oAuth2User.getAttribute("id").toString();
-        String email = oAuth2User.getAttribute("email");
-        String name = oAuth2User.getAttribute("name");
-
-        // Find or create user in our database
-        User user = userRepository
-            .findByProviderAndProviderId(provider, providerId)
-            .orElseGet(() -> {
-                User newUser = new User();
-                newUser.setProvider(provider);
-                newUser.setProviderId(providerId);
-                newUser.setEmail(email);
-                newUser.setName(name);
-                newUser.setRole("ROLE_USER");
-                return userRepository.save(newUser);
-            });
-
-        // Update name/email in case they changed
-        user.setEmail(email);
-        user.setName(name);
-        userRepository.save(user);
-
-        return oAuth2User;
-    }
-}
-```
-
-Register in SecurityConfig:
-```java
-.oauth2Login(oauth2 -> oauth2
-    .userInfoEndpoint(userInfo -> userInfo
-        .userService(customOAuth2UserService)
-    )
-)
-```
-
----
-
-### 7.3 Custom OidcUserService (for OIDC providers like Google)
-
-```java
-@Service
-public class CustomOidcUserService extends OidcUserService {
-
-    private final UserRepository userRepository;
-
-    @Override
-    public OidcUser loadUser(OidcUserRequest userRequest) throws OAuth2AuthenticationException {
-        OidcUser oidcUser = super.loadUser(userRequest);
-
-        String email = oidcUser.getEmail();
-        String googleId = oidcUser.getSubject();
-
-        // Merge with local user database
-        User user = userRepository.findByEmail(email)
-            .orElseGet(() -> createNewUser(oidcUser));
-
-        // Build custom OidcUser with our application roles
-        Set<GrantedAuthority> authorities = new HashSet<>(oidcUser.getAuthorities());
-        authorities.add(new SimpleGrantedAuthority(user.getRole()));
-
-        return new DefaultOidcUser(authorities, oidcUser.getIdToken(), oidcUser.getUserInfo());
-    }
-
-    private User createNewUser(OidcUser oidcUser) {
-        User user = new User();
-        user.setEmail(oidcUser.getEmail());
-        user.setName(oidcUser.getFullName());
-        user.setRole("ROLE_USER");
-        return userRepository.save(user);
-    }
-}
-```
-
----
-
-### 7.4 GitHub OAuth App Setup
-
-1. GitHub → Settings → Developer settings → OAuth Apps → New OAuth App
-2. Application name: My App
-3. Homepage URL: `http://localhost:8080`
-4. Authorization callback URL: `http://localhost:8080/login/oauth2/code/github`
-5. Copy Client ID and Client Secret
-
-```yaml
-spring:
-  security:
-    oauth2:
-      client:
-        registration:
-          github:
-            client-id: ${GITHUB_CLIENT_ID}
-            client-secret: ${GITHUB_CLIENT_SECRET}
-            scope: read:user, user:email
-```
-
-Note: GitHub is NOT an OIDC provider, so use `OAuth2User` (not `OidcUser`) and `DefaultOAuth2UserService`.
+To save/merge users in your own DB, extend `DefaultOAuth2UserService` (or `OidcUserService` for OIDC providers), override `loadUser`, call `super.loadUser(...)`, then find-or-create a local `User` keyed by provider + provider-id (`sub` for Google, `id` for GitHub). Register it via `.oauth2Login(o -> o.userInfoEndpoint(u -> u.userService(customUserService)))`. You can also attach your app's own roles by returning a custom `DefaultOidcUser` with extra authorities.
 
 ---
 
@@ -1326,138 +1054,20 @@ Spring Authorization Server (SAS) is the official, first-party OAuth2/OIDC Autho
 
 ---
 
-### 8.2 Minimal Spring Authorization Server Setup
+### 8.2 Setup (awareness)
 
-```java
-@Configuration
-@EnableWebSecurity
-public class AuthServerConfig {
+Building a full auth server is senior-level. The key beans you wire up:
 
-    @Bean
-    @Order(1)
-    public SecurityFilterChain authorizationServerSecurityFilterChain(HttpSecurity http)
-            throws Exception {
+- A `SecurityFilterChain` with `OAuth2AuthorizationServerConfiguration.applyDefaultSecurity(http)` and `.oidc(Customizer.withDefaults())` to enable OIDC.
+- A `RegisteredClientRepository` describing each client — `clientId`, `clientSecret` (bcrypt), grant types (authorization_code/refresh_token/client_credentials), redirect URIs, scopes, and `ClientSettings`/`TokenSettings` (e.g. `requireProofKey(true)` for PKCE, token TTLs, `reuseRefreshTokens(false)` for rotation).
+- A `JWKSource` holding an RSA key pair (signs tokens; public key exposed at the JWKS endpoint).
+- `AuthorizationServerSettings.builder().issuer("http://localhost:9000").build()`.
 
-        OAuth2AuthorizationServerConfiguration.applyDefaultSecurity(http);
-
-        http.getConfigurer(OAuth2AuthorizationServerConfigurer.class)
-            .oidc(Customizer.withDefaults()); // enable OIDC support
-
-        http.exceptionHandling(exceptions -> exceptions
-            .defaultAuthenticationEntryPointFor(
-                new LoginUrlAuthenticationEntryPoint("/login"),
-                new MediaTypeRequestMatcher(MediaType.TEXT_HTML)
-            )
-        );
-
-        return http.build();
-    }
-
-    @Bean
-    @Order(2)
-    public SecurityFilterChain defaultSecurityFilterChain(HttpSecurity http) throws Exception {
-        http
-            .authorizeHttpRequests(auth -> auth.anyRequest().authenticated())
-            .formLogin(Customizer.withDefaults());
-
-        return http.build();
-    }
-
-    @Bean
-    public RegisteredClientRepository registeredClientRepository() {
-        RegisteredClient webClient = RegisteredClient
-            .withId(UUID.randomUUID().toString())
-            .clientId("my-web-app")
-            .clientSecret("{bcrypt}" + new BCryptPasswordEncoder().encode("secret"))
-            .clientAuthenticationMethod(ClientAuthenticationMethod.CLIENT_SECRET_BASIC)
-            .authorizationGrantType(AuthorizationGrantType.AUTHORIZATION_CODE)
-            .authorizationGrantType(AuthorizationGrantType.REFRESH_TOKEN)
-            .redirectUri("http://localhost:3000/callback")
-            .scope(OidcScopes.OPENID)
-            .scope(OidcScopes.PROFILE)
-            .scope(OidcScopes.EMAIL)
-            .clientSettings(ClientSettings.builder()
-                .requireAuthorizationConsent(true)
-                .requireProofKey(true)  // enforce PKCE
-                .build())
-            .tokenSettings(TokenSettings.builder()
-                .accessTokenTimeToLive(Duration.ofMinutes(15))
-                .refreshTokenTimeToLive(Duration.ofDays(7))
-                .reuseRefreshTokens(false) // refresh token rotation
-                .build())
-            .build();
-
-        RegisteredClient serviceClient = RegisteredClient
-            .withId(UUID.randomUUID().toString())
-            .clientId("order-service")
-            .clientSecret("{bcrypt}" + new BCryptPasswordEncoder().encode("order-secret"))
-            .clientAuthenticationMethod(ClientAuthenticationMethod.CLIENT_SECRET_BASIC)
-            .authorizationGrantType(AuthorizationGrantType.CLIENT_CREDENTIALS)
-            .scope("read:orders")
-            .scope("write:orders")
-            .build();
-
-        return new InMemoryRegisteredClientRepository(webClient, serviceClient);
-    }
-
-    @Bean
-    public JWKSource<SecurityContext> jwkSource() {
-        RSAKey rsaKey = generateRsa();
-        JWKSet jwkSet = new JWKSet(rsaKey);
-        return new ImmutableJWKSet<>(jwkSet);
-    }
-
-    private RSAKey generateRsa() {
-        try {
-            KeyPairGenerator gen = KeyPairGenerator.getInstance("RSA");
-            gen.initialize(2048);
-            KeyPair keyPair = gen.generateKeyPair();
-            return new RSAKey.Builder((RSAPublicKey) keyPair.getPublic())
-                .privateKey(keyPair.getPrivate())
-                .keyID(UUID.randomUUID().toString())
-                .build();
-        } catch (Exception e) {
-            throw new RuntimeException(e);
-        }
-    }
-
-    @Bean
-    public AuthorizationServerSettings authorizationServerSettings() {
-        return AuthorizationServerSettings.builder()
-            .issuer("http://localhost:9000")
-            .build();
-    }
-}
-```
+You can inject custom claims with an `OAuth2TokenCustomizer<JwtEncodingContext>` bean (e.g. add `roles`/`tenant_id` to the access token).
 
 ---
 
-### 8.3 Custom Token Claims
-
-```java
-@Bean
-public OAuth2TokenCustomizer<JwtEncodingContext> tokenCustomizer(UserRepository userRepository) {
-    return context -> {
-        if (OAuth2TokenType.ACCESS_TOKEN.equals(context.getTokenType())) {
-            Authentication principal = context.getPrincipal();
-
-            // Add custom claims to access token
-            Set<String> roles = principal.getAuthorities().stream()
-                .map(GrantedAuthority::getAuthority)
-                .collect(Collectors.toSet());
-
-            context.getClaims()
-                .claim("roles", roles)
-                .claim("tenant_id", "tenant-abc")
-                .claim("user_id", getUserId(principal));
-        }
-    };
-}
-```
-
----
-
-### 8.4 Keycloak vs Spring Authorization Server
+### 8.3 Keycloak vs Spring Authorization Server
 
 | Feature | Keycloak | Spring Authorization Server |
 |---------|---------|---------------------------|
@@ -2188,97 +1798,25 @@ http.headers(headers -> headers
 
 ---
 
-### 13.2 Docker Setup
+### 13.2 Setup & Resource Server (awareness)
+
+Run Keycloak via Docker (`quay.io/keycloak/keycloak` with `start-dev`), then create a realm and client in the admin console. Point Spring at it:
 
 ```yaml
-# docker-compose.yml
-version: '3.8'
-services:
-  keycloak:
-    image: quay.io/keycloak/keycloak:23.0.0
-    command: start-dev
-    environment:
-      KEYCLOAK_ADMIN: admin
-      KEYCLOAK_ADMIN_PASSWORD: admin
-    ports:
-      - "8080:8080"
-```
-
-Access: `http://localhost:8080` → Admin console → Create realm `myrealm` → Create client `my-spring-app`
-
----
-
-### 13.3 Spring Boot + Keycloak Resource Server
-
-```yaml
-# application.yml
 spring:
   security:
     oauth2:
       resourceserver:
         jwt:
           issuer-uri: http://localhost:8080/realms/myrealm
-          # Spring auto-discovers:
-          # jwks-uri: http://localhost:8080/realms/myrealm/protocol/openid-connect/certs
+          # auto-discovers jwks-uri at /realms/myrealm/protocol/openid-connect/certs
 ```
 
-```java
-@Configuration
-@EnableWebSecurity
-public class SecurityConfig {
-
-    @Bean
-    public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
-        http
-            .authorizeHttpRequests(auth -> auth
-                .requestMatchers("/public/**").permitAll()
-                .anyRequest().authenticated()
-            )
-            .oauth2ResourceServer(oauth2 -> oauth2
-                .jwt(jwt -> jwt.jwtAuthenticationConverter(keycloakConverter()))
-            );
-        return http.build();
-    }
-
-    @Bean
-    public JwtAuthenticationConverter keycloakConverter() {
-        JwtAuthenticationConverter converter = new JwtAuthenticationConverter();
-        converter.setJwtGrantedAuthoritiesConverter(jwt -> {
-            // Keycloak realm roles
-            Map<String, Object> realmAccess = jwt.getClaimAsMap("realm_access");
-            List<String> realmRoles = realmAccess != null
-                ? (List<String>) realmAccess.get("roles")
-                : List.of();
-
-            // Keycloak client roles
-            Map<String, Object> resourceAccess = jwt.getClaimAsMap("resource_access");
-            List<String> clientRoles = List.of();
-            if (resourceAccess != null) {
-                Map<String, Object> clientAccess =
-                    (Map<String, Object>) resourceAccess.get("my-spring-app");
-                if (clientAccess != null) {
-                    clientRoles = (List<String>) clientAccess.get("roles");
-                }
-            }
-
-            List<GrantedAuthority> authorities = new ArrayList<>();
-            realmRoles.stream()
-                .map(r -> new SimpleGrantedAuthority("ROLE_" + r.toUpperCase()))
-                .forEach(authorities::add);
-            clientRoles.stream()
-                .map(r -> new SimpleGrantedAuthority("ROLE_" + r.toUpperCase()))
-                .forEach(authorities::add);
-
-            return authorities;
-        });
-        return converter;
-    }
-}
-```
+Keycloak stores roles in `realm_access.roles` and `resource_access.<client>.roles`, so plug in a `JwtAuthenticationConverter` whose `JwtGrantedAuthoritiesConverter` reads those claims and maps them to `ROLE_*` authorities (same pattern as the `KeycloakRoleConverter` in Section 5.3).
 
 ---
 
-### 13.4 Keycloak JWT Structure
+### 13.3 Keycloak JWT Structure
 
 ```json
 {
@@ -2314,151 +1852,34 @@ public class SecurityConfig {
 
 ## 14. Microservice Security Patterns
 
+These are architecture-level (senior) concerns; know them at an awareness level.
+
 ### 14.1 Token Propagation
 
-When Service A calls Service B, it should forward the user's JWT:
-
-```java
-@Configuration
-public class FeignClientConfig {
-
-    @Bean
-    public RequestInterceptor tokenPropagationInterceptor() {
-        return requestTemplate -> {
-            // Get current authentication's JWT and forward it
-            Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-            if (auth instanceof JwtAuthenticationToken jwtAuth) {
-                String tokenValue = jwtAuth.getToken().getTokenValue();
-                requestTemplate.header("Authorization", "Bearer " + tokenValue);
-            }
-        };
-    }
-}
-```
-
-With WebClient:
-```java
-@Bean
-public WebClient userContextWebClient() {
-    return WebClient.builder()
-        .filter((request, next) -> {
-            Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-            if (auth instanceof JwtAuthenticationToken jwtAuth) {
-                return next.exchange(
-                    ClientRequest.from(request)
-                        .header("Authorization", "Bearer " + jwtAuth.getToken().getTokenValue())
-                        .build()
-                );
-            }
-            return next.exchange(request);
-        })
-        .build();
-}
-```
-
----
+When Service A calls Service B on behalf of a user, forward the user's JWT in the `Authorization: Bearer` header. Pull it from `SecurityContextHolder` (`JwtAuthenticationToken.getToken().getTokenValue()`) inside a Feign `RequestInterceptor` or a WebClient filter, and add it to the outgoing request.
 
 ### 14.2 Service-to-Service (Client Credentials)
 
-For direct service-to-service calls not on behalf of a user:
-
-```yaml
-spring:
-  security:
-    oauth2:
-      client:
-        registration:
-          order-service:
-            client-id: order-service
-            client-secret: ${ORDER_SERVICE_SECRET}
-            authorization-grant-type: client_credentials
-            scope: read:inventory
-        provider:
-          order-service:
-            token-uri: http://auth-server/oauth2/token
-```
-
-```java
-@Service
-public class InventoryClient {
-
-    private final WebClient webClient;
-
-    public InventoryClient(WebClient.Builder builder,
-            OAuth2AuthorizedClientManager manager) {
-
-        ServletOAuth2AuthorizedClientExchangeFilterFunction oauth2 =
-            new ServletOAuth2AuthorizedClientExchangeFilterFunction(manager);
-        oauth2.setDefaultClientRegistrationId("order-service");
-
-        this.webClient = builder
-            .baseUrl("http://inventory-service")
-            .apply(oauth2.oauth2Configuration())
-            .build();
-    }
-
-    public Inventory getInventory(String productId) {
-        return webClient.get()
-            .uri("/api/inventory/{id}", productId)
-            .retrieve()
-            .bodyToMono(Inventory.class)
-            .block();
-    }
-}
-```
-
----
+For calls with **no** user context (background jobs, internal APIs), register a `client_credentials` client and let `ServletOAuth2AuthorizedClientExchangeFilterFunction` attach a service token to the WebClient automatically. The downstream service sees the calling service's identity, not a user.
 
 ### 14.3 API Gateway Pattern
 
 ```
-                    ┌─────────────────────────────────────────┐
-                    │              API Gateway                 │
-  Client ──JWT────> │  1. Validate JWT (signature, exp, aud)  │
-                    │  2. Extract user info from claims        │
-                    │  3. Pass X-User-Id, X-User-Roles headers│
-                    └───────────────┬─────────────────────────┘
-                                    │
-                    ┌───────────────┼───────────────┐
-                    │               │               │
-              User Service    Order Service   Payment Service
-             (trusts gateway) (trusts gateway) (trusts gateway)
+Client ──JWT──> API Gateway (validates JWT once, extracts claims)
+                      │  passes X-User-Id / X-User-Roles headers
+        ┌─────────────┼─────────────┐
+   User Service   Order Service  Payment Service
 ```
 
-In downstream services:
-```java
-// Option 1: Trust X-User headers from gateway (internal network only)
-@GetMapping("/orders")
-public List<Order> getOrders(
-        @RequestHeader("X-User-Id") String userId,
-        @RequestHeader("X-User-Roles") String roles) {
-    return orderService.getOrdersForUser(userId);
-}
-
-// Option 2: Still validate JWT in each service (Zero Trust)
-// Every service validates the token independently
-// No service trusts headers blindly
-```
-
----
+Downstream services either (1) trust the gateway's `X-User-*` headers (internal network only) or (2) re-validate the JWT independently (**Zero Trust**).
 
 ### 14.4 Zero Trust Security
 
-```
-Principle: Never trust, always verify
-Every service:
-  1. Validates the JWT signature (using JWKS)
-  2. Checks token expiration
-  3. Validates issuer (expected auth server)
-  4. Validates audience (its own service identifier)
-  5. Applies authorization rules
-```
-
-This ensures that even if an internal service is compromised, it cannot impersonate users to other services.
+"Never trust, always verify": every service validates signature (via JWKS), expiry, issuer, and audience, then applies its own authorization rules — so a compromised internal service still can't impersonate users.
 
 ---
 
-## 15. Interview Questions & Answers (40+)
+## 15. Interview Questions & Answers
 
 ---
 
@@ -2558,22 +1979,7 @@ Spring Boot's `NimbusJwtDecoder` handles steps 1–5 automatically. Steps 6–7 
 
 ---
 
-### Q8: What is a JWK Set?
-
-**Answer:**
-A JWK Set (JWKS) is a JSON document published by the Authorization Server at `/.well-known/jwks.json` (or similar URL). It contains the public keys used to verify JWT signatures.
-
-```json
-{
-  "keys": [{ "kty": "RSA", "use": "sig", "alg": "RS256", "kid": "key-1", "n": "...", "e": "AQAB" }]
-}
-```
-
-Resource Servers fetch this endpoint to get the public key(s). The `kid` (Key ID) in the JWT header tells the Resource Server which key to use when multiple keys exist (useful for key rotation — both old and new keys can coexist during rollover).
-
----
-
-### Q9: What is the difference between @PreAuthorize and @PostAuthorize?
+### Q8: What is the difference between @PreAuthorize and @PostAuthorize?
 
 **Answer:**
 - **@PreAuthorize**: Evaluated **before** the method runs. If the expression is false, the method is never called. Use this to gate access. Example: `@PreAuthorize("hasRole('ADMIN')")`
@@ -2584,7 +1990,7 @@ Resource Servers fetch this endpoint to get the public key(s). The `kid` (Key ID
 
 ---
 
-### Q10: Why should CSRF protection be disabled for stateless JWT APIs?
+### Q9: Why should CSRF protection be disabled for stateless JWT APIs?
 
 **Answer:**
 CSRF attacks exploit the browser's automatic inclusion of cookies in cross-origin requests. If you authenticate via session cookies, a malicious page can trick the browser into sending authenticated requests to your API.
@@ -2595,7 +2001,7 @@ Disabling CSRF removes the overhead of CSRF token management for APIs that use h
 
 ---
 
-### Q11: How do you implement OAuth2 social login in Spring Boot?
+### Q10: How do you implement OAuth2 social login in Spring Boot?
 
 **Answer:**
 1. Add `spring-boot-starter-oauth2-client` dependency
@@ -2608,7 +2014,7 @@ Spring Boot auto-handles: redirecting to provider, PKCE (for OIDC), callback han
 
 ---
 
-### Q12: What is refresh token rotation?
+### Q11: What is refresh token rotation?
 
 **Answer:**
 Refresh token rotation means every time a refresh token is used to get a new access token, the server **invalidates the old refresh token** and issues a **new one**. The client must store and use the new refresh token for the next refresh.
@@ -2619,20 +2025,7 @@ Configure in Spring Authorization Server: `tokenSettings.reuseRefreshTokens(fals
 
 ---
 
-### Q13: How do you propagate security context between microservices?
-
-**Answer:**
-Two main patterns:
-
-**1. JWT Propagation (user context):** When Service A calls Service B on behalf of a user, it forwards the user's JWT in the `Authorization: Bearer` header. Service B validates the JWT and sees the same user context. Implemented via Feign interceptors or WebClient filters.
-
-**2. Client Credentials (service context):** When a service calls another service with no user context (background job, internal API), it uses the Client Credentials flow to get its own service token. The downstream service sees the calling service's identity, not a user.
-
-**API Gateway pattern:** Gateway validates JWT once, extracts claims, and passes them as trusted internal headers (`X-User-Id`, `X-User-Roles`). Downstream services trust these headers (they're on the internal network). More efficient but requires network trust. Zero Trust alternative: every service validates the JWT independently.
-
----
-
-### Q14: What is the difference between access token and ID token?
+### Q12: What is the difference between access token and ID token?
 
 **Answer:**
 | | Access Token | ID Token |
@@ -2647,7 +2040,7 @@ The ID Token is evidence of successful authentication — it tells your app "the
 
 ---
 
-### Q15: What are the risks of storing JWT in localStorage?
+### Q13: What are the risks of storing JWT in localStorage?
 
 **Answer:**
 **XSS (Cross-Site Scripting):** If any JavaScript on your page can run malicious code (XSS vulnerability — even in a third-party library you included), it can call `localStorage.getItem('access_token')` and exfiltrate the token. The attacker can then impersonate the user from anywhere.
@@ -2661,20 +2054,7 @@ The general rule: **If JavaScript can read it, XSS can steal it.** HttpOnly cook
 
 ---
 
-### Q16: What is Spring Authorization Server?
-
-**Answer:**
-Spring Authorization Server is the official OAuth2/OIDC Authorization Server from the Spring team, released as a standalone project. It allows you to build your own Authorization Server embedded in a Spring Boot application.
-
-Features: Authorization Code + PKCE, Client Credentials, Refresh Token flows, OIDC support, JWT signing with RSA, RegisteredClient configuration, custom token claims, JWKS endpoint.
-
-**When to use vs Keycloak:**
-- **Keycloak:** Need rich user management, social login federation, admin UI, MFA, enterprise features — use Keycloak (separate server)
-- **Spring Authorization Server:** Building a simple auth server you fully control in Java, embedding in your microservices ecosystem, when you don't want to run and maintain a separate Keycloak server
-
----
-
-### Q17: What is the state parameter in OAuth2, and why is it important?
+### Q14: What is the state parameter in OAuth2, and why is it important?
 
 **Answer:**
 The `state` parameter is a random, unguessable value generated by the client before redirecting to the Authorization Server. It's included in the `/authorize` request and echoed back in the redirect callback.
@@ -2685,16 +2065,7 @@ The client stores the state in the user's session and verifies that the `state` 
 
 ---
 
-### Q18: What is the nonce in OIDC?
-
-**Answer:**
-The `nonce` is a random value included in the OIDC authorization request. The Authorization Server embeds it in the ID Token. The client verifies the `nonce` in the ID Token matches what it sent.
-
-**Purpose:** Prevents replay attacks. If an attacker captures an ID Token and tries to replay it in a different session, the `nonce` won't match the client's expected value, so the authentication is rejected. The `nonce` ties the ID Token to a specific authentication session.
-
----
-
-### Q19: What is the difference between roles and authorities in Spring Security?
+### Q15: What is the difference between roles and authorities in Spring Security?
 
 **Answer:**
 In Spring Security, they're the same underlying concept (`GrantedAuthority`), but with a naming convention:
@@ -2711,7 +2082,7 @@ Best practice: Use roles for coarse-grained access (ADMIN, USER) and authorities
 
 ---
 
-### Q20: How does Spring Security's filter chain work with JWT?
+### Q16: How does Spring Security's filter chain work with JWT?
 
 **Answer:**
 When a JWT request arrives:
@@ -2728,63 +2099,7 @@ If any step fails (invalid signature, expired token, insufficient authority), Sp
 
 ---
 
-### Q21: What is token introspection?
-
-**Answer:**
-Token introspection (RFC 7662) is the process of validating an opaque (non-JWT) access token by calling the Authorization Server's introspection endpoint.
-
-```http
-POST /oauth2/introspect
-Authorization: Basic base64(resource-server-id:secret)
-Content-Type: application/x-www-form-urlencoded
-
-token=opaque_token_here
-```
-
-Response:
-```json
-{ "active": true, "sub": "user-123", "scope": "read:data", "exp": 1735600000 }
-```
-
-**Trade-offs vs JWT:**
-- Introspection: network call per request (slower), but instant revocation works
-- JWT: local validation (faster), but revocation is hard without a blacklist
-
-Use introspection when you need true instant revocation. Use JWT for performance-critical, stateless systems where short TTL provides adequate security.
-
----
-
-### Q22: How would you handle a compromised refresh token?
-
-**Answer:**
-With refresh token rotation:
-1. Attacker uses the stolen refresh token → gets new access + refresh tokens
-2. Legitimate user attempts refresh with their (now invalidated) token → server detects reuse
-3. Server recognizes this as a potential theft indicator → invalidates the **entire refresh token family** for that user
-4. User is forced to re-authenticate
-
-Without rotation, the attacker has indefinite access until the refresh token expires.
-
-Additional measures:
-- Store refresh token hash (not plain) in DB
-- Associate refresh tokens with IP/user-agent and flag suspicious changes
-- Implement absolute expiry (refresh token TTL regardless of usage)
-- Provide users with "revoke all sessions" capability
-
----
-
-### Q23: What is the difference between Authorization Code + PKCE vs Implicit flow?
-
-**Answer:**
-**Implicit flow (deprecated):** Returns access token directly in the URL fragment: `https://app.com/callback#access_token=...`. The token is exposed in browser history, referrer headers, server logs.
-
-**Auth Code + PKCE:** Returns an authorization code in the URL. The code is exchanged for tokens in a back-channel request (from client code to auth server). Tokens never appear in URLs. PKCE prevents the code from being stolen and exchanged without the `code_verifier`.
-
-PKCE gives public clients (SPAs) the security level that was previously only available to confidential clients with client secrets. The IETF deprecated Implicit flow in OAuth 2.1; PKCE is the required replacement.
-
----
-
-### Q24: What is @EnableMethodSecurity and how is it different from @EnableGlobalMethodSecurity?
+### Q17: What is @EnableMethodSecurity and how is it different from @EnableGlobalMethodSecurity?
 
 **Answer:**
 `@EnableGlobalMethodSecurity` was the legacy annotation (deprecated in Spring Security 5.6). `@EnableMethodSecurity` is the modern replacement (Spring Security 5.6+).
@@ -2807,71 +2122,7 @@ Key differences:
 
 ---
 
-### Q25: How do you test Spring Security in unit tests?
-
-**Answer:**
-```java
-@WebMvcTest(UserController.class)
-@Import(SecurityConfig.class)
-class UserControllerTest {
-
-    @Autowired
-    private MockMvc mockMvc;
-
-    // Test with mock JWT
-    @Test
-    @WithMockUser(username = "amith", roles = {"ADMIN"})
-    void shouldReturnUsersForAdmin() throws Exception {
-        mockMvc.perform(get("/api/admin/users"))
-            .andExpect(status().isOk());
-    }
-
-    // Test with JWT token details
-    @Test
-    void shouldReturnProfileForAuthenticatedUser() throws Exception {
-        mockMvc.perform(get("/api/me")
-                .with(jwt()
-                    .jwt(jwt -> jwt
-                        .subject("user-123")
-                        .claim("email", "amith@example.com")
-                        .claim("roles", List.of("USER")))))
-            .andExpect(status().isOk());
-    }
-
-    // Test unauthorized
-    @Test
-    void shouldReturn401WhenNoToken() throws Exception {
-        mockMvc.perform(get("/api/me"))
-            .andExpect(status().isUnauthorized());
-    }
-
-    // Test forbidden
-    @Test
-    @WithMockUser(roles = {"USER"})
-    void shouldReturn403ForUserAccessingAdminEndpoint() throws Exception {
-        mockMvc.perform(get("/api/admin/users"))
-            .andExpect(status().isForbidden());
-    }
-}
-```
-
----
-
-### Q26: What is the Authorization Server's discovery document and why is it useful?
-
-**Answer:**
-The discovery document (RFC 8414) is a JSON file at `/.well-known/openid-configuration` (or `/.well-known/oauth-authorization-server`). It contains all the metadata needed to interact with the Authorization Server:
-
-- `authorization_endpoint`, `token_endpoint`, `userinfo_endpoint`
-- `jwks_uri` (where to get public keys)
-- `issuer` (expected value for `iss` claim validation)
-- Supported grant types, scopes, algorithms
-
-**Why useful:** Clients don't need hardcoded endpoint URLs. Just configure `issuer-uri` in Spring Boot and it auto-discovers everything from the discovery document. This makes switching auth providers (Keycloak → Okta → Custom) easier — just change `issuer-uri`.
-
----
-
-### Q27: What is the difference between scope and claim in OAuth2/OIDC?
+### Q18: What is the difference between scope and claim in OAuth2/OIDC?
 
 **Answer:**
 - **Scope:** A permission request. The client requests scopes in the authorization request (`scope=openid profile email`). The user consents to these scopes. Scopes determine which claims are included in the tokens and which APIs can be accessed.
@@ -2882,42 +2133,7 @@ Scopes determine *what claims you get*. `profile` scope → you get `name`, `giv
 
 ---
 
-### Q28: How do you implement logout with OAuth2?
-
-**Answer:**
-Logout in OAuth2 has two parts:
-
-**1. Local logout:** Clear the local session/token storage
-```java
-http.logout(logout -> logout
-    .logoutUrl("/logout")
-    .clearAuthentication(true)
-    .invalidateHttpSession(true)
-    .deleteCookies("JSESSIONID", "refresh_token")
-    .logoutSuccessUrl("/")
-);
-```
-
-**2. OIDC RP-Initiated Logout (complete logout):** Redirect to the Authorization Server's `end_session_endpoint` to also invalidate the SSO session
-```java
-http.oidcLogout(oidcLogout -> oidcLogout
-    .backChannel(Customizer.withDefaults())
-);
-```
-
-Or manual redirect:
-```
-GET https://auth.example.com/logout?
-    id_token_hint=<id_token>
-    &post_logout_redirect_uri=https://myapp.com/
-    &state=random123
-```
-
-Without OIDC RP-Initiated Logout, the user is logged out of your app but still has an active SSO session at the Authorization Server — clicking "Login" would immediately log them back in without prompting for credentials.
-
----
-
-### Q29: What is Bearer Token authentication and how does Spring Security handle it?
+### Q19: What is Bearer Token authentication and how does Spring Security handle it?
 
 **Answer:**
 Bearer Token authentication means: "Whoever **bears** (presents) this token is granted access." No additional proof of identity is required — just possession of the token.
@@ -2934,64 +2150,7 @@ The "bearer" nature means token security entirely depends on transport security 
 
 ---
 
-### Q30: What is OpenID Connect's Hybrid Flow?
-
-**Answer:**
-The Hybrid Flow is an OIDC flow where the authorization response includes both a `code` **and** tokens (ID token and/or access token) directly.
-
-`response_type` can be: `code id_token`, `code token`, or `code id_token token`
-
-```
-response_type=code id_token → get code + ID token in the front channel
-                              then exchange code for access + refresh tokens in back channel
-```
-
-**Use case:** When the client needs the ID Token immediately (to get user info for the UI) but still needs to exchange the code for an access token and refresh token via the back channel.
-
-Rarely needed in practice — Authorization Code + PKCE with immediate UserInfo call covers most cases.
-
----
-
-### Q31: How would you implement multi-tenancy with OAuth2 in Spring Boot?
-
-**Answer:**
-```java
-@Bean
-public JwtDecoder jwtDecoder() {
-    // Validate issuer dynamically based on tenant
-    return token -> {
-        // Extract issuer from token (unverified decode first)
-        String issuer = JWTParser.parse(token).getJWTClaimsSet().getIssuer();
-
-        // Look up tenant-specific JWKS URI
-        String jwksUri = tenantRepository.getJwksUriForIssuer(issuer);
-        if (jwksUri == null) {
-            throw new JwtException("Unknown issuer: " + issuer);
-        }
-
-        NimbusJwtDecoder decoder = NimbusJwtDecoder
-            .withJwkSetUri(jwksUri).build();
-
-        return decoder.decode(token);
-    };
-}
-```
-
-Or use `JwtIssuerAuthenticationManagerResolver` (Spring Security built-in):
-```java
-http.oauth2ResourceServer(oauth2 -> oauth2
-    .authenticationManagerResolver(
-        new JwtIssuerAuthenticationManagerResolver(
-            "https://tenant1.auth.example.com",
-            "https://tenant2.auth.example.com"
-        )
-    )
-);
-```
-
----
-
-### Q32: What happens if you don't configure CORS and your frontend is on a different origin?
+### Q20: What happens if you don't configure CORS and your frontend is on a different origin?
 
 **Answer:**
 The browser's **preflight request** (OPTIONS) or the actual request will fail. The browser checks the response for `Access-Control-Allow-Origin` header. If absent or not matching the origin, the browser blocks the response with a CORS error in the console.
@@ -3004,31 +2163,7 @@ Correct fix: configure `CorsConfigurationSource` bean and register it with `.cor
 
 ---
 
-### Q33: What is the JTI claim and how is it used for token revocation?
-
-**Answer:**
-`jti` (JWT ID) is a unique identifier for each token. It allows individual tokens to be revoked without affecting others.
-
-**Token revocation with JTI blacklist:**
-```java
-// On logout:
-blacklistRepository.save(jwt.getId(), jwt.getExpiresAt()); // store JTI until token would expire
-
-// On each request, add JTI check to JWT decoder:
-OAuth2TokenValidator<Jwt> jtiValidator = jwt -> {
-    if (blacklistRepository.isBlacklisted(jwt.getId())) {
-        return OAuth2TokenValidatorResult.failure(
-            new OAuth2Error("token_revoked", "Token has been revoked", null));
-    }
-    return OAuth2TokenValidatorResult.success();
-};
-```
-
-Store in Redis with TTL matching token expiry — no need to keep entries after the token would have expired anyway.
-
----
-
-### Q34: What is the difference between spring-boot-starter-oauth2-resource-server and spring-boot-starter-oauth2-client?
+### Q21: What is the difference between spring-boot-starter-oauth2-resource-server and spring-boot-starter-oauth2-client?
 
 **Answer:**
 - **oauth2-resource-server:** For APIs that receive and validate tokens. Your service is the **Resource Server** — it protects endpoints. Incoming requests must have a Bearer token. Configure with `.oauth2ResourceServer(oauth2 -> oauth2.jwt(...))`.
@@ -3040,214 +2175,9 @@ A BFF (Backend For Frontend) → both: oauth2-client (to get tokens from auth se
 
 ---
 
-### Q35: How do you prevent the "confused deputy" problem in microservices?
+### Awareness — senior topics worth a one-liner
 
-**Answer:**
-The confused deputy problem: Service A has high privileges. Service B (with lower privileges) tricks Service A into doing something privileged on its behalf.
-
-**Prevention with proper JWT audience validation:**
-- Each service should only accept tokens with its own `aud` (audience) claim
-- A token issued for Service A cannot be used against Service B
-
-**Prevention with scopes:**
-- Tokens should have minimum necessary scopes
-- Service B's client credentials token has `read:inventory` — it cannot request `delete:users` scope
-
-**Prevention with mTLS (Mutual TLS):**
-- Services authenticate each other with certificates, not just bearer tokens
-- Even with a stolen token, the attacker must also present the valid client certificate
-
-**Sender-constrained tokens (DPoP):** Tokens are bound to a specific client's key pair — cannot be replayed by a different client.
-
----
-
-### Q36: What is OAuth 2.1 and how is it different from OAuth 2.0?
-
-**Answer:**
-OAuth 2.1 (still in draft) consolidates OAuth 2.0 best practices and deprecates insecure flows:
-
-**Changes from 2.0:**
-1. PKCE **required** for Authorization Code flow (was optional)
-2. Implicit flow **removed**
-3. Resource Owner Password Credentials **removed**
-4. Redirect URIs must be exact matches (no wildcards)
-5. Refresh tokens for public clients must be sender-constrained or use rotation
-6. Bearer tokens in query strings **not recommended**
-
-OAuth 2.1 is essentially "OAuth 2.0 minus the dangerous parts, plus PKCE everywhere."
-
----
-
-### Q37: How does Spring Security handle the SecurityContext in async or reactive scenarios?
-
-**Answer:**
-In traditional (servlet) Spring Security, `SecurityContextHolder` uses a `ThreadLocal` — the security context is bound to the current thread.
-
-**Problem with async:** When you spawn a new thread (via `@Async`, `CompletableFuture`, thread pools), the `ThreadLocal` is not inherited.
-
-**Solutions:**
-
-```java
-// 1. DelegatingSecurityContextExecutor
-@Bean
-public Executor securityAwareExecutor() {
-    return new DelegatingSecurityContextExecutor(Executors.newCachedThreadPool());
-}
-
-// 2. Propagate manually
-SecurityContext context = SecurityContextHolder.getContext();
-CompletableFuture.runAsync(() -> {
-    SecurityContextHolder.setContext(context);
-    // do work
-    SecurityContextHolder.clearContext();
-});
-```
-
-**Reactive (WebFlux):** `SecurityContextHolder` doesn't work. Use `ReactiveSecurityContextHolder`:
-```java
-Mono<String> result = ReactiveSecurityContextHolder.getContext()
-    .map(ctx -> ctx.getAuthentication().getName());
-```
-
----
-
-### Q38: What are the security implications of JWT algorithm "none"?
-
-**Answer:**
-The JWT specification allows `"alg": "none"` — a token with no signature. Any JWT library that honors this allows an attacker to:
-1. Decode any JWT (Base64 is not encryption)
-2. Modify claims (change `sub`, `roles`, `exp`)
-3. Set `"alg": "none"` in the header
-4. Submit the modified token (no signature needed)
-
-Vulnerable libraries would accept this as valid.
-
-**In Spring Security:** `NimbusJwtDecoder` is safe — it requires explicit algorithm configuration and rejects `none`. Always configure:
-```java
-NimbusJwtDecoder.withJwkSetUri(jwksUri)
-    .jwsAlgorithm(SignatureAlgorithm.RS256)  // explicit algorithm
-    .build();
-```
-
-This CVE class (CVE-2015-9235 and similar) is why you should never roll your own JWT validation.
-
----
-
-### Q39: How would you implement fine-grained authorization (not just roles)?
-
-**Answer:**
-For resource-level authorization (user can edit *their own* post, not all posts):
-
-**Option 1: @PreAuthorize with SpEL**
-```java
-@PreAuthorize("@postService.isOwner(authentication, #postId)")
-public void deletePost(Long postId) {}
-```
-
-**Option 2: Spring Security ACL (Access Control Lists)**
-Full ACL framework — stores per-object permissions in database:
-```java
-mutableAclService.createAcl(new ObjectIdentityImpl(Post.class, postId));
-acl.insertAce(0, BasePermission.WRITE, new PrincipalSid(userId), true);
-```
-
-**Option 3: Check inside service method**
-```java
-public void deletePost(Long postId, Authentication auth) {
-    Post post = repository.findById(postId).orElseThrow();
-    if (!post.getOwnerId().equals(auth.getName())) {
-        throw new AccessDeniedException("Not the post owner");
-    }
-    repository.delete(post);
-}
-```
-
-For most applications, @PreAuthorize with a custom security bean is the cleanest approach without the complexity of Spring ACL.
-
----
-
-### Q40: What is OIDC Back-Channel Logout?
-
-**Answer:**
-OIDC Back-Channel Logout allows the Authorization Server to directly notify the Client (your app) when a user logs out, even if the user didn't log out from your app.
-
-```
-User logs out from Auth Server → 
-Auth Server POSTs to https://myapp.com/logout/connect/back-channel/{registrationId} →
-Spring Security invalidates the user's session
-```
-
-This ensures that if a user logs out of Keycloak (or their SSO session expires), all applications in the SSO ecosystem are notified and invalidate their local sessions — true global logout.
-
-Configure in Spring Security:
-```java
-http.oidcLogout(logout -> logout
-    .backChannel(backChannel -> backChannel
-        .logoutUri("/logout/connect/back-channel/{registrationId}")
-    )
-);
-```
-
-Without this, a user who "logs out" of the IdP still has active sessions in individual apps until they expire.
-
----
-
-### Q41: How do you configure different security rules for different API versions?
-
-**Answer:**
-```java
-@Bean
-public SecurityFilterChain apiV1Chain(HttpSecurity http) throws Exception {
-    http
-        .securityMatcher("/api/v1/**")
-        .authorizeHttpRequests(auth -> auth
-            .requestMatchers(HttpMethod.GET, "/api/v1/public/**").permitAll()
-            .anyRequest().hasRole("USER")
-        )
-        .oauth2ResourceServer(oauth2 -> oauth2.jwt(Customizer.withDefaults()));
-    return http.build();
-}
-
-@Bean
-@Order(1)  // higher priority
-public SecurityFilterChain apiV2Chain(HttpSecurity http) throws Exception {
-    http
-        .securityMatcher("/api/v2/**")
-        .authorizeHttpRequests(auth -> auth
-            .anyRequest().hasRole("PREMIUM_USER")
-        )
-        .oauth2ResourceServer(oauth2 -> oauth2.jwt(Customizer.withDefaults()));
-    return http.build();
-}
-```
-
-Multiple `SecurityFilterChain` beans can coexist. `securityMatcher()` limits each chain to specific URL patterns. `@Order` controls which chain takes priority for overlapping patterns.
-
----
-
-### Q42: What is Mutual TLS (mTLS) and how does it complement OAuth2?
-
-**Answer:**
-Standard TLS: Client verifies the server's certificate. Server trusts anyone who connects.
-**Mutual TLS (mTLS):** Both client and server present certificates. The server verifies the client's certificate.
-
-In microservices, mTLS:
-- Ensures Service A can only call Service B if it has the trusted client certificate
-- Prevents network-level attacks (even if an attacker is on the internal network)
-- Used as "Sender-Constrained Tokens" — token is cryptographically bound to the client's certificate
-
-Spring Boot mTLS configuration:
-```yaml
-server:
-  ssl:
-    client-auth: need  # require client certificate
-    trust-store: classpath:truststore.jks
-    trust-store-password: ${TRUSTSTORE_PASSWORD}
-    key-store: classpath:keystore.jks
-    key-store-password: ${KEYSTORE_PASSWORD}
-```
-
-OAuth2 Certificate-Bound Access Tokens (RFC 8705): The access token's `cnf.x5t#S256` claim contains the SHA-256 thumbprint of the client's certificate. Resource Server validates that the presented certificate matches the token binding.
+A few more advanced areas you may be asked about: **token introspection** (RFC 7662 — validate opaque tokens via the auth server's `/introspect` endpoint; enables instant revocation but adds a network call per request), **JTI blacklists in Redis** for revoking individual JWTs, **OAuth 2.1** (PKCE required, Implicit and ROPC removed), **OIDC nonce/hybrid flow**, **multi-tenancy** via `JwtIssuerAuthenticationManagerResolver`, **mTLS / sender-constrained tokens** (RFC 8705), **async/reactive context** (`DelegatingSecurityContextExecutor`, `ReactiveSecurityContextHolder`), and **OIDC back-channel logout** for global SSO logout.
 
 ---
 
@@ -3330,18 +2260,4 @@ http.csrf(csrf -> csrf.disable());
 http.sessionManagement(s -> s.sessionCreationPolicy(STATELESS));
 ```
 
-### JWT Validation Order
-
-```
-1. Decode & parse structure
-2. Verify signature (JWKS public key)
-3. Check exp (not expired)
-4. Check nbf (not before)
-5. Check iss (expected issuer)
-6. Check aud (includes this server)
-7. Check jti (not blacklisted) — optional
-```
-
----
-
-*This guide covers OAuth2, OIDC, JWT, Spring Security OAuth2 Resource Server, OAuth2 Client, Social Login, Spring Authorization Server, Method Security, CORS, CSRF, Refresh Tokens, Keycloak, and Microservice Security Patterns — all critical areas for Full Stack Java Developer interviews.*
+**JWT validation order:** decode → verify signature (JWKS) → `exp` → `nbf` → `iss` → `aud` → optional `jti` blacklist (see Section 4.3).

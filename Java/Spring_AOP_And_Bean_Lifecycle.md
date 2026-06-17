@@ -4,16 +4,6 @@
 
 ---
 
-## Table of Contents
-
-1. [Part 1: Spring Bean Lifecycle](#part-1-spring-bean-lifecycle)
-2. [Part 2: Spring AOP — Complete Deep Dive](#part-2-spring-aop--complete-deep-dive)
-3. [Interview Questions & Answers](#interview-questions--answers)
-4. [Common Pitfalls Table](#common-pitfalls-table)
-5. [Quick Reference Cheat Sheet](#quick-reference-cheat-sheet)
-
----
-
 ## Part 1: Spring Bean Lifecycle
 
 ### The 12-Step Bean Lifecycle
@@ -152,40 +142,13 @@ public class CustomBeanPostProcessor implements BeanPostProcessor {
 - `CommonAnnotationBeanPostProcessor` — processes `@PostConstruct`, `@PreDestroy`, `@Resource`
 - `PersistenceAnnotationBeanPostProcessor` — processes `@PersistenceContext`
 
-**Ordering multiple BeanPostProcessors:**
-```java
-@Component
-@Order(1)  // lower number = runs first (highest priority)
-public class FirstBPP implements BeanPostProcessor { ... }
-
-@Component
-@Order(2)
-public class SecondBPP implements BeanPostProcessor { ... }
-```
+When you have multiple BeanPostProcessors, order them with `@Order(n)` (lower number = higher priority = runs first).
 
 ---
 
 ### BeanFactoryPostProcessor
 
-> **Think of it like:** an editor who reviews the *blueprints* before any car is built, not the finished cars. It can change the plans ("make this model a convertible") so that every car later built off that plan comes out different. It tweaks the recipe (bean definitions), never the cooked meal (bean instances).
-
-Runs **before** any beans are instantiated — modifies bean definitions (metadata), not bean instances.
-
-```java
-@Component
-public class CustomBeanFactoryPostProcessor implements BeanFactoryPostProcessor {
-    @Override
-    public void postProcessBeanFactory(ConfigurableListableBeanFactory factory) {
-        // Modify BeanDefinitions BEFORE beans are created
-        BeanDefinition bd = factory.getBeanDefinition("userService");
-        bd.setScope(BeanDefinition.SCOPE_PROTOTYPE);  // change scope
-    }
-}
-```
-
-**Spring's own BeanFactoryPostProcessors:**
-- `PropertySourcesPlaceholderConfigurer` — resolves `${property.name}` placeholders
-- `ConfigurationClassPostProcessor` — processes `@Configuration`, `@ComponentScan`, `@Bean`, `@Import`
+> **Awareness (advanced):** A `BeanFactoryPostProcessor` runs **before** any beans are instantiated and modifies bean *definitions* (metadata), not instances — think of editing the blueprints before any car is built. You rarely write one by hand at junior level, but Spring uses them internally: `PropertySourcesPlaceholderConfigurer` resolves `${property.name}` placeholders, and `ConfigurationClassPostProcessor` processes `@Configuration`, `@ComponentScan`, `@Bean`, and `@Import`. Just know it edits definitions, while `BeanPostProcessor` edits instances:
 
 | | BeanPostProcessor | BeanFactoryPostProcessor |
 |---|---|---|
@@ -436,21 +399,10 @@ public class UserCreatedHandler {
     public void handleUserCreated(UserCreatedEvent event) {
         emailService.sendWelcomeEmail(event.getUserId());
     }
-
-    // Async event listener
-    @Async
-    @EventListener
-    public void handleUserCreatedAsync(UserCreatedEvent event) {
-        analyticsService.track(event.getUserId());
-    }
-
-    // Only fires if transaction commits (not if rolled back)
-    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
-    public void handleUserCreatedAfterCommit(UserCreatedEvent event) {
-        auditService.recordCreation(event.getUserId());
-    }
 }
 ```
+
+Two useful variants (awareness): add `@Async` to run a listener on another thread, or use `@TransactionalEventListener(phase = AFTER_COMMIT)` to fire only after the surrounding transaction commits (not on rollback).
 
 ---
 
@@ -521,20 +473,6 @@ Proxy → runs advice chain → calls original bean method
 - Proxy implements the same interfaces
 - Implemented via `java.lang.reflect.Proxy` + `InvocationHandler`
 - Cannot cast proxy to the concrete class
-
-```java
-// JDK dynamic proxy — manual example showing the mechanism
-public class LoggingHandler implements InvocationHandler {
-    private final Object target;
-
-    public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
-        System.out.println("Before: " + method.getName());
-        Object result = method.invoke(target, args);  // calls real method
-        System.out.println("After: " + method.getName());
-        return result;
-    }
-}
-```
 
 #### CGLIB Proxy
 - Created when target bean has **no interface** (or `proxyTargetClass=true`)
@@ -726,33 +664,18 @@ public class Pointcuts {
     @Pointcut("@annotation(org.springframework.transaction.annotation.Transactional)")
     public void transactionalMethods() {}
 
-    // @within: all methods in type annotated with
-    @Pointcut("@within(org.springframework.stereotype.Service)")
-    public void inServiceAnnotatedType() {}
-
-    // args: methods accepting specific argument types
-    @Pointcut("args(String, ..)")  // first arg is String, rest any
-    public void stringFirstArg() {}
-
-    // @args: methods where first argument is annotated with
-    @Pointcut("@args(com.example.Validated)")
-    public void validatedArgs() {}
-
     // bean: Spring bean name pattern
     @Pointcut("bean(*Service)")   // all beans ending with "Service"
     public void beanNamed() {}
 
-    // this: proxy type (what the proxy IS)
-    @Pointcut("this(com.example.MyInterface)")
-    public void proxyImplementsInterface() {}
-
-    // target: target object type (what the proxy wraps)
-    @Pointcut("target(com.example.MyInterface)")
-    public void targetImplementsInterface() {}
-
     // Combining with &&, ||, !
     @Pointcut("serviceLayer() && !beanNamed()")
     public void serviceExcludingNamedBeans() {}
+
+    // Other designators (awareness): @within (type annotated with), args /
+    // @args (match on argument types/annotations), this (proxy type),
+    // target (wrapped object type). Reach for these only when execution/
+    // @annotation/bean can't express the match you need.
 }
 ```
 
@@ -854,42 +777,7 @@ public class PaymentService {
 ```
 
 #### 3. Audit Logging Aspect
-```java
-@Retention(RetentionPolicy.RUNTIME)
-@Target(ElementType.METHOD)
-public @interface Audited {
-    String action();
-}
-
-@Aspect
-@Component
-public class AuditAspect {
-
-    @AfterReturning(
-        pointcut = "@annotation(audited)",
-        returning = "result"
-    )
-    public void auditAfterSuccess(JoinPoint jp, Audited audited, Object result) {
-        String user = SecurityContextHolder.getContext().getAuthentication().getName();
-        auditService.log(AuditEntry.builder()
-            .action(audited.action())
-            .user(user)
-            .method(jp.getSignature().toShortString())
-            .args(jp.getArgs())
-            .result(result)
-            .timestamp(Instant.now())
-            .build());
-    }
-
-    @AfterThrowing(
-        pointcut = "@annotation(audited)",
-        throwing = "ex"
-    )
-    public void auditAfterFailure(JoinPoint jp, Audited audited, Exception ex) {
-        auditService.logFailure(audited.action(), ex.getMessage());
-    }
-}
-```
+A common third use case: a custom `@Audited("CREATE_USER")` annotation matched by `@annotation(audited)`, with an `@AfterReturning` advice that records who did what on success and an `@AfterThrowing` advice that logs failures — same annotation-binding pattern as the retry example above, applied to auditing.
 
 ---
 
@@ -930,19 +818,10 @@ public class AuditAspect {
 REQUIRED          // join existing TX or create new (default)
 REQUIRES_NEW      // always create new TX, suspend existing
 NESTED            // nested TX within existing (savepoint)
-SUPPORTS          // join if exists, no TX if not
-NOT_SUPPORTED     // suspend existing TX, run without TX
-MANDATORY         // must have existing TX, else throw
-NEVER             // must NOT have TX, else throw
+// also: SUPPORTS, NOT_SUPPORTED, MANDATORY, NEVER
 ```
 
-**Isolation levels:**
-```java
-READ_UNCOMMITTED  // dirty reads possible
-READ_COMMITTED    // no dirty reads, non-repeatable reads possible (PostgreSQL default)
-REPEATABLE_READ   // no non-repeatable reads, phantom reads possible (MySQL InnoDB default)
-SERIALIZABLE      // full isolation, worst performance
-```
+**Isolation levels:** `READ_UNCOMMITTED` < `READ_COMMITTED` (PostgreSQL default) < `REPEATABLE_READ` (MySQL InnoDB default) < `SERIALIZABLE` — higher = more isolation, less concurrency.
 
 ---
 
@@ -961,57 +840,25 @@ public class NotificationService {
     }
 }
 
-// Enable @Async
-@Configuration
-@EnableAsync
-public class AsyncConfig {
-
-    @Bean
-    public TaskExecutor asyncTaskExecutor() {
-        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
-        executor.setCorePoolSize(5);
-        executor.setMaxPoolSize(10);
-        executor.setQueueCapacity(100);
-        executor.setThreadNamePrefix("async-");
-        executor.initialize();
-        return executor;
-    }
-}
+// Enable with @EnableAsync on a @Configuration class. Define a
+// ThreadPoolTaskExecutor @Bean (core/max pool size, queue capacity) to control
+// the thread pool; otherwise Spring uses a default executor.
 ```
 
 ---
 
 ### Aspect Ordering
 
+Put `@Order(n)` on each `@Aspect` class to control nesting when several aspects match the same method. Lower number = outermost.
+
 ```java
-@Aspect
-@Order(1)  // Outermost — runs first entering, last exiting
-@Component
-public class SecurityAspect {
-    @Around("serviceLayer()")
-    public Object secure(ProceedingJoinPoint pjp) throws Throwable {
-        checkPermission();  // runs first
-        Object result = pjp.proceed();
-        return result;
-    }
-}
+@Aspect @Order(1) @Component  // Outermost — runs first entering, last exiting
+public class SecurityAspect { /* @Around: checkPermission(); pjp.proceed(); */ }
 
-@Aspect
-@Order(2)  // Middle
-@Component
-public class LoggingAspect {
-    @Around("serviceLayer()")
-    public Object log(ProceedingJoinPoint pjp) throws Throwable {
-        log.info("Entering");
-        Object result = pjp.proceed();
-        log.info("Exiting");
-        return result;
-    }
-}
+@Aspect @Order(2) @Component  // Middle
+public class LoggingAspect { /* @Around: log in; pjp.proceed(); log out; */ }
 
-@Aspect
-@Order(3)  // Innermost — closest to actual method
-@Component
+@Aspect @Order(3) @Component  // Innermost — closest to actual method
 public class MetricsAspect { ... }
 ```
 
@@ -1148,28 +995,6 @@ INIT ORDER (one bean, all three present):
 | `@Transactional` | Wraps a method in a DB transaction (via proxy) |
 | `@Async` | Runs a method on a separate thread (via proxy) |
 
-### Advice types — which one to use?
-
-```
-@Before          → run BEFORE the method (validation, logging entry, auth check)
-@AfterReturning  → run after SUCCESS (log/modify the return value)
-@AfterThrowing   → run only if it THREW (error logging, exception translation)
-@After           → always run after (cleanup — like a finally block)
-@Around          → wrap the WHOLE call (timing, retry, caching, transactions)
-                   ↳ the only one that can stop the call or change args/return
-```
-
-Quick decision: **need to change/stop the method or measure it end-to-end? → `@Around`. Otherwise pick the narrowest one that fits.**
-
-### JDK dynamic proxy vs CGLIB
-
-| | JDK Dynamic Proxy | CGLIB Proxy |
-|---|---|---|
-| Used when | Bean implements an interface | Bean has no interface (or `proxyTargetClass=true`) |
-| How | Implements the same interface(s) | Generates a runtime subclass of the class |
-| Limitation | Can't cast to the concrete class | Can't proxy `final` classes or `final` methods |
-| Spring Boot 2.x+ | — | **Default**, even when interfaces exist |
-
 ### @Transactional / proxy gotchas (one-liners)
 
 ```
@@ -1178,15 +1003,6 @@ Private method    → proxy can't override it → @Transactional/@Async ignored.
 Final method/class→ CGLIB can't subclass it → proxy fails. Fix: remove final.
 Checked exception → does NOT roll back by default. Fix: @Transactional(rollbackFor = X.class).
 Prototype in singleton → injected once, acts singleton. Fix: ObjectProvider / @Lookup.
-```
-
-### Aspect ordering
-
-```
-@Order(1) is OUTERMOST → runs first on the way IN, last on the way OUT.
-  Security(1).before → Logging(2).before → Metrics(3).before
-    → ACTUAL METHOD →
-  Metrics(3).after  → Logging(2).after  → Security(1).after
 ```
 
 ---

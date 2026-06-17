@@ -4,27 +4,6 @@
 
 ---
 
-## Table of Contents
-
-1. [AWS Global Infrastructure](#1-aws-global-infrastructure)
-2. [IAM – Identity & Access Management](#2-iam--identity--access-management)
-3. [EC2 – Elastic Compute Cloud](#3-ec2--elastic-compute-cloud)
-4. [S3 – Simple Storage Service](#4-s3--simple-storage-service)
-5. [VPC – Virtual Private Cloud](#5-vpc--virtual-private-cloud)
-6. [RDS & Databases](#6-rds--databases)
-7. [Load Balancing & Auto Scaling](#7-load-balancing--auto-scaling)
-8. [Lambda & Serverless](#8-lambda--serverless)
-9. [CloudWatch & Monitoring](#9-cloudwatch--monitoring)
-10. [Route 53 & DNS](#10-route-53--dns)
-11. [CloudFormation & IaC](#11-cloudformation--iac)
-12. [Security & Compliance](#12-security--compliance)
-13. [SNS, SQS & Messaging](#13-sns-sqs--messaging)
-14. [ECS, EKS & Containers](#14-ecs-eks--containers)
-15. [Cost Optimization](#15-cost-optimization)
-16. [Quick Revision Summary](#16-quick-revision-summary)
-
----
-
 ## 1. AWS Global Infrastructure
 
 ### Q1: What is a Region in AWS?
@@ -72,21 +51,11 @@ Region: ap-south-1 (Mumbai)
 
 ### Q3: What is an Edge Location / CloudFront POP?
 
-**Easy Explanation:** Edge Locations are like delivery warehouses close to customers. Instead of shipping from a main warehouse (Region) every time, the nearest warehouse (Edge Location) delivers fast.
+**Easy Explanation:** Edge Locations are like delivery warehouses close to customers — the nearest one serves cached content fast instead of going back to the Region.
 
 **Key Points:**
 - Used by **Amazon CloudFront** (CDN) and **Route 53**
-- There are **400+ Edge Locations** globally — far more than Regions
-- Content is **cached** at Edge Locations for fast delivery
-- Reduces latency for end users worldwide
-
-```
-User in Chennai
-    ↓
-Edge Location (Chennai)  ← serves cached content (fast!)
-    ↓ (on cache miss)
-Origin Server (ap-south-1 Region)
-```
+- 400+ Edge Locations globally; content is **cached** for low latency to users
 
 ---
 
@@ -143,38 +112,21 @@ Good practice ✅:
 
 ### Q6: What is an IAM Policy? Explain the structure.
 
-**Easy Explanation:** A Policy is a JSON document that says "Allow this action on this resource under these conditions."
+**Easy Explanation:** A Policy is a JSON document that says "Allow (or Deny) this **Action** on this **Resource**, optionally under a **Condition**."
 
-**Policy Structure:**
 ```json
 {
   "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",           // Allow or Deny
-      "Action": [                  // Which API calls
-        "s3:GetObject",
-        "s3:PutObject"
-      ],
-      "Resource": "arn:aws:s3:::my-bucket/*",  // Which resource
-      "Condition": {               // Optional: extra conditions
-        "IpAddress": {
-          "aws:SourceIp": "192.168.1.0/24"
-        }
-      }
-    }
-  ]
+  "Statement": [{
+    "Effect": "Allow",
+    "Action": ["s3:GetObject", "s3:PutObject"],
+    "Resource": "arn:aws:s3:::my-bucket/*"
+  }]
 }
 ```
 
-**Types of Policies:**
-| Type | Description |
-|---|---|
-| **Managed Policy (AWS)** | Pre-built by AWS (e.g., `AmazonS3ReadOnlyAccess`) |
-| **Managed Policy (Customer)** | Custom policies you create and reuse |
-| **Inline Policy** | Policy embedded directly into one user/role — not reusable |
-
-**Golden Rule:** Follow the **Principle of Least Privilege** — give only the permissions needed, nothing more.
+- **AWS managed** (e.g., `AmazonS3ReadOnlyAccess`), **customer managed** (reusable), or **inline** (one user/role).
+- **Golden Rule:** Principle of **Least Privilege** — grant only what's needed.
 
 ---
 
@@ -205,12 +157,7 @@ Good practice ✅:
 - You only pay for what you use (per second/hour)
 - Highly configurable: CPU, RAM, storage, OS, network
 
-**EC2 Lifecycle:**
-```
-Launch → Pending → Running → (Stopping) → Stopped → Terminated
-                                  ↑
-                              Rebooting
-```
+**EC2 Lifecycle:** Launch → Pending → Running → Stopping → Stopped → Terminated (a reboot keeps it Running).
 
 ---
 
@@ -228,14 +175,7 @@ Launch → Pending → Running → (Stopping) → Stopped → Terminated
 | **Storage Optimized** (`i3`, `d3`) | High disk I/O | OLTP databases, data warehousing |
 | **Accelerated Computing** (`p4`, `g4`) | GPU workloads | ML training, video rendering |
 
-**Naming convention:**
-```
-m6i.xlarge
-│││  └─ Size (nano < micro < small < medium < large < xlarge < 2xlarge...)
-││└── Generation (6 = 6th gen)
-│└─── Family variant (i = Intel)
-└──── Family (m = General Purpose)
-```
+**Naming** (e.g. `m6i.xlarge`): family (`m`) + generation (`6`) + variant (`i`) + size (`xlarge`).
 
 ---
 
@@ -251,11 +191,7 @@ m6i.xlarge
 | **Spot Instances** | Fault-tolerant, flexible, interruptible | Up to 90% off |
 | **Dedicated Hosts** | Compliance/licensing needs | Most expensive |
 
-**Spot Instances — Important to know:**
-- You bid on unused EC2 capacity
-- AWS can **terminate your instance with 2-minute warning** if capacity is needed back
-- Great for: batch jobs, data analysis, CI/CD pipelines, ML training
-- NOT suitable for: databases, web servers that can't handle interruption
+**Spot Instances:** run on unused capacity at up to 90% off, but AWS can reclaim them with a 2-minute warning. Good for batch/CI/ML; not for databases or stateful web servers.
 
 ---
 
@@ -273,35 +209,16 @@ m6i.xlarge
 | **Rule order** | All rules evaluated | Rules evaluated in order (lowest number first) |
 | **Default** | All outbound allowed, all inbound denied | All traffic allowed |
 
-```
-Internet
-    ↓
-NACL (Subnet boundary) → checks inbound rule
-    ↓
-Security Group (Instance boundary) → checks inbound rule
-    ↓
-EC2 Instance
-```
+Traffic order: Internet → NACL (subnet boundary) → Security Group (instance boundary) → EC2.
 
 ---
 
 ### Q12: What is an AMI?
 
 **Key Points:**
-- **AMI** = Amazon Machine Image
-- A **template** (snapshot) used to launch EC2 instances
-- Contains: OS, application software, configurations, EBS volume mappings
-- AMIs are **Region-specific** (copy to another Region to use there)
-
-**Types:**
-| Type | Description |
-|---|---|
-| **AWS-provided** | Amazon Linux 2, Ubuntu, Windows Server |
-| **AWS Marketplace** | Third-party software (e.g., pre-installed Jenkins) |
-| **Custom AMI** | Your own image with your app pre-configured |
-| **Community AMI** | Public images shared by others |
-
-**Use case:** Create a custom AMI of your configured web server → launch 10 identical instances in seconds.
+- **AMI** = Amazon Machine Image — a **template** (OS + software + config) used to launch EC2 instances
+- AMIs are **Region-specific**; can be AWS-provided, Marketplace, or your own **custom** image
+- **Use case:** bake a custom AMI of your configured server → launch many identical instances fast
 
 ---
 
@@ -336,15 +253,12 @@ EC2 Instance
 
 **Easy Explanation:** Like mail delivery options — express, standard, economy. Choose based on how often you need to access the data.
 
-| Storage Class | Access Pattern | Retrieval Time | Cost |
-|---|---|---|---|
-| **S3 Standard** | Frequent access | Milliseconds | Highest |
-| **S3 Standard-IA** | Infrequent, but fast when needed | Milliseconds | Lower storage, retrieval fee |
-| **S3 One Zone-IA** | Infrequent, non-critical | Milliseconds | Cheaper (1 AZ only) |
-| **S3 Glacier Instant** | Archive with instant access | Milliseconds | Low |
-| **S3 Glacier Flexible** | Archive, 1-5 minute retrieval | Minutes | Very low |
-| **S3 Glacier Deep Archive** | Long-term archive (years) | Up to 12 hours | Cheapest |
-| **S3 Intelligent-Tiering** | Unknown access pattern | Milliseconds | Auto-moves between tiers |
+| Storage Class | Access Pattern | Cost |
+|---|---|---|
+| **S3 Standard** | Frequent access | Highest |
+| **S3 Standard-IA** | Infrequent, fast when needed | Lower storage + retrieval fee |
+| **S3 Glacier** (Instant/Flexible/Deep Archive) | Archive, retrieval ms to 12 hrs | Very low to cheapest |
+| **S3 Intelligent-Tiering** | Unknown pattern, auto-moves tiers | Variable |
 
 ---
 
@@ -360,24 +274,6 @@ EC2 Instance
 6. **Versioning** — keeps all versions; protects against accidental delete/overwrite
 7. **MFA Delete** — requires MFA to delete versions
 
-```
-// Bucket policy: Allow only specific account
-{
-  "Version": "2012-10-17",
-  "Statement": [{
-    "Effect": "Deny",
-    "Principal": "*",
-    "Action": "s3:*",
-    "Resource": "arn:aws:s3:::my-bucket/*",
-    "Condition": {
-      "StringNotEquals": {
-        "aws:PrincipalAccount": "123456789012"
-      }
-    }
-  }]
-}
-```
-
 ---
 
 ### Q17: What is S3 Versioning?
@@ -387,12 +283,6 @@ EC2 Instance
 - Protects against accidental deletes and overwrites
 - A "delete" just adds a **delete marker** — you can restore
 - **Lifecycle policies** can auto-expire old versions to control cost
-
-```
-bucket/photo.jpg  (version: abc123)  ← current
-bucket/photo.jpg  (version: def456)  ← previous
-bucket/photo.jpg  (version: ghi789)  ← oldest
-```
 
 ---
 
@@ -435,32 +325,13 @@ VPC (10.0.0.0/16)
 
 ### Q20: What is a NAT Gateway?
 
-**Easy Explanation:** NAT Gateway lets your private EC2 instances **download updates from the internet** without exposing them to inbound internet traffic. Like a one-way mirror.
-
-**Key Points:**
-- NAT = **Network Address Translation**
-- Sits in the **public subnet**
-- Private subnet instances → NAT Gateway → Internet (outbound only)
-- Inbound internet connections cannot reach the private instance
-- NAT Gateway is **managed by AWS** (NAT Instance is self-managed, older approach)
-
-```
-Private EC2 → NAT Gateway (Public Subnet) → Internet Gateway → Internet
-                                                               ↓ (response)
-Private EC2 ← NAT Gateway ← Internet Gateway ← Internet
-```
+**Awareness summary:** A NAT (Network Address Translation) Gateway sits in a **public subnet** and lets **private** EC2 instances reach the internet **outbound only** (e.g., to download updates) while blocking inbound connections. It's AWS-managed.
 
 ---
 
 ### Q21: What is VPC Peering?
 
-**Easy Explanation:** VPC Peering connects two VPCs privately so they can communicate as if they were on the same network. Like connecting two office floors with a private corridor.
-
-**Key Points:**
-- Connects VPCs within the **same Region or across Regions**
-- Can peer across **different AWS accounts**
-- Traffic stays on the AWS private network (never goes through internet)
-- **NOT transitive**: If A ↔ B and B ↔ C, A cannot reach C through B
+**Awareness summary:** VPC Peering privately connects two VPCs (same or cross-Region, even across accounts) so they communicate over the AWS network. It is **not transitive** (A↔B and B↔C does not give A↔C).
 
 ---
 
@@ -492,13 +363,7 @@ Private EC2 ← NAT Gateway ← Internet Gateway ← Internet
 - **Synchronous replication** to standby in a different AZ
 - Automatic failover (DNS endpoint stays the same — your app reconnects)
 - Purpose: **High Availability (HA)**, NOT performance (standby is not readable)
-- Failover triggers: AZ failure, primary instance failure, instance type change, OS patching
-
-```
-Primary (AZ-a) → Synchronous replication → Standby (AZ-b)
-     ↓ (fails)
-DNS automatically points to Standby → Standby becomes Primary
-```
+- Failover triggers: AZ failure, primary instance failure, OS patching
 
 ---
 
@@ -517,20 +382,7 @@ DNS automatically points to Standby → Standby becomes Primary
 
 ### Q25: What is Amazon Aurora?
 
-**Key Points:**
-- AWS's **cloud-native relational database** — MySQL and PostgreSQL compatible
-- Up to **5x faster than MySQL**, **3x faster than PostgreSQL**
-- Storage: auto-scales from 10 GB to 128 TB
-- **6 copies of data** across 3 AZs (2 copies per AZ)
-- Aurora Serverless: auto-scales compute capacity based on load
-
-**Aurora vs RDS:**
-| | Aurora | Standard RDS |
-|---|---|---|
-| Performance | Much higher | Good |
-| Storage | Shared cluster storage | Per-instance EBS |
-| Replicas | Up to 15 | Up to 5 |
-| Failover | ~30 seconds | ~1-2 minutes |
+**Awareness summary:** Aurora is AWS's cloud-native, MySQL/PostgreSQL-compatible relational database — faster than standard RDS, with auto-scaling shared storage (6 copies across 3 AZs), up to 15 replicas, and fast failover. Aurora Serverless auto-scales compute to load.
 
 ---
 
@@ -545,15 +397,11 @@ DNS automatically points to Standby → Standby becomes Primary
 | Type | Layer | Use Case |
 |---|---|---|
 | **ALB** (Application Load Balancer) | Layer 7 (HTTP/HTTPS) | Web apps, microservices, path-based routing |
-| **NLB** (Network Load Balancer) | Layer 4 (TCP/UDP) | Ultra-high performance, gaming, IoT, static IP |
-| **GWLB** (Gateway Load Balancer) | Layer 3 | Third-party virtual appliances (firewalls) |
-| **CLB** (Classic Load Balancer) | Layer 4/7 | Legacy, avoid for new projects |
+| **NLB** (Network Load Balancer) | Layer 4 (TCP/UDP) | Ultra-high performance, static IP |
 
-**ALB Features:**
-- Path-based routing: `/api/*` → API servers, `/web/*` → Web servers
-- Host-based routing: `api.example.com` vs `app.example.com`
-- HTTP to HTTPS redirects
-- Target groups: EC2, ECS tasks, Lambda, IP addresses
+(GWLB exists for third-party appliances; CLB is legacy — avoid for new projects.)
+
+**ALB Features:** path-based (`/api/*`) and host-based (`api.example.com`) routing, HTTP→HTTPS redirects, and target groups (EC2, ECS tasks, Lambda, IPs).
 
 ---
 
@@ -566,24 +414,9 @@ DNS automatically points to Standby → Standby becomes Primary
 - **Launch Template:** The blueprint used to create new instances
 - **Scaling Policies:** Rules that trigger scaling
 
-**Scaling Policy Types:**
-| Policy | How it works |
-|---|---|
-| **Target Tracking** | Keep a metric at a target (e.g., CPU at 50%) |
-| **Step Scaling** | Scale by X instances when alarm breaches thresholds |
-| **Simple Scaling** | Add/remove fixed number on alarm |
-| **Scheduled Scaling** | Scale at specific times (e.g., more capacity every Monday 9am) |
-| **Predictive Scaling** | ML-based forecast of future traffic |
+**Scaling Policy Types:** the common one is **Target Tracking** (keep a metric at a target, e.g. CPU at 50%). Others: **Step**/**Simple** (scale on alarm thresholds), **Scheduled** (scale at set times), and **Predictive** (ML forecast).
 
-```
-CloudWatch Alarm (CPU > 70%)
-        ↓
-Auto Scaling Policy triggered
-        ↓
-New EC2 instances launched from Launch Template
-        ↓
-Registered with Load Balancer
-```
+**Flow:** a CloudWatch alarm (e.g. CPU > 70%) triggers the scaling policy → new instances launch from the Launch Template → they register with the Load Balancer.
 
 ---
 
@@ -600,27 +433,13 @@ Registered with Load Balancer
 - Memory: 128 MB to 10 GB (CPU scales with memory)
 - Billed per **number of requests** + **duration (GB-seconds)**
 
-**Lambda Triggers (Event Sources):**
-```
-API Gateway        → Lambda (REST API backend)
-S3 Event           → Lambda (process uploaded file)
-DynamoDB Stream    → Lambda (react to DB changes)
-SQS/SNS            → Lambda (message processing)
-EventBridge (cron) → Lambda (scheduled job)
-Kinesis            → Lambda (stream processing)
-```
+**Common Triggers (Event Sources):** API Gateway (REST backend), S3 events (process uploads), DynamoDB Streams, SQS/SNS (message processing), EventBridge (scheduled cron), and Kinesis (stream processing).
 
 ---
 
 ### Q29: What are the limitations of Lambda?
 
-| Limit | Value |
-|---|---|
-| Execution timeout | 15 minutes max |
-| Deployment package size | 50 MB (zipped), 250 MB (unzipped) |
-| Ephemeral storage `/tmp` | 512 MB to 10 GB |
-| Concurrent executions | 1,000 per region (can request increase) |
-| Memory | 128 MB – 10 GB |
+**Key limits:** 15-minute timeout, 128 MB–10 GB memory, 1,000 concurrent executions per region (can be raised), and a 50 MB (zipped) deployment package.
 
 **Cold Start Issue:**
 - First invocation after idle period → Lambda must initialize the container → adds latency
@@ -690,17 +509,7 @@ Kinesis            → Lambda (stream processing)
 - Supports domain registration
 - Named "Route 53" because DNS uses **port 53**
 
-**Route 53 Routing Policies:**
-
-| Policy | Use Case |
-|---|---|
-| **Simple** | Single resource, no health checks |
-| **Weighted** | A/B testing, split traffic (70/30) |
-| **Latency-based** | Route to lowest-latency Region |
-| **Failover** | Active-passive: switch to backup if primary fails |
-| **Geolocation** | Route by user's country/continent |
-| **Geoproximity** | Route by distance, with bias adjustment |
-| **Multivalue Answer** | Return multiple IPs (basic load balancing) |
+**Routing Policies (awareness):** **Simple** (one resource), **Weighted** (split traffic for A/B), **Latency-based** (lowest-latency Region), **Failover** (active-passive backup), plus **Geolocation**/**Geoproximity** and **Multivalue Answer**.
 
 ---
 
@@ -716,40 +525,22 @@ Kinesis            → Lambda (stream processing)
 - A **Stack** is a deployed instance of a template
 - If a resource creation fails, CloudFormation **automatically rolls back**
 
-**Template Structure:**
+**Template Structure (YAML):** key sections are `Parameters` (inputs), `Resources` (the AWS resources to create), and `Outputs` (values to return).
+
 ```yaml
-AWSTemplateFormatVersion: "2010-09-09"
-Description: "My web app infrastructure"
-
-Parameters:
-  InstanceType:
-    Type: String
-    Default: t3.micro
-
 Resources:
   MyEC2Instance:
     Type: AWS::EC2::Instance
     Properties:
-      InstanceType: !Ref InstanceType
+      InstanceType: t3.micro
       ImageId: ami-0abcdef1234567890
-
-Outputs:
-  PublicIP:
-    Value: !GetAtt MyEC2Instance.PublicIp
 ```
 
 ---
 
 ### Q35: CloudFormation vs Terraform — key differences?
 
-| | CloudFormation | Terraform |
-|---|---|---|
-| **Provider** | AWS only | Multi-cloud (AWS, Azure, GCP, etc.) |
-| **Language** | YAML / JSON | HCL (HashiCorp Configuration Language) |
-| **State management** | AWS manages state | You manage `terraform.tfstate` |
-| **Rollback** | Automatic on failure | Manual (`terraform destroy`) |
-| **Cost** | Free | Free (open source) |
-| **Ecosystem** | AWS native, tight integration | Huge community, multi-cloud |
+**Awareness summary:** **CloudFormation** is AWS-only (YAML/JSON), AWS manages state, auto-rollback on failure. **Terraform** is multi-cloud (HCL), you manage the state file, and has a huge community.
 
 ---
 
@@ -757,45 +548,15 @@ Outputs:
 
 ### Q36: What is AWS KMS?
 
-**Easy Explanation:** KMS is like a master key vault. You store encryption keys here and AWS services use them to encrypt/decrypt your data — without you ever touching the raw keys.
-
-**Key Points:**
-- KMS = **Key Management Service**
-- Create and manage **Customer Managed Keys (CMK)**
-- Integrated with S3, EBS, RDS, Lambda, Secrets Manager, and more
-- Every key usage is **logged in CloudTrail** (audit trail)
-- Keys are **Region-specific** — need to copy to another Region to use there
-
-**Encryption types:**
-| Type | Key managed by |
-|---|---|
-| **SSE-S3** | AWS (automatic, no control) |
-| **SSE-KMS** | You (via KMS CMK) |
-| **SSE-C** | You (provide your own key per request) |
+**Easy Explanation:** KMS (Key Management Service) is a managed key vault. You manage encryption keys (CMKs) and AWS services (S3, EBS, RDS, Lambda, Secrets Manager) use them to encrypt/decrypt your data without you handling raw keys. Key usage is logged in CloudTrail and keys are Region-specific.
 
 ---
 
 ### Q37: What is AWS Shield and WAF?
 
-**AWS Shield:**
-- DDoS (Distributed Denial of Service) protection
-- **Shield Standard**: free, automatically protects all AWS customers
-- **Shield Advanced**: paid ($3,000/month), advanced DDoS protection + 24/7 DRT team support
-
-**AWS WAF (Web Application Firewall):**
-- Protects against web exploits: **SQL injection, XSS, bad bots**
-- Define **Web ACL rules**: block specific IPs, rate limit, geo-block
-- Integrates with: CloudFront, ALB, API Gateway, AppSync
-
-```
-User request
-    ↓
-CloudFront + WAF (filters malicious requests)
-    ↓
-ALB + Shield (DDoS protection)
-    ↓
-EC2 / Application
-```
+**Awareness summary:**
+- **AWS Shield** = DDoS protection. **Standard** is free for everyone; **Advanced** is paid with extra protection and 24/7 support.
+- **AWS WAF** (Web Application Firewall) blocks web exploits (SQL injection, XSS, bad bots) via Web ACL rules; attaches to CloudFront, ALB, and API Gateway.
 
 ---
 
@@ -803,24 +564,8 @@ EC2 / Application
 
 **Easy Explanation:** AWS is responsible for the cloud infrastructure (hardware, networking, data centers). You are responsible for what you put IN the cloud (your OS configs, application, data, user access).
 
-```
-┌─────────────────────────────────────────────────────┐
-│              CUSTOMER RESPONSIBILITY                 │
-│  "Security IN the cloud"                            │
-│  ✔ Your data (encryption)                           │
-│  ✔ IAM users, roles, permissions                    │
-│  ✔ OS patching (for EC2)                            │
-│  ✔ Application security                             │
-│  ✔ Security Group configurations                    │
-├─────────────────────────────────────────────────────┤
-│              AWS RESPONSIBILITY                      │
-│  "Security OF the cloud"                            │
-│  ✔ Physical data centers                            │
-│  ✔ Hardware (servers, networking)                   │
-│  ✔ Hypervisor / virtualization layer                │
-│  ✔ Managed service infrastructure (RDS, Lambda)     │
-└─────────────────────────────────────────────────────┘
-```
+- **Customer — security IN the cloud:** your data/encryption, IAM users & permissions, OS patching (EC2), application security, Security Group config.
+- **AWS — security OF the cloud:** physical data centers, hardware, hypervisor, and managed-service infrastructure (RDS, Lambda).
 
 ---
 
@@ -836,11 +581,7 @@ EC2 / Application
 - **Standard Queue**: At-least-once delivery, best-effort ordering, high throughput
 - **FIFO Queue**: Exactly-once delivery, strict ordering, up to 3,000 msg/sec
 
-**Use case:**
-```
-Order Service → SQS Queue → Payment Processor (scales independently)
-                         └→ Notification Service (also reads)
-```
+**Use case:** Order Service → SQS Queue → Payment Processor, so the consumer scales and processes independently of the producer.
 
 ---
 
@@ -862,12 +603,7 @@ Order Service → SQS Queue → Payment Processor (scales independently)
 | **Multiple consumers** | Yes (all subscribers get it) | No (one consumer per message) |
 | **Use case** | Alerts, fan-out notifications | Task queues, decoupling |
 
-**Fan-out Pattern (SNS + SQS):**
-```
-Event → SNS Topic → SQS Queue A → Lambda (send email)
-                 └→ SQS Queue B → Lambda (update DB)
-                 └→ SQS Queue C → Lambda (push notification)
-```
+**Fan-out Pattern:** one SNS topic fans a message out to multiple SQS queues, each feeding a separate consumer (e.g., email, DB update, push notification).
 
 ---
 
@@ -896,14 +632,7 @@ Event → SNS Topic → SQS Queue A → Lambda (send email)
 
 ### Q42: What is the difference between ECS and EKS?
 
-| | ECS | EKS |
-|---|---|---|
-| **Full name** | Elastic Container Service | Elastic Kubernetes Service |
-| **Orchestrator** | AWS proprietary | Kubernetes (open-source) |
-| **Learning curve** | Lower | Higher (K8s knowledge needed) |
-| **Portability** | AWS-only | Portable across any K8s cluster |
-| **Cost** | No control plane cost | $0.10/hour per cluster |
-| **Best for** | Simple container workloads, AWS-native teams | Complex microservices, K8s expertise |
+**Awareness summary:** **ECS** uses AWS's own orchestrator — simpler, AWS-only, no control-plane cost. **EKS** runs managed **Kubernetes** — portable across clusters but steeper learning curve and a per-cluster control-plane fee.
 
 ---
 
@@ -911,23 +640,7 @@ Event → SNS Topic → SQS Queue A → Lambda (send email)
 
 ### Q43: What are the key strategies to reduce AWS costs?
 
-**Key Strategies:**
-
-1. **Right-sizing**: Match instance size to actual workload (use CloudWatch metrics to find over-provisioned instances)
-
-2. **Reserved Instances / Savings Plans**: Commit to 1 or 3 years for steady workloads → up to 72% savings
-
-3. **Spot Instances**: Use for fault-tolerant workloads (batch, ML training) → up to 90% savings
-
-4. **Auto Scaling**: Scale down during off-hours to avoid paying for idle capacity
-
-5. **S3 Lifecycle Policies**: Auto-move old data to cheaper storage classes (Standard → Glacier)
-
-6. **Delete unused resources**: Unattached EBS volumes, idle EIPs (Elastic IPs), old snapshots
-
-7. **CloudFront**: Reduce S3/EC2 data transfer costs by caching at edge
-
-8. **AWS Cost Explorer + Budgets**: Set budget alerts before overspending
+**Awareness summary:** Right-size instances (CloudWatch metrics), commit with **Reserved Instances / Savings Plans** for steady workloads and use **Spot** for fault-tolerant ones, **Auto Scaling** down off-hours, **S3 lifecycle** policies to cheaper tiers, delete unused resources (EBS volumes, idle EIPs, snapshots), cache with **CloudFront**, and set **Cost Explorer + Budgets** alerts.
 
 ---
 
@@ -973,21 +686,6 @@ Event → SNS Topic → SQS Queue A → Lambda (send email)
 | **Monitoring** | CloudTrail | API audit trail |
 | **IaC** | CloudFormation | AWS infrastructure as YAML/JSON templates |
 | **IaC** | CDK | Define infra in TypeScript/Python code |
-
----
-
-### Key Concepts to Always Remember
-
-| Concept | Remember This |
-|---|---|
-| **High Availability** | Deploy across multiple AZs |
-| **Disaster Recovery** | Deploy across multiple Regions |
-| **Security** | Principle of Least Privilege in IAM |
-| **Scaling** | Use Auto Scaling + Load Balancer together |
-| **Cost** | Spot for batch, Reserved for steady, On-Demand for unpredictable |
-| **Serverless** | Lambda for event-driven, short tasks (<15 min) |
-| **Shared Responsibility** | AWS secures the cloud; you secure what's in it |
-| **Stateful vs Stateless** | Security Groups are stateful; NACLs are stateless |
 
 ---
 

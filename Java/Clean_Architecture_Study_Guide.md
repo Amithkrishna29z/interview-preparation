@@ -4,30 +4,6 @@
 
 ---
 
-## Table of Contents
-
-1. [What is Clean Architecture?](#1-what-is-clean-architecture)
-2. [The Dependency Rule](#2-the-dependency-rule)
-3. [The Four Layers](#3-the-four-layers)
-4. [Layer 1 — Entities (Enterprise Business Rules)](#4-layer-1--entities-enterprise-business-rules)
-5. [Layer 2 — Use Cases (Application Business Rules)](#5-layer-2--use-cases-application-business-rules)
-6. [Layer 3 — Interface Adapters](#6-layer-3--interface-adapters)
-7. [Layer 4 — Frameworks & Drivers (Infrastructure)](#7-layer-4--frameworks--drivers-infrastructure)
-8. [SOLID Principles in Clean Architecture](#8-solid-principles-in-clean-architecture)
-9. [Dependency Inversion in Practice](#9-dependency-inversion-in-practice)
-10. [Ports & Adapters (Hexagonal Architecture)](#10-ports--adapters-hexagonal-architecture)
-11. [Clean Architecture vs Other Architectures](#11-clean-architecture-vs-other-architectures)
-12. [Domain-Driven Design Alignment](#12-domain-driven-design-alignment)
-13. [Project Structure & Package Layout](#13-project-structure--package-layout)
-14. [Full Worked Example — Spring Boot](#14-full-worked-example--spring-boot)
-15. [Testing Strategy](#15-testing-strategy)
-16. [Common Mistakes & Anti-Patterns](#16-common-mistakes--anti-patterns)
-17. [When TO and When NOT TO Use Clean Architecture](#17-when-to-and-when-not-to-use-clean-architecture)
-18. [Common Interview Questions & Answers](#18-common-interview-questions--answers)
-19. [Quick Revision Cheat Sheet](#19-quick-revision-cheat-sheet)
-
----
-
 ## 1. What is Clean Architecture?
 
 Clean Architecture is a **software design philosophy** proposed by **Robert C. Martin (Uncle Bob)** in 2012. It combines ideas from Hexagonal Architecture, Onion Architecture, and DCI to produce a system that is:
@@ -175,62 +151,15 @@ public class Order {
         this.status = OrderStatus.CONFIRMED;
     }
 
-    public void cancel() {
-        if (status == OrderStatus.SHIPPED) {
-            throw new DomainException("Cannot cancel a shipped order");
-        }
-        this.status = OrderStatus.CANCELLED;
-    }
-
-    private void recalculateTotal() {
-        this.totalAmount = items.stream()
-            .map(OrderItem::getSubtotal)
-            .reduce(Money.ZERO, Money::add);
-    }
-
     // Getters only — no setters (immutable from outside)
     public OrderId getId() { return id; }
     public OrderStatus getStatus() { return status; }
     public Money getTotalAmount() { return totalAmount; }
-    public List<OrderItem> getItems() { return Collections.unmodifiableList(items); }
 }
 
-// Value Object — immutable, compared by value not identity
-public final class Money {
-    public static final Money ZERO = new Money(BigDecimal.ZERO, "USD");
-
-    private final BigDecimal amount;
-    private final String currency;
-
-    public Money(BigDecimal amount, String currency) {
-        if (amount.compareTo(BigDecimal.ZERO) < 0) {
-            throw new IllegalArgumentException("Money cannot be negative");
-        }
-        this.amount = amount.setScale(2, RoundingMode.HALF_UP);
-        this.currency = currency;
-    }
-
-    public static Money of(double amount) {
-        return new Money(BigDecimal.valueOf(amount), "USD");
-    }
-
-    public Money add(Money other) {
-        if (!this.currency.equals(other.currency)) {
-            throw new DomainException("Cannot add different currencies");
-        }
-        return new Money(this.amount.add(other.amount), this.currency);
-    }
-
-    public boolean isLessThan(Money other) {
-        return this.amount.compareTo(other.amount) < 0;
-    }
-
-    @Override
-    public boolean equals(Object obj) {  // Value equality
-        if (!(obj instanceof Money other)) return false;
-        return amount.equals(other.amount) && currency.equals(other.currency);
-    }
-}
+// Value Object — immutable, compared by value not identity (e.g. Money, Email).
+// Validates in its constructor and has no setters. Kept short here; the idea is
+// "a small wrapper that is always valid and compared by its value, not identity".
 ```
 
 > **Interview tip:** Entities in Clean Architecture are NOT the same as JPA `@Entity` classes. JPA entities are infrastructure concerns. A clean architecture entity is a pure domain object.
@@ -254,49 +183,29 @@ public interface PlaceOrderUseCase {
 }
 
 // REQUEST/RESPONSE — simple data structures crossing layer boundaries (no framework objects!)
-public record PlaceOrderRequest(
-    String customerId,
-    List<OrderItemRequest> items,
-    String deliveryAddress
-) {}
-
+public record PlaceOrderRequest(String customerId, List<OrderItemRequest> items) {}
 public record OrderItemRequest(String productId, int quantity) {}
+public record PlaceOrderResponse(String orderId, String status, double totalAmount) {}
 
-public record PlaceOrderResponse(
-    String orderId,
-    String status,
-    double totalAmount,
-    String message
-) {}
-
-// OUTPUT PORT — interface for persistence (defined in use case layer, implemented in infrastructure)
+// OUTPUT PORTS — interfaces defined in the use case layer, implemented in infrastructure
 public interface OrderRepository {
     void save(Order order);
     Optional<Order> findById(OrderId id);
 }
+public interface ProductRepository { Optional<Product> findById(ProductId id); }
+public interface NotificationService { void sendOrderConfirmation(CustomerId id, Order order); }
 
-public interface ProductRepository {
-    Optional<Product> findById(ProductId id);
-}
-
-public interface NotificationService {
-    void sendOrderConfirmation(CustomerId customerId, Order order);
-}
-
-// USE CASE IMPLEMENTATION — pure business orchestration
-@Component  // Only annotation here — this is debatable, some prefer manual wiring
+// USE CASE IMPLEMENTATION — pure business orchestration (constructor injection, no framework code)
+@Component
 public class PlaceOrderUseCaseImpl implements PlaceOrderUseCase {
 
     private final OrderRepository orderRepository;
     private final ProductRepository productRepository;
     private final NotificationService notificationService;
 
-    // Constructor injection — no framework dependency
-    public PlaceOrderUseCaseImpl(
-        OrderRepository orderRepository,
-        ProductRepository productRepository,
-        NotificationService notificationService
-    ) {
+    public PlaceOrderUseCaseImpl(OrderRepository orderRepository,
+                                 ProductRepository productRepository,
+                                 NotificationService notificationService) {
         this.orderRepository = orderRepository;
         this.productRepository = productRepository;
         this.notificationService = notificationService;
@@ -304,38 +213,22 @@ public class PlaceOrderUseCaseImpl implements PlaceOrderUseCase {
 
     @Override
     public PlaceOrderResponse execute(PlaceOrderRequest request) {
-        // 1. Validate input
         CustomerId customerId = new CustomerId(request.customerId());
-        OrderId orderId = OrderId.generate();
+        Order order = new Order(OrderId.generate(), customerId);
 
-        // 2. Create entity
-        Order order = new Order(orderId, customerId);
-
-        // 3. Apply business logic via entities
-        for (OrderItemRequest itemRequest : request.items()) {
-            Product product = productRepository
-                .findById(new ProductId(itemRequest.productId()))
-                .orElseThrow(() -> new EntityNotFoundException("Product not found: " + itemRequest.productId()));
-
-            order.addItem(product, itemRequest.quantity());  // Entity validates this
+        for (OrderItemRequest item : request.items()) {
+            Product product = productRepository.findById(new ProductId(item.productId()))
+                .orElseThrow(() -> new EntityNotFoundException("Product not found"));
+            order.addItem(product, item.quantity());  // entity validates
         }
 
-        // 4. Confirm order (entity validates minimum amount, etc.)
-        order.confirm();
+        order.confirm();                                  // entity validates min amount, etc.
+        orderRepository.save(order);                      // output port (don't know if MySQL/Mongo)
+        notificationService.sendOrderConfirmation(customerId, order);  // output port (email/SMS)
 
-        // 5. Persist via output port (don't know if it's MySQL or MongoDB)
-        orderRepository.save(order);
-
-        // 6. Send notification via output port (don't know if it's email or SMS)
-        notificationService.sendOrderConfirmation(customerId, order);
-
-        // 7. Return response DTO (not the entity itself)
         return new PlaceOrderResponse(
-            order.getId().getValue(),
-            order.getStatus().name(),
-            order.getTotalAmount().getAmount().doubleValue(),
-            "Order placed successfully"
-        );
+            order.getId().getValue(), order.getStatus().name(),
+            order.getTotalAmount().getAmount().doubleValue());  // return DTO, not the entity
     }
 }
 ```
@@ -354,7 +247,7 @@ This layer **converts data** between the format convenient for use cases/entitie
 Contains: **Controllers, Presenters, Gateways, Mappers, Repository Implementations**
 
 ```java
-// CONTROLLER — converts HTTP request to use case request
+// CONTROLLER — converts HTTP request to use case request and back (no business logic)
 @RestController
 @RequestMapping("/api/orders")
 public class OrderController {
@@ -366,32 +259,19 @@ public class OrderController {
     }
 
     @PostMapping
-    public ResponseEntity<OrderResponseDto> placeOrder(@RequestBody @Valid PlaceOrderHttpRequest httpRequest) {
+    public ResponseEntity<PlaceOrderResponse> placeOrder(@RequestBody @Valid PlaceOrderHttpRequest req) {
         // Map HTTP request → use case request (crossing layer boundary)
         PlaceOrderRequest useCaseRequest = new PlaceOrderRequest(
-            httpRequest.getCustomerId(),
-            httpRequest.getItems().stream()
-                .map(i -> new OrderItemRequest(i.getProductId(), i.getQuantity()))
-                .toList(),
-            httpRequest.getDeliveryAddress()
-        );
+            req.getCustomerId(),
+            req.getItems().stream().map(i -> new OrderItemRequest(i.getProductId(), i.getQuantity())).toList());
 
-        // Call use case
         PlaceOrderResponse response = placeOrderUseCase.execute(useCaseRequest);
-
-        // Map use case response → HTTP response
-        OrderResponseDto dto = new OrderResponseDto(
-            response.orderId(),
-            response.status(),
-            response.totalAmount(),
-            response.message()
-        );
-
-        return ResponseEntity.status(HttpStatus.CREATED).body(dto);
+        return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 }
 
-// REPOSITORY IMPLEMENTATION — adapter between use case port and JPA
+// REPOSITORY IMPLEMENTATION — adapter between use case port and JPA.
+// A mapper converts domain Order <-> OrderJpaEntity at this boundary.
 @Repository
 public class JpaOrderRepository implements OrderRepository {
 
@@ -405,78 +285,19 @@ public class JpaOrderRepository implements OrderRepository {
 
     @Override
     public void save(Order order) {
-        OrderJpaEntity jpaEntity = mapper.toJpaEntity(order);  // Domain → JPA
-        springRepo.save(jpaEntity);
+        springRepo.save(mapper.toJpaEntity(order));         // Domain → JPA
     }
 
     @Override
     public Optional<Order> findById(OrderId id) {
-        return springRepo.findById(id.getValue())
-            .map(mapper::toDomain);   // JPA → Domain
-    }
-}
-
-// JPA ENTITY — infrastructure concern (separate from domain entity)
-@Entity
-@Table(name = "orders")
-public class OrderJpaEntity {
-    @Id
-    private String id;
-    private String customerId;
-    private String status;
-    private BigDecimal totalAmount;
-
-    @OneToMany(cascade = CascadeType.ALL, fetch = FetchType.LAZY)
-    private List<OrderItemJpaEntity> items;
-
-    // JPA requires no-arg constructor
-    protected OrderJpaEntity() {}
-    // getters/setters...
-}
-
-// MAPPER — converts between domain objects and JPA entities
-@Component
-public class OrderMapper {
-
-    public OrderJpaEntity toJpaEntity(Order order) {
-        OrderJpaEntity entity = new OrderJpaEntity();
-        entity.setId(order.getId().getValue());
-        entity.setCustomerId(order.getCustomerId().getValue());
-        entity.setStatus(order.getStatus().name());
-        entity.setTotalAmount(order.getTotalAmount().getAmount());
-        entity.setItems(order.getItems().stream().map(this::toItemJpa).toList());
-        return entity;
-    }
-
-    public Order toDomain(OrderJpaEntity entity) {
-        // Reconstruct domain object from JPA entity
-        Order order = Order.reconstitute(
-            new OrderId(entity.getId()),
-            new CustomerId(entity.getCustomerId()),
-            OrderStatus.valueOf(entity.getStatus()),
-            entity.getItems().stream().map(this::toItemDomain).toList()
-        );
-        return order;
-    }
-}
-
-// NOTIFICATION SERVICE IMPLEMENTATION — adapter for email
-@Component
-public class EmailNotificationService implements NotificationService {
-
-    private final JavaMailSender mailSender;
-
-    @Override
-    public void sendOrderConfirmation(CustomerId customerId, Order order) {
-        // Implementation uses Spring Mail — infrastructure detail
-        SimpleMailMessage message = new SimpleMailMessage();
-        message.setTo(resolveEmail(customerId));
-        message.setSubject("Order Confirmed: " + order.getId().getValue());
-        message.setText("Your order for $" + order.getTotalAmount() + " has been confirmed.");
-        mailSender.send(message);
+        return springRepo.findById(id.getValue()).map(mapper::toDomain);  // JPA → Domain
     }
 }
 ```
+
+The other adapters follow the same shape:
+- `OrderJpaEntity` (a separate `@Entity @Table` class) and `OrderMapper` keep JPA out of the domain.
+- `EmailNotificationService implements NotificationService` is a driven adapter that uses Spring Mail — an infrastructure detail the use case never sees.
 
 ---
 
@@ -578,56 +399,25 @@ public class CryptoGateway implements PaymentGateway { /* NEW — no modificatio
 
 > "Subtypes must be substitutable for their base types."
 
-```java
-// VIOLATION — Square breaks Rectangle's contract
-class Rectangle {
-    void setWidth(int w) { this.width = w; }
-    void setHeight(int h) { this.height = h; }
-    int getArea() { return width * height; }
-}
-
-class Square extends Rectangle {
-    @Override
-    void setWidth(int w) { this.width = w; this.height = w; }  // Breaks expected behavior!
-}
-
-// CORRECT — use interfaces that accurately reflect the contract
-interface Shape {
-    int getArea();
-}
-class Rectangle implements Shape { /* ... */ }
-class Square implements Shape { /* ... */ }
-```
+A subtype must honour the contract of its base type. The classic violation is `Square extends Rectangle` overriding `setWidth` to also change height — code that works with a `Rectangle` breaks when handed a `Square`. Fix: model both as `Shape` with a `getArea()` contract instead of inheriting behaviour that breaks expectations.
 
 ### I — Interface Segregation Principle
 
 > "No client should be forced to depend on interfaces it does not use."
 
 ```java
-// VIOLATION — fat interface forces implementations to stub methods
+// VIOLATION — fat interface forces implementations to stub methods they don't need
 interface UserRepository {
-    User findById(String id);
+    Optional<User> findById(UserId id);
     void save(User user);
-    void delete(String id);
-    List<User> findAll();
     List<User> search(String query);
     void bulkImport(List<User> users);   // Not all repos need this!
 }
 
-// CORRECT — split into focused interfaces
-interface UserReadRepository {
-    Optional<User> findById(UserId id);
-    List<User> findAll();
-}
-
-interface UserWriteRepository {
-    void save(User user);
-    void delete(UserId id);
-}
-
-interface UserSearchRepository {
-    List<User> search(String query);
-}
+// CORRECT — split into focused interfaces (read / write / search)
+interface UserReadRepository  { Optional<User> findById(UserId id); }
+interface UserWriteRepository { void save(User user); }
+interface UserSearchRepository { List<User> search(String query); }
 ```
 
 ### D — Dependency Inversion Principle
@@ -635,24 +425,11 @@ interface UserSearchRepository {
 > "Depend on abstractions, not concretions. High-level modules should not depend on low-level modules."
 
 ```java
-// VIOLATION — use case directly depends on MySQL implementation
-class PlaceOrderUseCase {
-    private MySQLOrderRepository repository;  // Concrete class — VIOLATION!
+// VIOLATION — use case depends on a concrete implementation
+class PlaceOrderUseCase { private MySQLOrderRepository repository; }   // concrete — VIOLATION
 
-    void execute(PlaceOrderRequest req) {
-        repository.save(order);
-    }
-}
-
-// CORRECT — use case depends on abstraction (interface)
-class PlaceOrderUseCase {
-    private OrderRepository repository;       // Interface — CORRECT
-
-    void execute(PlaceOrderRequest req) {
-        repository.save(order);               // Don't care HOW it saves
-    }
-}
-// The MySQL implementation is injected from outside
+// CORRECT — use case depends on an abstraction; the MySQL impl is injected from outside
+class PlaceOrderUseCase { private OrderRepository repository; }        // interface — CORRECT
 ```
 
 ---
@@ -728,41 +505,23 @@ Queue                   │                     │
 | **Driven / Output Port** | System → External | Use case calls repository |
 
 ```java
-// DRIVING PORT (Input Port) — how outside world calls the application
-public interface PlaceOrderUseCase {           // Driving port
-    PlaceOrderResponse execute(PlaceOrderRequest req);
-}
+// DRIVING PORT (input) — how the outside world calls the application
+public interface PlaceOrderUseCase { PlaceOrderResponse execute(PlaceOrderRequest req); }
 
-// DRIVEN PORT (Output Port) — how the application calls the outside world
-public interface OrderRepository {            // Driven port
-    void save(Order order);
-}
+// DRIVEN PORTS (output) — how the application calls the outside world
+public interface OrderRepository { void save(Order order); }
+public interface PaymentGateway  { PaymentResult charge(Money amount, String cardToken); }
 
-public interface PaymentGateway {             // Driven port
-    PaymentResult charge(Money amount, String cardToken);
-}
-
-public interface EventPublisher {             // Driven port
-    void publish(DomainEvent event);
-}
-
-// DRIVING ADAPTER — translates external call into port call
+// DRIVING ADAPTER — translates an external call into a driving-port call
 @RestController
-public class OrderController {                // Driving adapter
-    private final PlaceOrderUseCase useCase;  // Calls the driving port
-    // ...
-}
+public class OrderController { private final PlaceOrderUseCase useCase; /* ... */ }
 
-// DRIVEN ADAPTER — implements the port to call external system
-@Repository
-public class JpaOrderRepository implements OrderRepository {}  // Driven adapter
-
-@Component
-public class StripePaymentGateway implements PaymentGateway {}  // Driven adapter
-
-@Component
-public class KafkaEventPublisher implements EventPublisher {}   // Driven adapter
+// DRIVEN ADAPTERS — implement output ports to reach external systems
+@Repository public class JpaOrderRepository implements OrderRepository {}
+@Component  public class StripePaymentGateway implements PaymentGateway {}
 ```
+
+> **Awareness note (junior scope):** Hexagonal is just Clean Architecture viewed from the side — same dependency rule, same ports-and-adapters idea. You rarely need more than the "controller calls an input port, the use case calls output ports" mental model.
 
 ---
 
@@ -833,42 +592,9 @@ Clean Architecture and DDD align very well. Key DDD concepts map to Clean Archit
 | **Domain Event** | Use Cases/Entities layer | Something that happened in the domain |
 | **Factory** | Entities layer | Creates complex objects |
 
-```java
-// AGGREGATE ROOT — controls access to all entities in the aggregate
-public class Order {  // Aggregate Root
-    private List<OrderItem> items;  // Part of the aggregate — accessed through Order
-
-    // External code can only call Order methods, not OrderItem directly
-    public void addItem(Product product, int quantity) { /* ... */ }
-    public void removeItem(ProductId productId) { /* ... */ }
-}
-
-// DOMAIN EVENT — captures what happened
-public record OrderConfirmedEvent(
-    OrderId orderId,
-    CustomerId customerId,
-    Money totalAmount,
-    Instant occurredAt
-) implements DomainEvent {}
-
-// Use Case publishes event after confirmation
-order.confirm();
-eventPublisher.publish(new OrderConfirmedEvent(
-    order.getId(), order.getCustomerId(),
-    order.getTotalAmount(), Instant.now()
-));
-
-// DOMAIN SERVICE — logic that spans multiple aggregates
-public class PricingService {
-    public Money calculateDiscountedPrice(Order order, Customer customer) {
-        // Logic that needs both Order and Customer
-        if (customer.isVip() && order.getTotalAmount().isGreaterThan(Money.of(100))) {
-            return order.getTotalAmount().multiply(0.9);  // 10% VIP discount
-        }
-        return order.getTotalAmount();
-    }
-}
-```
+> **Awareness note (junior scope):** You don't need DDD's full tactical toolkit to use Clean Architecture. The two ideas worth knowing:
+> - **Aggregate Root** — one entity (e.g. `Order`) guards a cluster of related entities (its `OrderItem`s); outside code only calls methods on the root, never on the children directly.
+> - **Domain Service** — business logic that doesn't naturally belong to a single entity (e.g. a `PricingService` that needs both an `Order` and a `Customer` to compute a discount) lives in its own class rather than being forced onto one entity.
 
 ---
 
@@ -942,197 +668,60 @@ com.example.
 
 ## 14. Full Worked Example — Spring Boot
 
-A complete end-to-end flow for a "Get User Profile" feature:
+Sections 4–7 already walked the full Order flow end to end. Here is a second, shorter slice — a "Get User Profile" feature — to reinforce how a business rule lives in the **use case**, not the controller. The adapter layer (controller, JPA entity, `JpaUserRepository`, Spring Data interface) follows exactly the same shape shown in Section 6, so it is not repeated.
 
 ```java
-// ─── DOMAIN LAYER ────────────────────────────────────────────────────────────
-
-// User.java — Entity
+// ─── DOMAIN LAYER — Entity + Value Object ────────────────────────────────────
 public class User {
     private final UserId id;
     private String name;
-    private Email email;
     private UserRole role;
     private boolean active;
-
-    public User(UserId id, String name, Email email) {
-        if (name == null || name.isBlank()) throw new DomainException("Name required");
-        this.id = id;
-        this.name = name;
-        this.email = email;
-        this.role = UserRole.REGULAR;
-        this.active = true;
-    }
-
-    public void deactivate() {
-        if (!active) throw new DomainException("User already inactive");
-        this.active = false;
-    }
-
-    public void promoteToAdmin() {
-        this.role = UserRole.ADMIN;
-    }
-
+    // constructor validates name/email; behaviour: deactivate(), promoteToAdmin()
     public UserId getId() { return id; }
     public String getName() { return name; }
-    public Email getEmail() { return email; }
     public UserRole getRole() { return role; }
     public boolean isActive() { return active; }
 }
 
-// Email.java — Value Object
-public record Email(String value) {
+public record Email(String value) {       // Value Object — validates on creation
     public Email {
-        if (value == null || !value.matches("^[\\w.-]+@[\\w.-]+\\.[a-zA-Z]{2,}$")) {
+        if (value == null || !value.matches("^[\\w.-]+@[\\w.-]+\\.[a-zA-Z]{2,}$"))
             throw new DomainException("Invalid email: " + value);
-        }
         value = value.toLowerCase();
     }
 }
 
-// ─── APPLICATION LAYER ───────────────────────────────────────────────────────
-
-// Input Port
-public interface GetUserProfileUseCase {
-    UserProfileResponse execute(GetUserProfileRequest request);
-}
-
+// ─── APPLICATION LAYER — input port + use case ───────────────────────────────
+public interface GetUserProfileUseCase { UserProfileResponse execute(GetUserProfileRequest req); }
 public record GetUserProfileRequest(String requesterId, String targetUserId) {}
+public record UserProfileResponse(String id, String name, String role, boolean active) {}
 
-public record UserProfileResponse(
-    String id, String name, String email, String role, boolean active
-) {}
-
-// Output Port
-public interface UserRepository {
-    Optional<User> findById(UserId id);
-    boolean existsByEmail(Email email);
-    void save(User user);
-}
-
-// Use Case Implementation
 @Component
 public class GetUserProfileService implements GetUserProfileUseCase {
 
-    private final UserRepository userRepository;
+    private final UserRepository userRepository;   // output port (see Section 6 for the adapter)
 
     public GetUserProfileService(UserRepository userRepository) {
         this.userRepository = userRepository;
     }
 
     @Override
-    public UserProfileResponse execute(GetUserProfileRequest request) {
-        UserId requesterId = new UserId(request.requesterId());
-        UserId targetId = new UserId(request.targetUserId());
-
-        User requester = userRepository.findById(requesterId)
+    public UserProfileResponse execute(GetUserProfileRequest req) {
+        User requester = userRepository.findById(new UserId(req.requesterId()))
             .orElseThrow(() -> new EntityNotFoundException("Requester not found"));
-
-        User target = userRepository.findById(targetId)
+        User target = userRepository.findById(new UserId(req.targetUserId()))
             .orElseThrow(() -> new EntityNotFoundException("User not found"));
 
-        // Business rule: only admins can view inactive user profiles
+        // Business rule lives in the use case, not the controller:
         if (!target.isActive() && requester.getRole() != UserRole.ADMIN) {
             throw new AccessDeniedException("Cannot view inactive user");
         }
 
         return new UserProfileResponse(
-            target.getId().getValue(),
-            target.getName(),
-            target.getEmail().value(),
-            target.getRole().name(),
-            target.isActive()
-        );
+            target.getId().getValue(), target.getName(),
+            target.getRole().name(), target.isActive());
     }
-}
-
-// ─── ADAPTER LAYER ───────────────────────────────────────────────────────────
-
-// REST Controller (Driving Adapter)
-@RestController
-@RequestMapping("/api/users")
-public class UserController {
-
-    private final GetUserProfileUseCase getUserProfile;
-
-    public UserController(GetUserProfileUseCase getUserProfile) {
-        this.getUserProfile = getUserProfile;
-    }
-
-    @GetMapping("/{userId}")
-    public ResponseEntity<UserProfileResponse> getProfile(
-        @PathVariable String userId,
-        @RequestAttribute("authenticatedUserId") String requesterId  // From JWT filter
-    ) {
-        UserProfileResponse response = getUserProfile.execute(
-            new GetUserProfileRequest(requesterId, userId)
-        );
-        return ResponseEntity.ok(response);
-    }
-}
-
-// JPA Entity (Infrastructure concern)
-@Entity
-@Table(name = "users")
-public class UserJpaEntity {
-    @Id
-    private String id;
-    private String name;
-    private String email;
-    @Enumerated(EnumType.STRING)
-    private UserRole role;
-    private boolean active;
-
-    protected UserJpaEntity() {}
-    // getters/setters
-}
-
-// Repository Adapter (Driven Adapter)
-@Repository
-public class JpaUserRepository implements UserRepository {
-
-    private final SpringDataUserRepository springRepo;
-
-    public JpaUserRepository(SpringDataUserRepository springRepo) {
-        this.springRepo = springRepo;
-    }
-
-    @Override
-    public Optional<User> findById(UserId id) {
-        return springRepo.findById(id.getValue()).map(this::toDomain);
-    }
-
-    @Override
-    public boolean existsByEmail(Email email) {
-        return springRepo.existsByEmail(email.value());
-    }
-
-    @Override
-    public void save(User user) {
-        springRepo.save(toJpa(user));
-    }
-
-    private User toDomain(UserJpaEntity e) {
-        return User.reconstitute(
-            new UserId(e.getId()), e.getName(),
-            new Email(e.getEmail()), e.getRole(), e.isActive()
-        );
-    }
-
-    private UserJpaEntity toJpa(User user) {
-        UserJpaEntity e = new UserJpaEntity();
-        e.setId(user.getId().getValue());
-        e.setName(user.getName());
-        e.setEmail(user.getEmail().value());
-        e.setRole(user.getRole());
-        e.setActive(user.isActive());
-        return e;
-    }
-}
-
-// Spring Data JPA (Infrastructure — just an interface)
-public interface SpringDataUserRepository extends JpaRepository<UserJpaEntity, String> {
-    boolean existsByEmail(String email);
 }
 ```
 
@@ -1181,115 +770,42 @@ class OrderTest {
     }
 
     @Test
-    void should_reject_item_below_minimum_order_value() {
+    void should_reject_confirmation_of_empty_order() {
         Order order = new Order(OrderId.generate(), new CustomerId("c1"));
-        order.addItem(aProduct("p1", 5.00), 1);  // $5 total, below $10 minimum
-
         assertThrows(DomainException.class, order::confirm);
     }
 }
 
-// ─── UNIT TEST — Use Case (mock all ports) ───────────────────────────────────
+// ─── UNIT TEST — Use Case (mock all ports, no Spring/DB/HTTP) ─────────────────
 
 class PlaceOrderServiceTest {
 
     @Mock OrderRepository orderRepository;
     @Mock ProductRepository productRepository;
     @Mock NotificationService notificationService;
-
     PlaceOrderUseCase useCase;
 
     @BeforeEach
     void setUp() {
         MockitoAnnotations.openMocks(this);
-        useCase = new PlaceOrderService(orderRepository, productRepository, notificationService);
+        useCase = new PlaceOrderUseCaseImpl(orderRepository, productRepository, notificationService);
     }
 
     @Test
     void should_place_order_successfully() {
-        // Arrange
-        Product product = new Product(new ProductId("p1"), "Widget", Money.of(25.00));
-        when(productRepository.findById(new ProductId("p1"))).thenReturn(Optional.of(product));
+        when(productRepository.findById(new ProductId("p1")))
+            .thenReturn(Optional.of(new Product(new ProductId("p1"), "Widget", Money.of(25.00))));
 
-        PlaceOrderRequest request = new PlaceOrderRequest(
-            "customer-1",
-            List.of(new OrderItemRequest("p1", 2)),
-            "123 Main St"
-        );
+        PlaceOrderResponse response = useCase.execute(
+            new PlaceOrderRequest("customer-1", List.of(new OrderItemRequest("p1", 2))));
 
-        // Act
-        PlaceOrderResponse response = useCase.execute(request);
-
-        // Assert
-        assertNotNull(response.orderId());
         assertEquals("CONFIRMED", response.status());
-        assertEquals(50.0, response.totalAmount());
-
-        verify(orderRepository, times(1)).save(any(Order.class));
-        verify(notificationService, times(1)).sendOrderConfirmation(any(), any());
+        verify(orderRepository).save(any(Order.class));
     }
-
-    @Test
-    void should_fail_when_product_not_found() {
-        when(productRepository.findById(any())).thenReturn(Optional.empty());
-
-        PlaceOrderRequest request = new PlaceOrderRequest(
-            "c1", List.of(new OrderItemRequest("nonexistent", 1)), "address"
-        );
-
-        assertThrows(EntityNotFoundException.class, () -> useCase.execute(request));
-        verify(orderRepository, never()).save(any());
-    }
-}
-
-// ─── INTEGRATION TEST — Repository Adapter with real DB ──────────────────────
-
-@DataJpaTest
-@Import(JpaOrderRepository.class)
-class JpaOrderRepositoryTest {
-
-    @Autowired JpaOrderRepository repository;
-
-    @Test
-    void should_save_and_retrieve_order() {
-        Order order = new Order(OrderId.of("o1"), new CustomerId("c1"));
-        order.addItem(new Product(new ProductId("p1"), "Widget", Money.of(25.00)), 2);
-        order.confirm();
-
-        repository.save(order);
-        Optional<Order> found = repository.findById(OrderId.of("o1"));
-
-        assertTrue(found.isPresent());
-        assertEquals(OrderStatus.CONFIRMED, found.get().getStatus());
-        assertEquals(Money.of(50.00), found.get().getTotalAmount());
-    }
-}
-
-// ─── ARCHITECTURE TEST — enforce layer rules ─────────────────────────────────
-
-// Using ArchUnit library to enforce Clean Architecture rules in CI
-@AnalyzeClasses(packages = "com.example")
-class ArchitectureTest {
-
-    @ArchTest
-    static final ArchRule domain_should_not_depend_on_application =
-        noClasses().that().resideInAPackage("..domain..")
-            .should().dependOnClassesThat()
-            .resideInAPackage("..application..");
-
-    @ArchTest
-    static final ArchRule application_should_not_depend_on_adapters =
-        noClasses().that().resideInAPackage("..application..")
-            .should().dependOnClassesThat()
-            .resideInAPackage("..adapter..");
-
-    @ArchTest
-    static final ArchRule domain_should_not_use_spring =
-        noClasses().that().resideInAPackage("..domain..")
-            .should().dependOnClassesThat()
-            .resideInAPackage("org.springframework..");
 }
 ```
+
+**Integration tests** verify the adapters: spin up a real (or test-container) database and confirm `JpaOrderRepository.save` / `findById` round-trip correctly (`@DataJpaTest`). **Architecture tests** (using the ArchUnit library in CI) can enforce the dependency rule automatically — e.g. "no class in `..domain..` may depend on `..application..` or on `org.springframework..`".
 
 ---
 
@@ -1369,39 +885,21 @@ public class Order {
 ### 4. Use Case Directly Using Framework Classes
 
 ```java
-// WRONG — use case depends on HttpServletRequest (framework!)
-public class GetUserUseCase {
-    public User execute(HttpServletRequest request) {  // Framework dependency!
-        String userId = request.getHeader("X-User-Id");
-        return userRepo.findById(userId).orElseThrow();
-    }
-}
+// WRONG — use case parameter is a framework type
+public User execute(HttpServletRequest request) { ... }   // framework leak!
 
-// CORRECT — use case uses simple input objects
-public class GetUserUseCase {
-    public UserResponse execute(GetUserRequest request) {  // Plain object
-        return userRepo.findById(new UserId(request.userId()))
-            .map(this::toResponse).orElseThrow();
-    }
-}
+// CORRECT — use case takes a plain request object
+public UserResponse execute(GetUserRequest request) { ... }
 ```
 
 ### 5. Skipping the Ports
 
 ```java
-// WRONG — use case directly imports the concrete repository
-import com.example.infrastructure.persistence.JpaOrderRepository;  // VIOLATION!
+// WRONG — use case imports the concrete repository (coupled to infrastructure)
+private JpaOrderRepository repo;
 
-public class PlaceOrderService {
-    private JpaOrderRepository repo;  // Coupled to infrastructure!
-}
-
-// CORRECT — use case uses the port (interface in application layer)
-import com.example.application.port.out.OrderRepository;  // Owns this interface
-
-public class PlaceOrderService {
-    private OrderRepository repo;  // Depends on abstraction
-}
+// CORRECT — use case depends on the port (interface it owns in the application layer)
+private OrderRepository repo;
 ```
 
 ---
