@@ -32,6 +32,14 @@
 |------|---------------|---------|
 | `Java_Spring_Framework_Study_Guide.md` | IoC/DI, bean lifecycle, scopes, MVC/REST, Data JPA, transactions, AOP | ⭐⭐⭐ HIGH |
 | `Spring_Boot_Junior_Developer_Interview_Questions.md` | Spring Boot, REST API, JPA, Testing, Annotations | ⭐⭐⭐ HIGH |
+| `Spring_Boot_Configuration_And_Profiles_Guide.md` | application.yml, @Value, @ConfigurationProperties, profiles, externalized config | ⭐⭐⭐ HIGH |
+| `Spring_Boot_DTOs_And_Mapping_Guide.md` | DTOs vs entities, manual mapping, MapStruct, ModelMapper, records, Lombok | ⭐⭐⭐ HIGH |
+| `Spring_Boot_Practical_Features_Guide.md` | Pagination/sorting (Pageable), file upload, @Scheduled, @Async, @Cacheable, email | ⭐⭐⭐ HIGH |
+| `Spring_Boot_API_Documentation_Swagger_Guide.md` | springdoc-openapi, Swagger UI, OpenAPI annotations, JWT in Swagger | ⭐⭐⭐ HIGH |
+| `Spring_Boot_Logging_Guide.md` | SLF4J/Logback, log levels, parameterized logging, Actuator basics | ⭐⭐ MEDIUM |
+| `Database_Migrations_Flyway_Liquibase_Guide.md` | Flyway/Liquibase, versioned migrations vs ddl-auto, schema history | ⭐⭐⭐ HIGH |
+| `Maven_Build_Tool_Guide.md` | pom.xml, starters, BOM, build lifecycle, spring-boot-maven-plugin, Gradle awareness | ⭐⭐ MEDIUM |
+| `Spring_Cloud_Microservices_Guide.md` | Eureka, OpenFeign, Gateway, Config Server, Resilience4j (awareness) | ⭐ LOWER |
 | `JPA_Hibernate_Interview_Questions.md` | Entities, relationships, fetch types, N+1, cascades, transactions, caching | ⭐⭐⭐ HIGH |
 | `Spring_Security_JWT_Interview_Questions.md` | Spring Security, JWT, CORS, BCrypt | ⭐⭐⭐ HIGH |
 | `Spring_Bean_Validation_Guide.md` | @Valid/@Validated, built-in constraints, custom validators, error handling | ⭐⭐⭐ HIGH |
@@ -81,6 +89,7 @@
 ### DevOps, Cloud & Tools
 | File | Topics Covered | Priority |
 |------|---------------|---------|
+| `Maven_Build_Tool_Guide.md` | pom.xml, starters, BOM, build lifecycle, fat JAR, Gradle awareness | ⭐⭐ MEDIUM |
 | `Git_Docker_DevOps_Interview_Questions.md` | Git commands, Docker, Maven, CI/CD | ⭐⭐ MEDIUM |
 | `Docker_Concepts_Study_Guide.md` | Containers vs VMs, images, networking, volumes, Compose, security | ⭐⭐ MEDIUM |
 | `DevOps_Core_Concepts.md` | DevOps culture, CI/CD, IaC, orchestration, monitoring, SRE | ⭐⭐ MEDIUM |
@@ -104,6 +113,7 @@
 | `JavaScript_Interview_Questions.md` | var/let/const, Closures, Prototypes, Promises, Event Loop, ES6+, DOM | ⭐⭐ MEDIUM |
 | `typescript.md` | Types, interfaces, generics, TypeScript fundamentals | ⭐⭐ MEDIUM |
 | `React_Interview_Questions.md` | Components, hooks, state, props, lifecycle | ⭐⭐ MEDIUM |
+| `Full_Stack_Integration_React_Spring_Boot_Guide.md` | Axios, env config, dev proxy, CORS, JWT on frontend, form validation errors | ⭐⭐⭐ HIGH |
 | `NextJS_Interview_Questions.md` | SSR/SSG, routing, data fetching, Next.js features | ⭐ LOWER |
 | `HTML_Interview_Questions.md` | Semantic HTML, forms, accessibility | ⭐ LOWER |
 | `CSS_Interview_Study_Guide.md` | Box model, flexbox, grid, responsive design | ⭐ LOWER |
@@ -112,6 +122,7 @@
 | File | Topics Covered | Priority |
 |------|---------------|---------|
 | `HR_Behavioral_Interview_Questions.md` | STAR method, HR questions, Tell me about yourself | ⭐⭐⭐ HIGH |
+| `Project_Presentation_Walkthrough_Guide.md` | "Walk me through your project" — structure, worked example, follow-ups, tradeoffs | ⭐⭐⭐ HIGH |
 
 ---
 

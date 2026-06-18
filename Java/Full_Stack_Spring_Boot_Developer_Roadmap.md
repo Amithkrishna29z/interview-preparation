@@ -31,8 +31,13 @@ Revisit [`MASTER_CHEAT_SHEET.md`](MASTER_CHEAT_SHEET.md) the week before an inte
 
 - [ ] 🎯 [Spring Framework Study Guide](Java_Spring_Framework_Study_Guide.md) — IoC, DI, the container
 - [ ] 🎯 [Spring Boot — Junior Developer Interview Questions](Spring_Boot_Junior_Developer_Interview_Questions.md)
+- [ ] 🎯 [Configuration & Profiles](Spring_Boot_Configuration_And_Profiles_Guide.md) — `application.yml`, `@ConfigurationProperties`, profiles
+- [ ] 🎯 [DTOs & Mapping](Spring_Boot_DTOs_And_Mapping_Guide.md) — DTOs, MapStruct, Lombok
+- [ ] 🎯 [Practical Features](Spring_Boot_Practical_Features_Guide.md) — pagination, file upload, `@Scheduled`, `@Async`, caching
 - [ ] 🎯 [AOP & Bean Lifecycle](Spring_AOP_And_Bean_Lifecycle.md)
 - [ ] 🎯 [Bean Validation](Spring_Bean_Validation_Guide.md)
+- [ ] ⭐ [Logging — SLF4J/Logback & Actuator](Spring_Boot_Logging_Guide.md)
+- [ ] ⭐ [Maven Build Tool](Maven_Build_Tool_Guide.md) — `pom.xml`, starters, lifecycle (+ Gradle awareness)
 - [ ] ⭐ [Embedded Tomcat in Spring Boot](Tomcat_In_Spring_Boot_Guide.md)
 
 ---
@@ -47,6 +52,7 @@ Revisit [`MASTER_CHEAT_SHEET.md`](MASTER_CHEAT_SHEET.md) the week before an inte
 - [ ] ⭐ [MongoDB](MongoDB_Interview_Questions.md) — document/NoSQL basics
 - [ ] ⭐ [Redis](Redis_Interview_Questions.md) — caching
 - [ ] ⭐ [SQL — Advanced Window Functions](SQL_Advanced_Window_Functions.md)
+- [ ] 🎯 [Database Migrations — Flyway & Liquibase](Database_Migrations_Flyway_Liquibase_Guide.md) — vs `ddl-auto`
 - [ ] 🔭 [Database Schema Design Patterns](Database_Schema_Design_Patterns.md)
 
 ---
@@ -54,6 +60,7 @@ Revisit [`MASTER_CHEAT_SHEET.md`](MASTER_CHEAT_SHEET.md) the week before an inte
 ## Phase 4 — REST APIs & Security 🎯
 
 - [ ] 🎯 [REST API & HTTP](REST_API_HTTP_Interview_Questions.md)
+- [ ] 🎯 [API Documentation — Swagger / springdoc-openapi](Spring_Boot_API_Documentation_Swagger_Guide.md)
 - [ ] 🎯 [Spring Security & JWT](Spring_Security_JWT_Interview_Questions.md)
 - [ ] 🔭 [OAuth2, OIDC & Advanced Security](Spring_OAuth2_OIDC_Security.md)
 
@@ -74,6 +81,7 @@ Revisit [`MASTER_CHEAT_SHEET.md`](MASTER_CHEAT_SHEET.md) the week before an inte
 - [ ] ⭐ [TypeScript](typescript.md)
 - [ ] 🎯 [React](React_Interview_Questions.md)
 - [ ] ⭐ [Next.js](NextJS_Interview_Questions.md)
+- [ ] 🎯 [Full-Stack Integration — React ↔ Spring Boot](Full_Stack_Integration_React_Spring_Boot_Guide.md) — Axios, CORS, JWT, form errors
 
 ---
 
@@ -98,6 +106,7 @@ Revisit [`MASTER_CHEAT_SHEET.md`](MASTER_CHEAT_SHEET.md) the week before an inte
 
 - [ ] ⭐ [Kafka](Kafka_Interview_Questions.md)
 - [ ] 🔭 [Kafka vs RabbitMQ](Kafka_RabbitMQ_Interview_Questions.md)
+- [ ] 🔭 [Spring Cloud — Microservices Building Blocks](Spring_Cloud_Microservices_Guide.md) — Eureka, Feign, Gateway, Resilience4j
 - [ ] 🔭 [Spring WebFlux — Reactive](Spring_WebFlux_Reactive.md)
 - [ ] 🔭 [System Design — Microservices](System_Design_Microservices_Interview_Questions.md)
 - [ ] 🔭 [Microservices — Saga, CQRS, Event Sourcing](Microservices_Saga_CQRS_EventSourcing.md)
@@ -127,6 +136,7 @@ Revisit [`MASTER_CHEAT_SHEET.md`](MASTER_CHEAT_SHEET.md) the week before an inte
 ## Phase 11 — Behavioral & Final Prep 🎯
 
 - [ ] 🎯 [HR & Behavioral Interview Questions](HR_Behavioral_Interview_Questions.md)
+- [ ] 🎯 [Project Presentation — "Walk me through your project"](Project_Presentation_Walkthrough_Guide.md)
 - [ ] 🎯 [Master Cheat Sheet](MASTER_CHEAT_SHEET.md) — final-week revision
 
 ---
