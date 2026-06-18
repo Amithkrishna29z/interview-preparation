@@ -21,652 +21,313 @@
 
 ## 1. Concept Explanation
 
-The Java Collections Framework is a unified architecture for storing and manipulating groups of objects. Think of it as a toolbox with different types of containers, each designed for specific use cases.
+The Java Collections Framework is a unified architecture for storing and manipulating groups of objects — a toolbox with different containers, each designed for specific use cases.
 
-**Real-world analogy:**
-- **ArrayList** = Dynamic shopping list (fast to read, can grow)
-- **LinkedList** = Train of connected cars (fast to insert/remove at ends)
-- **HashMap** = Phone directory (quick lookup by name)
-- **HashSet** = Unique ID collection (no duplicates)
+- **ArrayList** = Dynamic array (fast random access, can grow)
+- **LinkedList** = Doubly-linked chain (fast insert/remove at ends)
+- **HashMap** = Hash-based key-value store (O(1) lookup)
+- **HashSet** = HashMap keys only (no duplicates)
 
 ## 2. Why It's Used in Real-World Applications
 
 | Collection | Real-World Use Case | Why It's Chosen |
 |------------|-------------------|----------------|
 | ArrayList | User lists, product catalogs | Fast random access, memory-efficient |
-| LinkedList | Queue systems, undo-redo operations | Fast insertions/deletions at ends |
-| HashMap | User sessions, cache, configurations | O(1) lookup time |
-| HashSet | Unique identifiers, permission checks | Automatic duplicate prevention |
+| LinkedList | Queue systems, undo-redo | Fast insertions/deletions at ends |
+| HashMap | Sessions, cache, configs | O(1) lookup time |
+| HashSet | Unique IDs, permission checks | Automatic duplicate prevention |
 | TreeSet | Sorted leaderboards, range queries | Maintains sorted order |
-| PriorityQueue | Task schedulers, Dijkstra's algorithm | Always returns highest/lowest priority |
+| PriorityQueue | Task schedulers, Dijkstra's | Always returns highest/lowest priority |
 
 ## 3. Internal Working (Deep Dive)
 
 ### 3.1 ArrayList Internal Structure
 
+ArrayList is backed by an Object array that grows dynamically.
+
 ```java
-// ArrayList is backed by an array that grows dynamically
-public class ArrayList<E> {
-    private static final int DEFAULT_CAPACITY = 10;
-    private Object[] elementData;  // The backing array
-    private int size;              // Number of elements
-
-    // When you add an element:
-    public boolean add(E e) {
-        ensureCapacityInternal(size + 1);  // Check if array needs growth
-        elementData[size++] = e;
-        return true;
-    }
-
-    // Growth strategy: new_capacity = old_capacity * 1.5
-    private void grow(int minCapacity) {
-        int oldCapacity = elementData.length;
-        int newCapacity = oldCapacity + (oldCapacity >> 1);  // 1.5x growth
-        elementData = Arrays.copyOf(elementData, newCapacity);
-    }
+// Growth strategy: new_capacity = old_capacity * 1.5
+private void grow(int minCapacity) {
+    int oldCapacity = elementData.length;
+    int newCapacity = oldCapacity + (oldCapacity >> 1);  // 1.5x
+    elementData = Arrays.copyOf(elementData, newCapacity);
 }
 ```
 
-**Key Internal Details:**
-- Initial capacity: 10 (unless specified)
-- Growth factor: 1.5x (old + old/2)
-- `elementData.length` = actual array size
-- `size` = number of elements in use
-- Amortized O(1) for add (occasional O(n) during resize)
+**Key details:**
+- Initial capacity: 10 (unless specified at construction)
+- Growth factor: 1.5x
+- `add()` is O(1) amortized — occasional O(n) during resize
+- Random access (`get(index)`) is O(1); removal is O(n) due to shifting
 
 ### 3.2 LinkedList Internal Structure
 
-```java
-// LinkedList uses a doubly-linked list
-public class LinkedList<E> {
-    private static class Node<E> {
-        E item;
-        Node<E> next;
-        Node<E> prev;
+LinkedList uses a doubly-linked list — each node holds the data plus `prev` and `next` references.
 
-        Node(Node<E> prev, E element, Node<E> next) {
-            this.item = element;
-            this.next = next;
-            this.prev = prev;
-        }
-    }
-
-    transient Node<E> first;  // Head node
-    transient Node<E> last;   // Tail node
-}
-```
-
-**Visual Representation:**
 ```
 null <- [prev|data|next] <-> [prev|data|next] <-> [prev|data|next] -> null
         first                                       last
 ```
 
-**Key Internal Details:**
-- Each node has references to previous and next nodes
-- No array resizing needed
-- Memory overhead: 2 references + object overhead per element
-- O(1) for add/remove at ends
-- O(n) for access by index (must traverse)
+**Key details:**
+- No array resizing; each node is allocated individually
+- `addFirst/addLast/removeFirst/removeLast` are O(1)
+- `get(index)` requires traversal — O(n)
 
 ### 3.3 HashMap Internal Structure (CRITICAL for Interviews)
 
-```java
-public class HashMap<K,V> {
-    // Array of buckets (Node<K,V> is a linked list node)
-    transient Node<K,V>[] table;
+**Plain-English mental model:** Think of a wall of numbered mailboxes (buckets). On `put(key, value)`:
+1. HashMap calls `key.hashCode()` to get a number.
+2. It maps that number to a mailbox slot (array index).
+3. The entry goes into that slot. If two keys land in the same slot (**collision**), they chain together as a linked list inside that mailbox.
 
-    // Default initial capacity = 16
-    static final int DEFAULT_INITIAL_CAPACITY = 1 << 4;
+On `get(key)`, the same math finds the mailbox instantly (O(1)), then `equals()` identifies the right entry within it. This is why **fast lookup needs a good `hashCode()`** (spreads keys) **and a correct `equals()`** (picks the right entry).
 
-    // Load factor = 0.75 (when to resize)
-    static final float DEFAULT_LOAD_FACTOR = 0.75f;
-
-    // Threshold = capacity * load factor (resize when size > threshold)
-    int threshold;
-
-    static class Node<K,V> implements Map.Entry<K,V> {
-        final int hash;
-        final K key;
-        V value;
-        Node<K,V> next;  // Linked list for collisions
-
-        Node(int hash, K key, V value, Node<K,V> next) {
-            this.hash = hash;
-            this.key = key;
-            this.value = value;
-            this.next = next;
-        }
-    }
-}
-```
-
-**How HashMap Works — in plain English first:**
-
-> **Think of it like a wall of numbered mailboxes (buckets).** When you `put(key, value)`:
-> 1. HashMap asks the key for its `hashCode()` (a number identifying it).
-> 2. It converts that number into a mailbox slot (an array index).
-> 3. It drops the entry into that mailbox. If two different keys land in the *same* mailbox (a **collision**), they're chained together in a small list inside that mailbox.
->
-> When you `get(key)`, it does the exact same math to find the right mailbox instantly (O(1)), then walks the short chain in that mailbox to find the matching key using `equals()`. This is why **fast lookup needs a good `hashCode()`** (spreads keys across many mailboxes) **and a correct `equals()`** (picks the right entry within a mailbox).
-
-**The 3 steps in code:**
+**The 3 steps:**
 
 ```java
-// 1. Calculate hash — turn the key into a well-mixed number
-final int hash = (key == null) ? 0 : (h = key.hashCode()) ^ (h >>> 16);
-//   ^ null keys are allowed and always go to bucket 0
-//   ^ the ">>> 16" mixes the high bits into the low bits so keys spread out evenly
+// 1. Mix the hash to spread keys evenly
+int hash = (key == null) ? 0 : (h = key.hashCode()) ^ (h >>> 16);
+// null keys always land in bucket 0; >>> 16 mixes high bits into low bits
 
-// 2. Find bucket index — pick which mailbox to use
-int index = (n - 1) & hash;  // n = table.length (always a power of 2)
-//   ^ "(n - 1) & hash" is a fast way to do "hash % n" when n is a power of 2
+// 2. Find bucket index (fast modulo — works because capacity is always power of 2)
+int index = (n - 1) & hash;
 
-// 3. Handle collisions (Java 8+) — what if a mailbox already has entries?
-// - If bucket size < 8:  keep them in a simple linked list   → lookup O(n) within the bucket
-// - If bucket size >= 8: convert to a balanced tree (TREEIFY_THRESHOLD) → lookup O(log n)
-// - If tree size <= 6:   convert back to a linked list (UNTREEIFY_THRESHOLD)
+// 3. Collision handling (Java 8+)
+// bucket size < 8  → linked list  (O(n) within bucket)
+// bucket size >= 8 → TreeNode     (O(log n) within bucket)
+// tree size <= 6   → back to list
 ```
 
-**Visual HashMap Structure:**
+**Visual structure:**
 ```
-table array (index based on hash):
-[0] -> null
-[1] -> Node(key1, value1) -> Node(key2, value2)  // Collision
-[2] -> TreeNode(...)  // Tree for many collisions
-[3] -> null
-...
-[15] -> Node(key3, value3)
+table[0] -> null
+table[1] -> Node(key1,val1) -> Node(key2,val2)  // collision chain
+table[2] -> TreeNode(...)                        // treeified bucket
+table[15]-> Node(key3,val3)
 ```
 
-**Critical Hash Function:**
-```java
-static final int hash(Object key) {
-    int h;
-    // Right shift by 16 to mix higher bits into lower bits
-    // This reduces collisions when table size is power of 2
-    return (key == null) ? 0 : (h = key.hashCode()) ^ (h >>> 16);
-}
-```
+**Resize:** When `size > capacity * 0.75`, capacity doubles and all entries are rehashed.
 
-**Resize Process:**
-```java
-final Node<K,V>[] resize() {
-    Node<K,V>[] oldTab = table;
-    int oldCap = (oldTab == null) ? 0 : oldTab.length;
-    int newCap = oldCap << 1;  // Double the capacity
-    Node<K,V>[] newTab = (Node<K,V>[])new Node[newCap];
-    table = newTab;
-
-    // Rehash all entries
-    for (int j = 0; j < oldCap; ++j) {
-        Node<K,V> e;
-        if ((e = oldTab[j]) != null) {
-            oldTab[j] = null;
-            if (e.next == null) {
-                // Single node, just place in new bucket
-                newTab[e.hash & (newCap - 1)] = e;
-            }
-            // Handle linked list or tree nodes...
-        }
-    }
-    return newTab;
-}
-```
+- Default capacity: 16 (power of 2 for fast bit-wise index math)
+- Default load factor: 0.75 (balance between space and collision rate)
 
 ## 4. Code Examples
 
-### 4.1 ArrayList Usage
+### 4.1 ArrayList
 
 ```java
-import java.util.*;
+List<String> users = new ArrayList<>(100);  // pre-size when known
 
-public class ArrayListExample {
-    public static void main(String[] args) {
-        // Create with initial capacity (good practice if you know size)
-        List<String> users = new ArrayList<>(100);
+users.add("Alice");
+users.add("Bob");
 
-        // Add elements
-        users.add("Alice");
-        users.add("Bob");
-        users.add("Charlie");
-
-        // Access by index - O(1)
-        String firstUser = users.get(0);  // "Alice"
-
-        // Remove by index - O(n) (shifts all elements)
-        users.remove(0);
-
-        // Remove by value - O(n)
-        users.remove("Bob");
-
-        // Check if contains - O(n)
-        boolean hasAlice = users.contains("Alice");
-
-        // Iterate
-        for (String user : users) {
-            System.out.println(user);
-        }
-
-        // Convert to array
-        String[] userArray = users.toArray(new String[0]);
-    }
-}
+String first = users.get(0);       // O(1)
+users.remove(0);                    // O(n) — shifts elements
+boolean has = users.contains("Bob"); // O(n)
 ```
 
-### 4.2 HashMap Usage
+### 4.2 HashMap
 
 ```java
-import java.util.*;
+Map<String, Integer> scores = new HashMap<>();
 
-public class HashMapExample {
-    public static void main(String[] args) {
-        // Create with initial capacity and load factor
-        Map<String, Integer> scores = new HashMap<>(16, 0.75f);
+scores.put("Alice", 95);
+scores.put("Bob", 87);
 
-        // Put entries - O(1) average
-        scores.put("Alice", 95);
-        scores.put("Bob", 87);
-        scores.put("Charlie", 92);
+Integer score = scores.get("Alice");                    // O(1) avg
+Integer safe  = scores.getOrDefault("Unknown", 0);
 
-        // Get value - O(1) average
-        Integer aliceScore = scores.get("Alice");  // 95
-
-        // Get with default value
-        Integer unknownScore = scores.getOrDefault("Unknown", 0);
-
-        // Check if contains key - O(1)
-        boolean hasBob = scores.containsKey("Bob");
-
-        // Remove entry - O(1)
-        scores.remove("Bob");
-
-        // Iterate over entries
-        for (Map.Entry<String, Integer> entry : scores.entrySet()) {
-            System.out.println(entry.getKey() + ": " + entry.getValue());
-        }
-
-        // Iterate over keys
-        for (String key : scores.keySet()) {
-            System.out.println(key);
-        }
-
-        // Compute if absent (common pattern for counting)
-        Map<String, Integer> wordCount = new HashMap<>();
-        wordCount.computeIfAbsent("hello", k -> 0);
-        wordCount.put("hello", wordCount.get("hello") + 1);
-
-        // Better: merge (Java 8+)
-        wordCount.merge("hello", 1, Integer::sum);
-    }
+for (Map.Entry<String, Integer> e : scores.entrySet()) {
+    System.out.println(e.getKey() + ": " + e.getValue());
 }
+
+// Word-count pattern (Java 8)
+wordCount.merge("hello", 1, Integer::sum);
 ```
 
-### 4.3 HashSet Usage
+### 4.3 HashSet — duplicate detection
 
 ```java
-import java.util.*;
+List<String> names = Arrays.asList("Alice", "Bob", "Alice");
+Set<String> seen = new HashSet<>();
+Set<String> duplicates = new HashSet<>();
 
-public class HashSetExample {
-    public static void main(String[] args) {
-        // Create set
-        Set<String> uniqueNames = new HashSet<>();
-
-        // Add elements (duplicates are ignored)
-        uniqueNames.add("Alice");
-        uniqueNames.add("Bob");
-        uniqueNames.add("Alice");  // Won't be added again
-
-        // Check if contains - O(1)
-        boolean hasAlice = uniqueNames.contains("Alice");
-
-        // Remove element - O(1)
-        uniqueNames.remove("Bob");
-
-        // Size
-        int size = uniqueNames.size();
-
-        // Common pattern: find duplicates in array
-        List<String> names = Arrays.asList("Alice", "Bob", "Alice", "Charlie");
-        Set<String> seen = new HashSet<>();
-        Set<String> duplicates = new HashSet<>();
-
-        for (String name : names) {
-            if (!seen.add(name)) {  // add returns false if already present
-                duplicates.add(name);
-            }
-        }
-
-        System.out.println("Duplicates: " + duplicates);  // [Alice]
+for (String name : names) {
+    if (!seen.add(name)) {   // add() returns false if already present
+        duplicates.add(name);
     }
 }
+// duplicates → [Alice]
 ```
 
-### 4.4 Custom Object in HashMap (CRITICAL)
+### 4.4 Custom Object as HashMap Key (CRITICAL)
+
+Always override **both** `hashCode()` and `equals()` — using the same field(s).
 
 ```java
-import java.util.*;
-
-// MUST implement equals() and hashCode() correctly
 class User {
-    private String id;
+    private final String id;  // immutable — never change hash fields after insertion
     private String name;
 
-    public User(String id, String name) {
-        this.id = id;
-        this.name = name;
-    }
+    public User(String id, String name) { this.id = id; this.name = name; }
 
-    // IMPORTANT: Objects used as keys MUST implement hashCode()
     @Override
-    public int hashCode() {
-        return Objects.hash(id);  // Only use id for hashing
-    }
+    public int hashCode() { return Objects.hash(id); }
 
-    // IMPORTANT: equals() must be consistent with hashCode()
     @Override
     public boolean equals(Object obj) {
         if (this == obj) return true;
-        if (obj == null || getClass() != obj.getClass()) return false;
-        User user = (User) obj;
-        return Objects.equals(id, user.id);
-    }
-
-    @Override
-    public String toString() {
-        return "User{id='" + id + "', name='" + name + "'}";
+        if (!(obj instanceof User)) return false;
+        return Objects.equals(id, ((User) obj).id);
     }
 }
 
-public class CustomKeyExample {
-    public static void main(String[] args) {
-        Map<User, String> userRoles = new HashMap<>();
-
-        User user1 = new User("001", "Alice");
-        User user2 = new User("001", "Alice Updated");  // Same id, different name
-
-        userRoles.put(user1, "Admin");
-
-        // This will find the entry because equals() checks id
-        String role = userRoles.get(user2);  // Returns "Admin"
-
-        System.out.println("Role: " + role);  // Role: Admin
-    }
-}
+// Usage
+Map<User, String> roles = new HashMap<>();
+User u1 = new User("001", "Alice");
+User u2 = new User("001", "Alice Updated");  // same id
+roles.put(u1, "Admin");
+roles.get(u2);  // → "Admin" (equals() matches on id)
 ```
 
 ## 5. Common Mistakes & Pitfalls
 
-### Mistake 1: Using wrong collection for the use case
+### Mistake 1: Wrong collection for the use case
 
 ```java
-// ❌ BAD: Using LinkedList for random access
+// ❌ BAD: LinkedList for random access — O(n) per get
 List<Integer> numbers = new LinkedList<>();
-for (int i = 0; i < 10000; i++) {
-    numbers.get(i);  // O(n) for each access - VERY SLOW!
-}
+numbers.get(5000);  // traverses half the list
 
-// ✅ GOOD: Use ArrayList for random access
+// ✅ GOOD
 List<Integer> numbers = new ArrayList<>();
-for (int i = 0; i < 10000; i++) {
-    numbers.get(i);  // O(1) - FAST!
-}
+numbers.get(5000);  // O(1)
 ```
 
-### Mistake 2: Not initializing capacity when known
+### Mistake 2: Not pre-sizing when capacity is known
 
 ```java
-// ❌ BAD: Multiple resizes
+// ❌ triggers multiple resizes
 List<String> users = new ArrayList<>();
-for (int i = 0; i < 10000; i++) {
-    users.add("User" + i);  // Will resize multiple times
-}
 
-// ✅ GOOD: Initialize with known capacity
+// ✅ single allocation
 List<String> users = new ArrayList<>(10000);
-for (int i = 0; i < 10000; i++) {
-    users.add("User" + i);  // No resizing needed
-}
 ```
 
-### Mistake 3: Removing from list while iterating
+### Mistake 3: Removing from list during for-each
 
 ```java
-// ❌ BAD: ConcurrentModificationException
-List<String> names = new ArrayList<>(Arrays.asList("A", "B", "C"));
+// ❌ ConcurrentModificationException
 for (String name : names) {
-    if (name.equals("B")) {
-        names.remove(name);  // Exception!
-    }
+    if (name.equals("B")) names.remove(name);
 }
 
-// ✅ GOOD: Use Iterator
-List<String> names = new ArrayList<>(Arrays.asList("A", "B", "C"));
-Iterator<String> iterator = names.iterator();
-while (iterator.hasNext()) {
-    String name = iterator.next();
-    if (name.equals("B")) {
-        iterator.remove();  // Safe
-    }
+// ✅ Iterator.remove()
+Iterator<String> it = names.iterator();
+while (it.hasNext()) {
+    if (it.next().equals("B")) it.remove();
 }
 
-// ✅ ALSO GOOD: Use removeIf (Java 8+)
+// ✅ Or Java 8+
 names.removeIf(name -> name.equals("B"));
 ```
 
-### Mistake 4: Using HashMap with mutable keys
+### Mistake 4: Mutable HashMap key
 
 ```java
-// ❌ BAD: Mutable keys break HashMap
-class BadKey {
-    private int value;
+// ❌ Mutating a key after insertion loses the entry
+key.setValue(2);   // hashCode changes
+map.get(key);      // → null (wrong bucket now)
 
-    public BadKey(int value) {
-        this.value = value;
-    }
-
-    public void setValue(int value) {
-        this.value = value;
-    }
-
-    @Override
-    public int hashCode() {
-        return Objects.hash(value);
-    }
-
-    @Override
-    public boolean equals(Object obj) {
-        if (this == obj) return true;
-        if (obj == null || getClass() != obj.getClass()) return false;
-        BadKey badKey = (BadKey) obj;
-        return value == badKey.value;
-    }
-}
-
-Map<BadKey, String> map = new HashMap<>();
-BadKey key = new BadKey(1);
-map.put(key, "Value");
-
-key.setValue(2);  // MUTATING THE KEY!
-map.get(key);     // Returns null - entry is lost!
-
-// ✅ GOOD: Use immutable keys
-class GoodKey {
-    private final int value;
-
-    public GoodKey(int value) {
-        this.value = value;
-    }
-
-    // No setter - immutable
-    public int getValue() {
-        return value;
-    }
-
-    @Override
-    public int hashCode() {
-        return Objects.hash(value);
-    }
-
-    @Override
-    public boolean equals(Object obj) {
-        if (this == obj) return true;
-        if (obj == null || getClass() != obj.getClass()) return false;
-        GoodKey goodKey = (GoodKey) obj;
-        return value == goodKey.value;
-    }
-}
+// ✅ Make hash fields final
+private final int value;
 ```
 
-### Mistake 5: Not overriding both equals() and hashCode()
+### Mistake 5: Overriding only equals() without hashCode()
 
 ```java
-// ❌ BAD: Only override equals()
+// ❌ Two "equal" objects hash to different buckets → get() returns null
 class User {
-    private String id;
-    private String name;
-
-    @Override
-    public boolean equals(Object obj) {
-        if (this == obj) return true;
-        if (obj == null || getClass() != obj.getClass()) return false;
-        User user = (User) obj;
-        return Objects.equals(id, user.id);
-    }
-    // No hashCode() override!
-
-    // Problem: Two equal users have different hash codes
-    // This breaks HashMap's contract
+    @Override public boolean equals(Object obj) { ... }
+    // missing hashCode() — inherits Object's identity hash
 }
 
-Map<User, String> map = new HashMap<>();
-User user1 = new User("001", "Alice");
-User user2 = new User("001", "Alice");  // Equal to user1
-
-map.put(user1, "Admin");
-map.get(user2);  // Returns null! Different hash code = different bucket
-```
-
-### Mistake 6: Using == instead of equals() for string comparison
-
-```java
-// ❌ BAD: Using == for string comparison
-Map<String, String> map = new HashMap<>();
-map.put(new String("key"), "value");
-map.get("key");  // Might return null if string interning doesn't happen
-
-// ✅ GOOD: Always use equals()
-String key = "key";
-if (map.containsKey(key)) {  // Uses equals() internally
-    String value = map.get(key);
-}
+// ✅ Always override both, using the same fields
+@Override public int hashCode() { return Objects.hash(id); }
 ```
 
 ## 6. Interview Tips
 
-### What Interviewers Expect:
+### What Interviewers Expect
 
-1. **HashMap Internal Working** (Most Common Question)
-   - Know the array + linked list/tree structure
-   - Explain hash function and bucket calculation
-   - Understand collision handling (chaining)
-   - Know about treeification (Java 8+)
-   - Explain resize process
+**Time Complexity (memorise this table):**
 
-2. **Time Complexity Questions**
-   ```
-   ArrayList:
-   - get(index): O(1)
-   - add(): O(1) amortized (O(n) during resize)
-   - add(index, element): O(n)
-   - remove(index): O(n)
-   - remove(object): O(n)
-   - contains(object): O(n)
+```
+ArrayList:   get(i)=O(1)  add()=O(1)*  add(i,e)=O(n)  remove=O(n)  contains=O(n)
+LinkedList:  get(i)=O(n)  addFirst/Last=O(1)  removeFirst/Last=O(1)  contains=O(n)
+HashMap:     get/put/containsKey/remove=O(1) average, O(n) worst
+```
+\* amortized
 
-   LinkedList:
-   - get(index): O(n)
-   - add(): O(1) at end, O(n) at middle
-   - addFirst/addLast: O(1)
-   - remove(): O(1) at end, O(n) at middle
-   - removeFirst/removeLast: O(1)
+**When to use which:**
+- ArrayList: frequent random access, infrequent modifications
+- LinkedList: frequent add/remove at ends, queue/deque operations
+- HashMap: key-value pairs, fast lookup
+- HashSet: unique elements, membership testing
+- TreeSet: sorted elements, range queries
 
-   HashMap:
-   - get/put/containsKey/remove: O(1) average, O(n) worst case
-   ```
+**Common follow-up Q&A:**
 
-3. **When to Use Which Collection**
-   - ArrayList: Frequent random access, less frequent modifications
-   - LinkedList: Frequent add/remove at ends, queue/deque operations
-   - HashMap: Key-value pairs, fast lookup
-   - HashSet: Unique elements, membership testing
-   - TreeSet: Sorted elements, range queries
-
-4. **Common Follow-up Questions**
-   - "Why is HashMap's default capacity 16?"
-     - Answer: Power of 2 allows fast bit-wise operations for index calculation
-   - "Why is load factor 0.75?"
-     - Answer: Balance between space and time. Lower = less collision but more space. Higher = more collision but less space.
-   - "What happens if two objects have same hashCode but are not equal?"
-     - Answer: They go in same bucket (collision), handled by chaining/tree
-   - "What happens if two objects are equal but have different hashCode?"
-     - Answer: HashMap breaks - can't find entry
-   - "Why does Java 8 convert linked list to tree?"
-     - Answer: O(n) linked list degrades to O(log n) tree for better performance with many collisions
-
-5. **Code Writing Expectations**
-   - Write clean, readable code
-   - Handle null checks when appropriate
-   - Use generics correctly
-   - Follow Java naming conventions
+| Question | Punchy Answer |
+|----------|--------------|
+| Why default capacity 16? | Power of 2 enables fast `(n-1) & hash` index calculation instead of `%`. |
+| Why load factor 0.75? | Empirical sweet spot — lower wastes memory, higher causes too many collisions. |
+| Same hashCode, not equal? | Collision — entries share a bucket, chained as linked list or tree. |
+| Equal but different hashCode? | HashMap breaks — `get()` looks in the wrong bucket and returns null. |
+| Why treeify at 8? | Protects against O(n) degradation from hash flooding; O(log n) tree takes over. |
 
 ## 7. Short Revision Summary
 
 ### ArrayList
-- **Structure**: Dynamic array backing
-- **Growth**: 1.5x when full
-- **Best for**: Random access, infrequent modifications
-- **Time**: get()=O(1), add()=O(1) amortized, remove()=O(n)
+- **Structure**: Dynamic Object array, grows 1.5x
+- **Best for**: Random access, infrequent insertions/deletions
+- **Time**: `get`=O(1), `add`=O(1) amortized, `remove`=O(n)
 
 ### LinkedList
-- **Structure**: Doubly-linked list with prev/next pointers
-- **Growth**: No resize needed
-- **Best for**: Add/remove at ends, queue operations
-- **Time**: get()=O(n), addFirst/Last()=O(1), removeFirst/Last()=O(1)
+- **Structure**: Doubly-linked nodes, no array
+- **Best for**: Queue/deque, frequent add/remove at ends
+- **Time**: `get`=O(n), `addFirst/Last`=O(1), `removeFirst/Last`=O(1)
 
 ### HashMap
-- **Structure**: Array of buckets (linked list/tree)
-- **Collision**: Chaining (linked list), treeify at 8 elements
-- **Resize**: Double capacity when size > capacity * 0.75
-- **Key Contract**: MUST override equals() and hashCode()
-- **Time**: get/put/containsKey/remove=O(1) average, O(n) worst
+- **Structure**: Array of buckets → linked list → tree (at 8 collisions)
+- **Resize**: Double capacity when `size > capacity × 0.75`
+- **Key contract**: Override both `equals()` and `hashCode()`; keys should be immutable
+- **Time**: `get/put/remove`=O(1) average, O(n) worst
 
 ### HashSet
-- **Structure**: HashMap internally (keys only)
-- **Use case**: Unique elements, membership testing
-- **Time**: Same as HashMap (O(1) average)
+- **Structure**: HashMap internally (values ignored)
+- **Time**: Same as HashMap — O(1) average
 
-### Critical Points to Remember:
-1. HashMap uses `hash & (n-1)` for index calculation (n = capacity)
-2. Right shift (>>> 16) in hash function mixes higher bits
-3. Load factor 0.75 = balance between space and time
-4. Treeify threshold = 8, untreeify threshold = 6
-5. Keys must be immutable or at least hash fields shouldn't change
-6. Always override both equals() and hashCode() together
-7. Use Iterator or removeIf() when removing during iteration
-8. Initialize capacity when size is known
-9. Choose collection based on your primary operation (read vs write)
-10. Understand worst-case scenarios (e.g., all keys in same bucket)
-
-### Quick Comparison Table:
+### Quick Comparison Table
 
 | Collection | Add | Get | Remove | Contains | Best Use Case |
 |------------|-----|-----|--------|----------|---------------|
-| ArrayList | O(1)* | O(1) | O(n) | O(n) | Random access |
+| ArrayList  | O(1)* | O(1) | O(n) | O(n) | Random access |
 | LinkedList | O(1)* | O(n) | O(1)* | O(n) | Queue/deque |
-| HashMap | O(1)* | O(1)* | O(1)* | O(1)* | Key-value lookup |
-| HashSet | O(1)* | - | O(1)* | O(1)* | Unique elements |
+| HashMap    | O(1)* | O(1)* | O(1)* | O(1)* | Key-value lookup |
+| HashSet    | O(1)* | — | O(1)* | O(1)* | Unique elements |
 
 \* Amortized/average case
+
+### Critical Points to Remember
+1. `(n-1) & hash` for index — works because capacity is always a power of 2
+2. `>>> 16` in hash function mixes high bits to reduce clustering
+3. Treeify threshold = 8, untreeify = 6
+4. Always override **both** `equals()` and `hashCode()` together
+5. HashMap keys must be effectively immutable (never mutate hash fields after insertion)
+6. Use `Iterator.remove()` or `removeIf()` when deleting during iteration
+7. Pre-size collections when you know the expected element count
 
 ---
 
@@ -675,3 +336,6 @@ if (map.containsKey(key)) {  // Uses equals() internally
 - Java 8 Streams and Lambdas
 - Multithreading Basics
 - Spring Framework Fundamentals
+
+---
+*Last Updated: 2026-06-18*

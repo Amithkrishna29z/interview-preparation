@@ -27,45 +27,27 @@ Testing is asked in virtually every Java developer interview. You need to know J
 
 ```
            /\
-          /  \          E2E Tests
-         /    \         (few, slow, expensive)
-        /──────\
-       /        \       Integration Tests
-      /          \      (some)
+          /  \          E2E Tests (few, slow, expensive)
+         /────\
+        /      \        Integration Tests (some)
+       /────────\
+      /          \      Unit Tests (many, fast, cheap)
      /────────────\
-    /              \    Unit Tests
-   /                \   (many, fast, cheap)
-  /──────────────────\
 ```
 
-| Layer | What it Tests | Speed | Tools |
-|---|---|---|---|
-| **Unit** | Single class/method in isolation | Very fast | JUnit 5, Mockito |
-| **Integration** | Multiple components together (DB, Spring context) | Medium | @SpringBootTest, @DataJpaTest |
-| **E2E** | Full application via UI or HTTP | Slow | Selenium, Cypress, REST Assured |
+| Layer | What it Tests | Tools |
+|---|---|---|
+| **Unit** | Single class/method in isolation | JUnit 5, Mockito |
+| **Integration** | Multiple components together (DB, Spring context) | @SpringBootTest, @DataJpaTest |
+| **E2E** | Full application via HTTP/UI | REST Assured, Selenium |
 
 ---
 
 ## JUnit 5 Basics
 
-JUnit 5 = JUnit Platform + JUnit Jupiter + JUnit Vintage
-
-```xml
-<!-- Maven dependency -->
-<dependency>
-    <groupId>org.springframework.boot</groupId>
-    <artifactId>spring-boot-starter-test</artifactId>
-    <scope>test</scope>
-    <!-- includes JUnit 5, Mockito, AssertJ, Hamcrest -->
-</dependency>
-```
-
-### Basic Test Class
+`spring-boot-starter-test` includes JUnit 5, Mockito, AssertJ, and Hamcrest.
 
 ```java
-import org.junit.jupiter.api.*;
-import static org.junit.jupiter.api.Assertions.*;
-
 class CalculatorTest {
 
     private Calculator calculator;
@@ -77,25 +59,9 @@ class CalculatorTest {
 
     @Test
     void add_twoPositiveNumbers_returnsSum() {
-        // Arrange
-        int a = 3, b = 4;
-
-        // Act
-        int result = calculator.add(a, b);
-
-        // Assert
+        // Arrange - Act - Assert
+        int result = calculator.add(3, 4);
         assertEquals(7, result);
-    }
-
-    @Test
-    @DisplayName("Adding negative numbers returns correct result")
-    void addNegativeNumbers() {
-        assertEquals(-1, calculator.add(-3, 2));
-    }
-
-    @AfterEach
-    void tearDown() {
-        // cleanup after each test
     }
 }
 ```
@@ -121,45 +87,9 @@ class CalculatorTest {
 @Order(1)               // control execution order (with @TestMethodOrder)
 ```
 
-### Lifecycle Annotations Example
-
-```java
-@TestMethodOrder(MethodOrderer.OrderAnnotation.class)
-class UserServiceTest {
-
-    @BeforeAll
-    static void initAll() {
-        System.out.println("Runs once before all tests");
-    }
-
-    @BeforeEach
-    void init() {
-        System.out.println("Runs before each test");
-    }
-
-    @Test
-    @Order(1)
-    @DisplayName("Create user successfully")
-    void createUser() { ... }
-
-    @Test
-    @Order(2)
-    @Disabled("Skipping until feature is ready")
-    void futureFeatureTest() { ... }
-
-    @AfterEach
-    void tearDown() {
-        System.out.println("Runs after each test");
-    }
-
-    @AfterAll
-    static void tearDownAll() {
-        System.out.println("Runs once after all tests");
-    }
-}
-```
-
 ### @Nested Tests
+
+Group related scenarios to keep tests readable:
 
 ```java
 class UserServiceTest {
@@ -167,10 +97,7 @@ class UserServiceTest {
     @Nested
     @DisplayName("When user exists")
     class WhenUserExists {
-        @BeforeEach void setUp() { /* create test user */ }
-
         @Test void findById_returnsUser() { ... }
-        @Test void update_updatesUser() { ... }
         @Test void delete_deletesUser() { ... }
     }
 
@@ -178,7 +105,6 @@ class UserServiceTest {
     @DisplayName("When user does not exist")
     class WhenUserNotFound {
         @Test void findById_throwsException() { ... }
-        @Test void update_throwsException() { ... }
     }
 }
 ```
@@ -190,39 +116,24 @@ class UserServiceTest {
 ### JUnit 5 Assertions
 
 ```java
-// Basic
 assertEquals(expected, actual);
-assertEquals(expected, actual, "custom message on failure");
 assertNotEquals(unexpected, actual);
-
-// Null checks
 assertNull(value);
 assertNotNull(value);
-
-// Boolean
 assertTrue(condition);
 assertFalse(condition);
 
-// Exceptions
-assertThrows(IllegalArgumentException.class, () -> service.doWork(null));
-
-// Verify message of exception
+// Exception assertions
 Exception ex = assertThrows(UserNotFoundException.class,
     () -> userService.findById(-1L));
 assertEquals("User not found with id: -1", ex.getMessage());
 
-// All assertions run even if some fail
+// Run all assertions even if some fail
 assertAll(
     () -> assertEquals("Alice", user.getName()),
     () -> assertEquals("alice@example.com", user.getEmail()),
     () -> assertNotNull(user.getId())
 );
-
-// Arrays
-assertArrayEquals(new int[]{1, 2, 3}, result);
-
-// Same object reference
-assertSame(expected, actual);
 ```
 
 ### AssertJ (fluent, more readable)
@@ -230,23 +141,14 @@ assertSame(expected, actual);
 ```java
 import static org.assertj.core.api.Assertions.*;
 
-// Fluent chaining
-assertThat(result)
-    .isNotNull()
-    .isEqualTo(expected);
-
 assertThat(user.getName()).isEqualTo("Alice");
 assertThat(user.getAge()).isGreaterThan(18);
 assertThat(list).hasSize(3).contains("Alice", "Bob");
-assertThat(map).containsKey("name").containsEntry("name", "Alice");
 
 // Exception assertion
 assertThatThrownBy(() -> service.findById(-1L))
     .isInstanceOf(UserNotFoundException.class)
     .hasMessageContaining("not found");
-
-// String assertions
-assertThat(str).startsWith("Hello").endsWith("World").contains("lo");
 ```
 
 ---
@@ -257,31 +159,20 @@ Run the same test with multiple inputs.
 
 ```java
 @ParameterizedTest
-@ValueSource(ints = {1, 2, 3, 4, 5})
+@ValueSource(ints = {1, 2, 3})
 void isPositive(int number) {
     assertTrue(number > 0);
 }
 
 @ParameterizedTest
-@ValueSource(strings = {"", " ", null})
-void isBlank_shouldReturnTrue(@NullAndEmptySource String input) {
-    assertTrue(StringUtils.isBlank(input));
-}
-
-@ParameterizedTest
 @CsvSource({
     "Alice, 30, ACTIVE",
-    "Bob,   25, INACTIVE",
-    "Carol, 22, ACTIVE"
+    "Bob,   25, INACTIVE"
 })
 void createUser(String name, int age, String status) {
     User user = new User(name, age, Status.valueOf(status));
     assertNotNull(user);
 }
-
-@ParameterizedTest
-@CsvFileSource(resources = "/test-data/users.csv", numLinesToSkip = 1)
-void testFromCsvFile(String email, String expected) { ... }
 
 @ParameterizedTest
 @MethodSource("provideUsers")
@@ -292,8 +183,7 @@ void testWithMethodSource(String name, int age, boolean expected) {
 static Stream<Arguments> provideUsers() {
     return Stream.of(
         Arguments.of("Alice", 25, true),
-        Arguments.of("", 25, false),
-        Arguments.of("Bob", -1, false)
+        Arguments.of("", 25, false)
     );
 }
 ```
@@ -304,15 +194,6 @@ static Stream<Arguments> provideUsers() {
 
 Mockito creates **mock objects** that simulate dependencies, isolating the class under test.
 
-```xml
-<!-- included in spring-boot-starter-test -->
-<dependency>
-    <groupId>org.mockito</groupId>
-    <artifactId>mockito-core</artifactId>
-    <scope>test</scope>
-</dependency>
-```
-
 ### Setting Up Mocks
 
 ```java
@@ -320,38 +201,26 @@ Mockito creates **mock objects** that simulate dependencies, isolating the class
 class UserServiceTest {
 
     @Mock
-    UserRepository userRepository;     // creates a mock
+    UserRepository userRepository;   // fake object, returns defaults unless stubbed
 
     @Mock
     EmailService emailService;
 
     @InjectMocks
-    UserService userService;           // injects mocks into this class
-
-    // Alternatively — manual setup:
-    // UserRepository userRepository = Mockito.mock(UserRepository.class);
-    // UserService userService = new UserService(userRepository);
+    UserService userService;         // real instance, mocks injected into it
 }
 ```
 
 ### Stubbing with when().thenReturn()
 
 ```java
-// Given
 User mockUser = new User(1L, "Alice", "alice@example.com");
 when(userRepository.findById(1L)).thenReturn(Optional.of(mockUser));
 when(userRepository.findById(99L)).thenReturn(Optional.empty());
 when(userRepository.existsByEmail(anyString())).thenReturn(false);
-when(userRepository.save(any(User.class))).thenAnswer(inv -> inv.getArgument(0));
 
 // Throw exception
 when(userRepository.findById(-1L)).thenThrow(new IllegalArgumentException("Invalid id"));
-
-// Multiple calls return different values
-when(userRepository.count())
-    .thenReturn(0L)    // first call
-    .thenReturn(1L)    // second call
-    .thenReturn(2L);   // third and subsequent calls
 
 // Void method throws
 doThrow(new RuntimeException("DB error")).when(userRepository).delete(any());
@@ -360,22 +229,10 @@ doThrow(new RuntimeException("DB error")).when(userRepository).delete(any());
 ### Verifying Interactions
 
 ```java
-// Verify method was called
 verify(userRepository).findById(1L);
 verify(userRepository, times(1)).save(any(User.class));
-verify(emailService, times(1)).sendWelcomeEmail(anyString());
-
-// Verify NOT called
 verify(emailService, never()).sendWelcomeEmail(anyString());
-verify(userRepository, times(0)).delete(any());
-
-// Verify call count
-verify(userRepository, atLeast(1)).findAll();
-verify(userRepository, atMost(3)).findAll();
-
-// Verify no more interactions
 verifyNoMoreInteractions(userRepository);
-verifyNoInteractions(emailService);
 
 // Verify order
 InOrder inOrder = inOrder(userRepository, emailService);
@@ -386,19 +243,11 @@ inOrder.verify(emailService).sendWelcomeEmail(anyString());
 ### Argument Matchers
 
 ```java
-any()                        // any object (including null)
-any(User.class)              // any User instance
-anyString()                  // any String
-anyInt(), anyLong()          // any int/long
-anyList(), anyMap()          // any List/Map
+any(), any(User.class), anyString(), anyInt(), anyLong()
+eq("alice")                          // exact value
+argThat(user -> user.getAge() > 18)  // custom predicate
 
-eq("alice")                  // equals "alice"
-isNull()                     // is null
-isNotNull()                  // is not null
-
-argThat(user -> user.getAge() > 18)  // custom predicate matcher
-
-// Note: if you use a matcher for one arg, all args must be matchers
+// Rule: if you use a matcher for one arg, ALL args must use matchers
 when(service.find(eq("Alice"), anyInt())).thenReturn(result); // correct
 when(service.find("Alice", anyInt())).thenReturn(result);     // WRONG — mix
 ```
@@ -413,33 +262,16 @@ when(service.find("Alice", anyInt())).thenReturn(result);     // WRONG — mix
 @Captor
 ArgumentCaptor<User> userCaptor;
 
-// Alternative: ArgumentCaptor<User> captor = ArgumentCaptor.forClass(User.class);
-
 @Test
 void createUser_savesCorrectData() {
-    // Act
     userService.createUser("Alice", "alice@example.com");
 
-    // Capture what was actually saved
     verify(userRepository).save(userCaptor.capture());
     User savedUser = userCaptor.getValue();
 
     assertEquals("Alice", savedUser.getName());
-    assertEquals("alice@example.com", savedUser.getEmail());
     assertNotNull(savedUser.getCreatedAt());
 }
-```
-
-### Spy — partial mocking
-
-```java
-// Spy wraps a REAL object — real methods called unless stubbed
-@Spy
-UserService userService = new UserService(userRepository);
-
-// Only stub specific methods
-doReturn("mocked").when(userService).heavyOperation();
-// Other methods call real implementation
 ```
 
 ### Mock vs Spy
@@ -450,74 +282,51 @@ doReturn("mocked").when(userService).heavyOperation();
 | Unstubbed methods | Return defaults (null, 0, false) | Call real implementation |
 | Use when | Full isolation needed | Partial mocking of real class |
 
+```java
+// Spy: wraps a real object — real methods called unless stubbed
+@Spy
+UserService userService = new UserService(userRepository);
+doReturn("mocked").when(userService).heavyOperation();
+```
+
 ### BDDMockito (Given-When-Then style)
 
 ```java
 import static org.mockito.BDDMockito.*;
 
-// given
 given(userRepository.findById(1L)).willReturn(Optional.of(mockUser));
-
-// when
 User result = userService.getUser(1L);
-
-// then
 then(userRepository).should().findById(1L);
-assertThat(result).isEqualTo(mockUser);
 ```
 
 ---
 
 ## Spring Boot Test Slices
 
-Spring Boot provides test slice annotations that load **only the relevant part** of the application context — much faster than `@SpringBootTest`.
+Spring Boot provides test slice annotations that load **only the relevant part** of the context — much faster than `@SpringBootTest`.
 
 ### @WebMvcTest — Test Controllers Only
 
 ```java
-@WebMvcTest(UserController.class)    // loads only MVC layer
+@WebMvcTest(UserController.class)
 class UserControllerTest {
 
-    @Autowired
-    MockMvc mockMvc;                 // HTTP test client
-
-    @MockBean                        // mock the service (Spring-managed)
-    UserService userService;
-
-    @Autowired
-    ObjectMapper objectMapper;
+    @Autowired MockMvc mockMvc;
+    @MockBean  UserService userService;   // Spring-managed mock
+    @Autowired ObjectMapper objectMapper;
 
     @Test
     void getUser_returnsUser() throws Exception {
-        // Given
-        User user = new User(1L, "Alice", "alice@example.com");
-        given(userService.getUser(1L)).willReturn(user);
+        given(userService.getUser(1L)).willReturn(new User(1L, "Alice", "alice@example.com"));
 
-        // When & Then
-        mockMvc.perform(get("/api/users/1")
-                .contentType(MediaType.APPLICATION_JSON))
+        mockMvc.perform(get("/api/users/1").contentType(MediaType.APPLICATION_JSON))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.name").value("Alice"))
-            .andExpect(jsonPath("$.email").value("alice@example.com"));
-    }
-
-    @Test
-    void createUser_validRequest_returns201() throws Exception {
-        CreateUserRequest request = new CreateUserRequest("Alice", "alice@example.com");
-        User created = new User(1L, "Alice", "alice@example.com");
-        given(userService.createUser(any())).willReturn(created);
-
-        mockMvc.perform(post("/api/users")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(request)))
-            .andExpect(status().isCreated())
-            .andExpect(jsonPath("$.id").value(1));
+            .andExpect(jsonPath("$.name").value("Alice"));
     }
 
     @Test
     void getUser_notFound_returns404() throws Exception {
         given(userService.getUser(99L)).willThrow(new UserNotFoundException(99L));
-
         mockMvc.perform(get("/api/users/99"))
             .andExpect(status().isNotFound());
     }
@@ -530,31 +339,17 @@ class UserControllerTest {
 @DataJpaTest  // loads only JPA layer — uses in-memory H2 DB by default
 class UserRepositoryTest {
 
-    @Autowired
-    UserRepository userRepository;
-
-    @Autowired
-    TestEntityManager entityManager; // helper for test data setup
+    @Autowired UserRepository userRepository;
+    @Autowired TestEntityManager entityManager;
 
     @Test
     void findByEmail_existingEmail_returnsUser() {
-        // Arrange — insert test data
-        User user = new User("Alice", "alice@example.com");
-        entityManager.persist(user);
-        entityManager.flush();
+        entityManager.persistAndFlush(new User("Alice", "alice@example.com"));
 
-        // Act
         Optional<User> found = userRepository.findByEmail("alice@example.com");
 
-        // Assert
         assertThat(found).isPresent();
         assertThat(found.get().getName()).isEqualTo("Alice");
-    }
-
-    @Test
-    void findByEmail_nonExistentEmail_returnsEmpty() {
-        Optional<User> found = userRepository.findByEmail("nobody@example.com");
-        assertThat(found).isEmpty();
     }
 }
 ```
@@ -565,21 +360,13 @@ class UserRepositoryTest {
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 class UserIntegrationTest {
 
-    @Autowired
-    TestRestTemplate restTemplate;  // HTTP client for full integration tests
+    @Autowired TestRestTemplate restTemplate;
 
     @Test
     void createAndFetchUser() {
-        // Create
         CreateUserRequest req = new CreateUserRequest("Alice", "alice@example.com");
         ResponseEntity<User> created = restTemplate.postForEntity("/api/users", req, User.class);
         assertThat(created.getStatusCode()).isEqualTo(HttpStatus.CREATED);
-
-        // Fetch
-        Long id = created.getBody().getId();
-        ResponseEntity<User> fetched = restTemplate.getForEntity("/api/users/" + id, User.class);
-        assertThat(fetched.getStatusCode()).isEqualTo(HttpStatus.OK);
-        assertThat(fetched.getBody().getName()).isEqualTo("Alice");
     }
 }
 ```
@@ -590,26 +377,24 @@ class UserIntegrationTest {
 |---|---|---|---|
 | `@WebMvcTest` | Controller + MVC config | Test HTTP endpoints | Fast |
 | `@DataJpaTest` | JPA + H2 database | Test repositories | Fast |
-| `@DataMongoTest` | MongoDB layer | Test Mongo repos | Fast |
-| `@WebFluxTest` | WebFlux controllers | Test reactive endpoints | Fast |
 | `@SpringBootTest` | Full application | End-to-end integration | Slow |
 
 ---
 
 ## Integration Testing
 
-### Testing with Real Database (@DataJpaTest with real DB)
+### Real Database
 
 ```java
 @DataJpaTest
-@AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE) // use real DB
+@AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @ActiveProfiles("test")
 class UserRepositoryIntegrationTest {
-    // uses test profile DB config (application-test.properties)
+    // uses application-test.properties DB config
 }
 ```
 
-### Testcontainers (real DB in Docker for tests)
+### Testcontainers (real DB in Docker)
 
 ```java
 @SpringBootTest
@@ -618,9 +403,7 @@ class UserIntegrationTest {
 
     @Container
     static MySQLContainer<?> mysql = new MySQLContainer<>("mysql:8.0")
-        .withDatabaseName("testdb")
-        .withUsername("test")
-        .withPassword("test");
+        .withDatabaseName("testdb").withUsername("test").withPassword("test");
 
     @DynamicPropertySource
     static void configureProperties(DynamicPropertyRegistry registry) {
@@ -628,9 +411,6 @@ class UserIntegrationTest {
         registry.add("spring.datasource.username", mysql::getUsername);
         registry.add("spring.datasource.password", mysql::getPassword);
     }
-
-    @Test
-    void testWithRealMysql() { ... }
 }
 ```
 
@@ -643,16 +423,14 @@ Write the test FIRST, then write the code to make it pass.
 ```
 RED   → Write a failing test
 GREEN → Write minimum code to make it pass
-REFACTOR → Clean up code without breaking tests
+REFACTOR → Clean up without breaking tests
 ```
 
 ```java
-// TDD Example: implement a simple password validator
-
 // Step 1: RED — write failing test
 @Test
 void validate_shortPassword_returnsFalse() {
-    assertFalse(validator.validate("abc")); // fails: validator doesn't exist yet
+    assertFalse(validator.validate("abc"));
 }
 
 // Step 2: GREEN — minimum code to pass
@@ -660,19 +438,7 @@ public boolean validate(String password) {
     return password.length() >= 8;
 }
 
-// Step 3: add more tests
-@Test
-void validate_noUppercase_returnsFalse() {
-    assertFalse(validator.validate("password1")); // fails
-}
-
-// Step 4: extend implementation
-public boolean validate(String password) {
-    return password.length() >= 8
-        && password.matches(".*[A-Z].*");
-}
-
-// Step 5: REFACTOR — clean up without breaking tests
+// Step 3: add more tests, extend implementation, refactor
 ```
 
 ---
@@ -681,22 +447,19 @@ public boolean validate(String password) {
 
 ### Q: What is the difference between `@Mock` and `@MockBean`?
 
-- `@Mock` (Mockito): Creates a Mockito mock. Used in pure unit tests with `@ExtendWith(MockitoExtension.class)`. No Spring context.
-- `@MockBean` (Spring Boot): Creates a Mockito mock AND registers it as a Spring bean, replacing any existing bean. Used in `@WebMvcTest` / `@SpringBootTest` where you need Spring context.
+`@Mock` is plain Mockito — used in unit tests with `@ExtendWith(MockitoExtension.class)`, no Spring context involved. `@MockBean` is Spring Boot specific — it creates a Mockito mock and registers it as a Spring bean, replacing any existing bean. Use `@MockBean` inside `@WebMvcTest` or `@SpringBootTest`.
 
 ---
 
 ### Q: What is the difference between a mock and a spy?
 
-- **Mock**: A completely fake object. All methods return defaults unless stubbed.
-- **Spy**: Wraps a real object. Real methods are called unless explicitly stubbed. Use when you want to test a real class but mock one specific method.
+A mock is a completely fake object — all methods return defaults (null, 0, false) unless stubbed. A spy wraps a real object and calls real methods unless you explicitly stub them. Use a spy when you want to test a real class but mock only one specific method.
 
 ---
 
 ### Q: What is the difference between `verify()` and `when()`?
 
-- `when(...).thenReturn(...)`: **Stubbing** — defines what a mock returns when called. Set this up **before** calling the code under test.
-- `verify(...)`: **Verification** — asserts that a mock method was called with specific arguments. Written **after** calling the code under test.
+`when(...).thenReturn(...)` is **stubbing** — it defines what a mock returns when called, set up before the code under test runs. `verify(...)` is **verification** — it asserts that a mock method was actually called with specific arguments, written after the code under test runs.
 
 ---
 
@@ -704,9 +467,6 @@ public boolean validate(String password) {
 
 ```java
 // JUnit 5
-assertThrows(UserNotFoundException.class, () -> userService.findById(-1L));
-
-// With message check
 Exception ex = assertThrows(UserNotFoundException.class,
     () -> userService.findById(-1L));
 assertEquals("User not found: -1", ex.getMessage());
@@ -721,14 +481,13 @@ assertThatThrownBy(() -> userService.findById(-1L))
 
 ### Q: What is `@InjectMocks`?
 
-`@InjectMocks` tells Mockito to inject the `@Mock`-annotated fields into the class under test via constructor injection, setter injection, or field injection. The test subject becomes a real instance of the class with mocked dependencies.
+`@InjectMocks` tells Mockito to inject the `@Mock`-annotated fields into the class under test via constructor, setter, or field injection. The result is a real instance of your class with all its dependencies replaced by mocks.
 
 ---
 
 ### Q: What's the difference between `@SpringBootTest` and `@WebMvcTest`?
 
-- `@SpringBootTest`: Loads the **full** Spring application context. All beans are created. Slow but tests realistic behavior. Used for integration tests.
-- `@WebMvcTest`: Loads **only** the web layer (controllers, filters, security). Services/repositories must be mocked with `@MockBean`. Fast. Used for controller unit tests.
+`@SpringBootTest` loads the full application context — all beans, slow but realistic, used for integration tests. `@WebMvcTest` loads only the web layer (controllers, filters); services must be mocked with `@MockBean`. It's fast and focused on testing HTTP behavior.
 
 ---
 
@@ -761,7 +520,6 @@ Verification:
   verify(mock).method(arg)
   verify(mock, times(n))
   verify(mock, never())
-  verify(mock, atLeast(n))
 
 Argument Matchers:
   any(), anyString(), anyLong(), eq("value"), argThat(predicate)
@@ -781,4 +539,4 @@ TDD: RED (failing test) → GREEN (minimum code) → REFACTOR
 
 ---
 
-*Last Updated: 2026-06-04*
+*Last Updated: 2026-06-18*

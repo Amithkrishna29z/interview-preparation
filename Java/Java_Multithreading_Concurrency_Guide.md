@@ -2,7 +2,7 @@
 
 ## Overview
 
-Concurrency is one of the most heavily tested Java interview topics for mid-to-senior roles. This guide covers thread lifecycle, synchronization, the `java.util.concurrent` package, CompletableFuture, and common concurrency patterns and pitfalls.
+Concurrency is a heavily tested Java interview topic. This guide covers thread lifecycle, synchronization, the `java.util.concurrent` package, CompletableFuture, and common concurrency pitfalls — at a junior interview level.
 
 ---
 
@@ -14,9 +14,9 @@ Concurrency is one of the most heavily tested Java interview topics for mid-to-s
 4. [Synchronization](#synchronization)
 5. [volatile Keyword](#volatile-keyword)
 6. [java.util.concurrent Package](#javautilconcurrent-package)
-7. [ExecutorService & ThreadPools](#executorservice--thread-pools)
+7. [ExecutorService & Thread Pools](#executorservice--thread-pools)
 8. [CompletableFuture](#completablefuture)
-9. [Locks (ReentrantLock, ReadWriteLock)](#locks)
+9. [Locks](#locks)
 10. [Atomic Classes](#atomic-classes)
 11. [Concurrent Collections](#concurrent-collections)
 12. [Deadlock, Livelock, Starvation](#deadlock-livelock-starvation)
@@ -30,22 +30,18 @@ Concurrency is one of the most heavily tested Java interview topics for mid-to-s
 
 ```
 Process → independent program with its own memory space
-Thread  → lightweight unit of execution within a process
-          shares heap memory with other threads in the same process
-          has its own stack, registers, and program counter
+Thread  → lightweight unit within a process; shares heap, has its own stack
 ```
 
 ### Why Concurrency?
-
-- **Better CPU utilization** — while one thread waits for I/O, another executes
-- **Responsiveness** — UI thread stays responsive while background threads work
+- **CPU utilization** — while one thread waits for I/O, another runs
+- **Responsiveness** — UI thread stays live while background threads work
 - **Performance** — parallel execution on multi-core CPUs
 
 ### Concurrency vs Parallelism
-
 ```
-Concurrency  → multiple tasks make progress by interleaving (single or multi-core)
-Parallelism  → multiple tasks execute simultaneously (requires multi-core)
+Concurrency  → multiple tasks make progress by interleaving (any number of cores)
+Parallelism  → multiple tasks execute at the exact same time (requires multi-core)
 ```
 
 ---
@@ -55,28 +51,23 @@ Parallelism  → multiple tasks execute simultaneously (requires multi-core)
 ```
               start()
 NEW ─────────────────────► RUNNABLE
-                               │  ▲
-                   scheduler   │  │ scheduled
-                   preempts    ▼  │ again
-                            RUNNING
+                               │
+                           RUNNING
                                │
             ┌──────────────────┼──────────────────┐
             ▼                  ▼                  ▼
     TIMED_WAITING          WAITING            BLOCKED
     (sleep, join        (wait(), join()    (waiting for
      with timeout)       without timeout)   monitor lock)
-            │                  │                  │
             └──────────────────┴──────────────────┘
                                │
                            TERMINATED
-                         (run() returns
-                          or exception)
 ```
 
 | State | Cause |
 |---|---|
-| `NEW` | Thread created but `start()` not called |
-| `RUNNABLE` | Ready to run or running |
+| `NEW` | Thread created, `start()` not yet called |
+| `RUNNABLE` | Ready to run or currently running |
 | `BLOCKED` | Waiting to acquire a monitor lock |
 | `WAITING` | `wait()`, `join()`, `LockSupport.park()` — no timeout |
 | `TIMED_WAITING` | `sleep()`, `wait(timeout)`, `join(timeout)` |
@@ -87,7 +78,6 @@ NEW ─────────────────────► RUNNABLE
 ## Creating Threads
 
 ### Method 1: Extend Thread
-
 ```java
 class MyThread extends Thread {
     @Override
@@ -95,116 +85,74 @@ class MyThread extends Thread {
         System.out.println("Running: " + Thread.currentThread().getName());
     }
 }
-MyThread t = new MyThread();
-t.start(); // starts new thread; never call run() directly
+new MyThread().start(); // never call run() directly
 ```
 
 ### Method 2: Implement Runnable (preferred)
-
 ```java
 Runnable task = () -> System.out.println("Running: " + Thread.currentThread().getName());
-Thread t = new Thread(task);
-t.start();
+new Thread(task).start();
 ```
 
 ### Method 3: Callable + Future (returns a result)
-
 ```java
-Callable<Integer> task = () -> {
-    Thread.sleep(1000);
-    return 42;
-};
+Callable<Integer> task = () -> { Thread.sleep(1000); return 42; };
 ExecutorService executor = Executors.newSingleThreadExecutor();
 Future<Integer> future = executor.submit(task);
 Integer result = future.get(); // blocks until result is ready
 executor.shutdown();
 ```
 
-> **Interview Tip**: `Runnable` cannot return a result or throw checked exceptions. `Callable` can do both. Use `Callable` with `ExecutorService` for tasks that return results.
+> **Interview Tip**: `Runnable` cannot return a result or throw checked exceptions. `Callable` can do both — use it with `ExecutorService` when you need a return value.
 
 ---
 
 ## Synchronization
 
 ### The Problem: Race Condition
-
 ```java
-// NOT thread-safe — race condition on counter
+// NOT thread-safe — count++ is 3 steps: read → modify → write
 class Counter {
     private int count = 0;
-
-    public void increment() {
-        count++; // NOT atomic: read → modify → write (3 steps)
-    }
+    public void increment() { count++; }
 }
-// Two threads calling increment() simultaneously can lose updates
 ```
 
 ### synchronized Method
-
 ```java
 class Counter {
     private int count = 0;
-
-    // Lock is acquired on "this" object
-    public synchronized void increment() {
-        count++;
-    }
-
-    public synchronized int getCount() {
-        return count;
-    }
+    public synchronized void increment() { count++; }      // locks "this"
+    public synchronized int getCount()   { return count; }
 }
 ```
 
 ### synchronized Block (finer-grained)
-
 ```java
-class Counter {
-    private int count = 0;
-    private final Object lock = new Object(); // explicit lock object
-
-    public void increment() {
-        synchronized (lock) { // only this block is synchronized, not whole method
-            count++;
-        }
-        // code here runs without lock
-    }
+private final Object lock = new Object();
+public void increment() {
+    synchronized (lock) { count++; } // only this block is locked
 }
 ```
 
-### static synchronized
-
-```java
-// Lock is acquired on the Class object (shared across all instances)
-public static synchronized void classLevelMethod() { ... }
-```
-
-### Intrinsic Lock (Monitor Lock)
-
-Every Java object has an implicit lock (monitor). `synchronized` acquires this lock:
-- Method `synchronized` → locks `this`
-- Static `synchronized` → locks `ClassName.class`
-- Block `synchronized(obj)` → locks `obj`
+### Key Rules
+- Instance `synchronized` method → locks `this`
+- Static `synchronized` method → locks `ClassName.class`
+- `synchronized(obj)` block → locks `obj`
 
 ---
 
 ## volatile Keyword
 
-`volatile` ensures:
-1. **Visibility** — writes to a volatile variable are immediately visible to all threads (no CPU cache stale reads)
-2. **No instruction reordering** around the volatile variable
+`volatile` guarantees **visibility**: writes are immediately visible to all threads (no stale CPU-cache reads). It does NOT guarantee atomicity.
 
 ```java
 class Flag {
-    private volatile boolean running = true; // without volatile, other threads may see stale value
+    private volatile boolean running = true;
 
     public void stop() { running = false; }
-
     public void run() {
-        while (running) { // always reads fresh value from main memory
-            // do work
-        }
+        while (running) { /* always reads from main memory */ }
     }
 }
 ```
@@ -214,220 +162,138 @@ class Flag {
 | | `volatile` | `synchronized` |
 |---|---|---|
 | Visibility | Yes | Yes |
-| Atomicity | No (only single read/write) | Yes (block is atomic) |
+| Atomicity | No | Yes |
 | Mutual Exclusion | No | Yes |
 | Performance | Faster | Slower |
-| Use Case | Simple flags, status | Compound operations, critical sections |
+| Use Case | Simple flags/status | Compound operations |
 
-> **Interview Tip**: `volatile` makes a single variable thread-safe but `count++` is NOT atomic even with `volatile` (it's 3 operations). Use `AtomicInteger` or `synchronized` for compound operations.
+> **Interview Tip**: `count++` is NOT safe with `volatile` — it's still 3 operations. Use `AtomicInteger` or `synchronized` for compound operations.
 
 ---
 
 ## java.util.concurrent Package
 
-Introduced in Java 5 — provides high-level concurrency utilities that replace manual `synchronized` code.
+Introduced in Java 5 — high-level concurrency utilities replacing manual `synchronized` code.
 
 ```
 java.util.concurrent
   ├── Executors / ExecutorService  — thread pool management
   ├── CompletableFuture            — async pipeline
-  ├── Locks: ReentrantLock, ReadWriteLock, StampedLock
+  ├── Locks: ReentrantLock, ReadWriteLock
   ├── Atomic classes               — lock-free thread-safe operations
   ├── Concurrent collections       — thread-safe data structures
-  ├── Synchronizers: CountDownLatch, CyclicBarrier, Semaphore, Phaser
-  └── BlockingQueues: LinkedBlockingQueue, ArrayBlockingQueue, PriorityBlockingQueue
+  ├── Synchronizers: CountDownLatch, CyclicBarrier, Semaphore
+  └── BlockingQueues: LinkedBlockingQueue, ArrayBlockingQueue
 ```
 
 ---
 
 ## ExecutorService & Thread Pools
 
-A thread pool reuses a fixed number of threads, avoiding the overhead of creating/destroying threads for every task.
+A thread pool reuses threads, avoiding the cost of creating/destroying one per task.
 
-### Creating Thread Pools
-
+### Common Pool Types
 ```java
-// Fixed pool — N threads, tasks queue if all busy
-ExecutorService fixed = Executors.newFixedThreadPool(4);
-
-// Single thread — tasks execute sequentially
-ExecutorService single = Executors.newSingleThreadExecutor();
-
-// Cached pool — creates new threads as needed, reuses idle ones (no upper limit!)
-ExecutorService cached = Executors.newCachedThreadPool();
-
-// Scheduled — for delayed/periodic tasks
+ExecutorService fixed    = Executors.newFixedThreadPool(4);      // N threads, tasks queue when all busy
+ExecutorService single   = Executors.newSingleThreadExecutor();  // sequential execution
+ExecutorService cached   = Executors.newCachedThreadPool();      // grows unbounded — use carefully
 ScheduledExecutorService scheduled = Executors.newScheduledThreadPool(2);
-scheduled.schedule(task, 5, TimeUnit.SECONDS);        // one-time delay
-scheduled.scheduleAtFixedRate(task, 0, 1, TimeUnit.MINUTES); // periodic
+scheduled.scheduleAtFixedRate(task, 0, 1, TimeUnit.MINUTES);
 ```
 
-### ThreadPoolExecutor (low-level control)
-
+### ThreadPoolExecutor (fine-grained control)
 ```java
 ExecutorService executor = new ThreadPoolExecutor(
-    2,                          // corePoolSize: threads always alive
-    10,                         // maximumPoolSize: max threads under load
-    60L, TimeUnit.SECONDS,      // keepAliveTime: idle thread timeout
-    new ArrayBlockingQueue<>(100), // work queue: holds pending tasks
+    2,                               // corePoolSize
+    10,                              // maximumPoolSize
+    60L, TimeUnit.SECONDS,           // idle thread timeout
+    new ArrayBlockingQueue<>(100),   // task queue
     new ThreadPoolExecutor.CallerRunsPolicy() // rejection policy
 );
 ```
 
 ### Rejection Policies
-
 | Policy | Behavior |
 |---|---|
 | `AbortPolicy` (default) | Throw `RejectedExecutionException` |
-| `CallerRunsPolicy` | Caller thread runs the task itself (back-pressure) |
-| `DiscardPolicy` | Silently discard the task |
-| `DiscardOldestPolicy` | Discard oldest queued task, retry submission |
+| `CallerRunsPolicy` | Caller thread runs the task (back-pressure) |
+| `DiscardPolicy` | Silently drop the task |
+| `DiscardOldestPolicy` | Drop oldest queued task, retry |
 
-### Submitting Tasks
-
+### Submitting & Shutting Down
 ```java
-// submit Runnable (no result)
-Future<?> future = executor.submit(() -> doWork());
+Future<String> f = executor.submit(() -> computeResult());
+String result    = f.get();                        // blocks
+String result    = f.get(5, TimeUnit.SECONDS);     // blocks with timeout
 
-// submit Callable (has result)
-Future<String> future = executor.submit(() -> computeResult());
-String result = future.get();             // blocks
-String result = future.get(5, TimeUnit.SECONDS); // blocks with timeout
+List<Future<String>> all  = executor.invokeAll(callables);  // wait for all
+String first              = executor.invokeAny(callables);  // first to finish
 
-// invokeAll — submit many, wait for all
-List<Future<String>> futures = executor.invokeAll(callables);
-
-// invokeAny — submit many, return first result
-String first = executor.invokeAny(callables);
-
-// Shutdown (always do this)
-executor.shutdown();                      // no new tasks, finish existing
+executor.shutdown();                               // finish existing tasks, no new ones
 executor.awaitTermination(60, TimeUnit.SECONDS);
-executor.shutdownNow();                   // interrupt running tasks
 ```
 
 ---
 
 ## CompletableFuture
 
-Introduced in Java 8 — enables asynchronous, non-blocking, pipeline-style programming.
+Java 8+: non-blocking, pipeline-style async programming.
 
 ```java
-// Async computation
-CompletableFuture<String> future = CompletableFuture.supplyAsync(() -> {
-    Thread.sleep(1000);
-    return "Hello";
-});
-
-// Chain transformations
 CompletableFuture<String> result = CompletableFuture
-    .supplyAsync(() -> fetchUser(userId))        // async: fetch user
-    .thenApply(user -> user.getName())           // sync transform
-    .thenApply(String::toUpperCase)              // sync transform
-    .thenCompose(name -> fetchOrders(name))      // async chain (flatMap)
-    .exceptionally(ex -> "Default");             // handle error
+    .supplyAsync(() -> fetchUser(userId))     // start async
+    .thenApply(user -> user.getName())        // sync transform
+    .thenCompose(name -> fetchOrders(name))   // async chain (flatMap)
+    .exceptionally(ex -> "Default");          // error fallback
 
 // Combine two futures
-CompletableFuture<String> combined = CompletableFuture
-    .supplyAsync(() -> "Hello")
-    .thenCombine(
-        CompletableFuture.supplyAsync(() -> " World"),
-        (s1, s2) -> s1 + s2
-    ); // "Hello World"
+CompletableFuture.supplyAsync(() -> "Hello")
+    .thenCombine(CompletableFuture.supplyAsync(() -> " World"), (a, b) -> a + b);
 
-// Wait for all
-CompletableFuture.allOf(future1, future2, future3)
-    .thenRun(() -> System.out.println("All done"));
-
-// First to complete
-CompletableFuture.anyOf(future1, future2, future3)
-    .thenAccept(result -> System.out.println("First: " + result));
-
-// Manual completion
-CompletableFuture<String> manual = new CompletableFuture<>();
-manual.complete("done");        // resolve
-manual.completeExceptionally(new RuntimeException("failed")); // reject
-
-// Error handling
-future
-    .thenApply(val -> process(val))
-    .handle((result, ex) -> {   // handle both success and failure
-        if (ex != null) return "error: " + ex.getMessage();
-        return result;
-    });
+// Wait for all / first
+CompletableFuture.allOf(f1, f2, f3).thenRun(() -> System.out.println("All done"));
+CompletableFuture.anyOf(f1, f2, f3).thenAccept(r -> System.out.println("First: " + r));
 ```
 
-### thenApply vs thenCompose vs thenAccept
+### Key Methods
 
-| Method | Input | Returns | Use For |
-|---|---|---|---|
-| `thenApply(fn)` | Result | `CF<U>` | Sync transform (like map) |
-| `thenCompose(fn)` | Result | `CF<U>` | Async chain (like flatMap) |
-| `thenAccept(consumer)` | Result | `CF<Void>` | Consume result, no return |
-| `thenRun(runnable)` | Nothing | `CF<Void>` | Run after completion |
+| Method | Use For |
+|---|---|
+| `thenApply(fn)` | Sync transform (like map) |
+| `thenCompose(fn)` | Async chain (like flatMap) |
+| `thenAccept(consumer)` | Consume result, no return |
+| `thenCombine(cf, fn)` | Merge two futures |
+| `handle((r, ex) -> ...)` | Handle both success and error |
+| `exceptionally(ex -> ...)` | Error fallback only |
 
 ---
 
 ## Locks
 
-### ReentrantLock (explicit lock)
-
+### ReentrantLock
 ```java
 ReentrantLock lock = new ReentrantLock();
-
-// Basic usage
 lock.lock();
 try {
     // critical section
 } finally {
-    lock.unlock(); // ALWAYS in finally
+    lock.unlock(); // always in finally
 }
 
-// Try to acquire without blocking
-if (lock.tryLock()) {
-    try { ... } finally { lock.unlock(); }
-}
-
-// Try with timeout
+// Try without blocking
 if (lock.tryLock(5, TimeUnit.SECONDS)) {
     try { ... } finally { lock.unlock(); }
-}
-
-// Condition variables (like wait/notify but more flexible)
-Condition condition = lock.newCondition();
-lock.lock();
-try {
-    while (!conditionMet) condition.await();  // like wait()
-    // do work
-    condition.signalAll();                    // like notifyAll()
-} finally {
-    lock.unlock();
 }
 ```
 
 ### ReentrantReadWriteLock
-
-Multiple readers can read simultaneously; writers need exclusive access.
+Multiple readers simultaneously; writers need exclusive access. Best for read-heavy workloads.
 
 ```java
 ReentrantReadWriteLock rwLock = new ReentrantReadWriteLock();
-Lock readLock  = rwLock.readLock();
-Lock writeLock = rwLock.writeLock();
-
-public String read() {
-    readLock.lock();
-    try { return data; }
-    finally { readLock.unlock(); }
-}
-
-public void write(String newData) {
-    writeLock.lock();
-    try { data = newData; }
-    finally { writeLock.unlock(); }
-}
+// reads: rwLock.readLock().lock() / unlock()
+// writes: rwLock.writeLock().lock() / unlock()
 ```
-
-> **Use when**: Many reads, few writes (e.g., caching, config). `ReadWriteLock` dramatically improves throughput for read-heavy workloads.
 
 ### synchronized vs ReentrantLock
 
@@ -435,82 +301,58 @@ public void write(String newData) {
 |---|---|---|
 | Syntax | Simple | Verbose (lock/unlock) |
 | Interruptible | No | Yes (`lockInterruptibly()`) |
-| Trylock | No | Yes (`tryLock()`) |
-| Fairness | No | Yes (new ReentrantLock(true)) |
-| Condition variables | `wait()/notify()` | Multiple `Condition` objects |
-| Performance | Good | Better under high contention |
+| Trylock | No | Yes |
+| Fairness | No | Yes (`new ReentrantLock(true)`) |
+| Multiple conditions | No | Yes |
 
 ---
 
 ## Atomic Classes
 
-Lock-free thread-safe operations using CPU-level Compare-And-Swap (CAS) instructions.
+Lock-free thread-safe operations using CPU-level Compare-And-Swap (CAS).
 
 ```java
 AtomicInteger counter = new AtomicInteger(0);
-counter.incrementAndGet();   // atomic ++
-counter.decrementAndGet();   // atomic --
-counter.addAndGet(5);        // atomic += 5
-counter.getAndAdd(5);        // returns old value, then +=5
-counter.compareAndSet(10, 20); // if value==10, set to 20 (CAS)
+counter.incrementAndGet();          // atomic ++
+counter.addAndGet(5);               // atomic += 5
+counter.compareAndSet(10, 20);      // set to 20 only if current == 10
 
-AtomicLong longCounter = new AtomicLong();
-AtomicBoolean flag = new AtomicBoolean(false);
 AtomicReference<String> ref = new AtomicReference<>("initial");
 ref.compareAndSet("initial", "updated");
 
-// Java 8+ adders — better performance under high contention
+// High-contention: LongAdder beats AtomicLong
 LongAdder adder = new LongAdder();
 adder.increment();
-adder.add(5);
-adder.sum(); // approximate (exact after all writes complete)
+long total = adder.sum();
 ```
-
-> **CAS (Compare-And-Swap)**: Atomic hardware instruction — "set value to new only if current equals expected". No locks needed. Under high contention, `LongAdder` outperforms `AtomicLong`.
 
 ---
 
 ## Concurrent Collections
 
 ### ConcurrentHashMap
-
-Thread-safe HashMap. Uses **segment locking** (Java 7) / **CAS + node locking** (Java 8+) — allows concurrent reads and fine-grained writes without blocking the entire map.
+Thread-safe map using CAS + node-level locking (Java 8+). Concurrent reads + fine-grained writes.
 
 ```java
 ConcurrentHashMap<String, Integer> map = new ConcurrentHashMap<>();
-map.put("key", 1);
-map.get("key");
-map.putIfAbsent("key", 2);          // atomic check-then-put
-map.computeIfAbsent("key", k -> expensiveCompute(k)); // compute only if absent
-map.compute("key", (k, v) -> v == null ? 1 : v + 1); // atomic update
-
-// forEach with parallelism threshold
-map.forEach(2, (k, v) -> process(k, v)); // parallel if size > 2
+map.putIfAbsent("key", 1);                         // atomic check-then-put
+map.compute("key", (k, v) -> v == null ? 1 : v+1); // atomic update
+map.computeIfAbsent("key", k -> expensiveCompute(k));
 ```
 
-> **vs synchronized HashMap**: `Collections.synchronizedMap()` locks the entire map per operation. `ConcurrentHashMap` allows concurrent reads + fine-grained writes.
-
-### BlockingQueue
-
+### BlockingQueue (producer-consumer)
 ```java
 BlockingQueue<String> queue = new LinkedBlockingQueue<>(100);
-
-// Producer thread
-queue.put("task");    // blocks if queue is full
-queue.offer("task", 5, TimeUnit.SECONDS); // waits up to 5s
-
-// Consumer thread
-String task = queue.take();            // blocks if queue is empty
-String task = queue.poll(5, TimeUnit.SECONDS); // waits up to 5s
+queue.put("task");   // blocks if full
+String t = queue.take(); // blocks if empty
 ```
 
-### Other Concurrent Collections
+### Other Collections
 
 | Class | Description |
 |---|---|
-| `CopyOnWriteArrayList` | Thread-safe list; writes copy entire array (read-heavy) |
-| `ConcurrentLinkedQueue` | Non-blocking FIFO queue using CAS |
-| `LinkedBlockingDeque` | Double-ended blocking queue |
+| `CopyOnWriteArrayList` | Thread-safe list; writes copy the array (read-heavy) |
+| `ConcurrentLinkedQueue` | Non-blocking FIFO using CAS |
 | `PriorityBlockingQueue` | Blocking queue with priority ordering |
 | `ConcurrentSkipListMap` | Sorted concurrent map (like TreeMap) |
 
@@ -519,65 +361,41 @@ String task = queue.poll(5, TimeUnit.SECONDS); // waits up to 5s
 ## Deadlock, Livelock, Starvation
 
 ### Deadlock
-
-Thread A holds Lock 1, waits for Lock 2.
-Thread B holds Lock 2, waits for Lock 1.
-Neither can proceed.
+Thread A holds Lock 1, waits for Lock 2. Thread B holds Lock 2, waits for Lock 1. Neither can proceed.
 
 ```java
-// Classic deadlock
-Object lock1 = new Object(), lock2 = new Object();
-
-Thread t1 = new Thread(() -> {
-    synchronized (lock1) {
-        Thread.sleep(50);
-        synchronized (lock2) { /* work */ }
-    }
-});
-
-Thread t2 = new Thread(() -> {
-    synchronized (lock2) {
-        synchronized (lock1) { /* work */ } // reversed order!
-    }
-});
+// Deadlock: t1 locks lock1 then lock2; t2 locks lock2 then lock1 (reversed order)
 ```
 
 **Prevention**:
 1. **Lock ordering** — always acquire locks in the same global order
-2. **tryLock with timeout** — `lock.tryLock(timeout)` avoids blocking forever
+2. **tryLock with timeout** — avoids blocking forever
 3. **Avoid nested locks** where possible
 
 ### Livelock
-
-Threads are active but keep responding to each other's state, making no progress (like two people in a hallway constantly stepping aside in the same direction).
+Threads are active but keep reacting to each other, making no progress (like two people in a corridor stepping the same direction).
 
 ### Starvation
-
-A thread is perpetually denied CPU time because higher-priority threads keep running. Fix with `ReentrantLock(true)` (fair lock — FIFO ordering).
+A thread is perpetually denied CPU time by higher-priority threads. Fix: `new ReentrantLock(true)` (fair/FIFO lock).
 
 ---
 
 ## Java Memory Model
 
-### Happens-Before Relationship
+The JMM defines **happens-before**: when writes by one thread are guaranteed visible to another.
 
-JMM defines when writes by one thread are **guaranteed to be visible** to another:
-1. Thread start: writes before `t.start()` are visible in new thread
-2. Thread join: writes in thread t are visible after `t.join()` returns
-3. Synchronized: unlock of monitor → happens-before → next lock of same monitor
-4. Volatile: write to volatile → happens-before → subsequent read of same variable
-
-### Memory Visibility Problem
+| Guarantee | Rule |
+|---|---|
+| Thread start | Writes before `t.start()` are visible in the new thread |
+| Thread join | Writes in thread t visible after `t.join()` returns |
+| Synchronized | Unlock → happens-before → next lock of the same monitor |
+| Volatile | Write → happens-before → subsequent read of the same variable |
 
 ```java
-// Without volatile or sync — y change may NEVER be visible to Thread 2
-boolean flag = false;       // not volatile!
-
-// Thread 1
-flag = true;
-
-// Thread 2 — may loop forever because it caches flag in CPU register
-while (!flag) { /* spin */ }
+// Without volatile — Thread 2 may loop forever (stale cached value)
+boolean flag = false;
+// Thread 1: flag = true;
+// Thread 2: while (!flag) { }  // may never see the update
 ```
 
 ---
@@ -589,79 +407,51 @@ while (!flag) { /* spin */ }
 | | `wait()` | `sleep()` |
 |---|---|---|
 | Class | `Object` | `Thread` |
-| Releases lock | Yes — releases monitor | No — holds lock |
+| Releases lock | Yes | No |
 | Wake up | `notify()` / `notifyAll()` | After timeout |
-| Must be in `synchronized` | Yes | No |
-| Use case | Thread coordination | Pause execution |
+| Requires `synchronized` | Yes | No |
 
 ---
 
 ### Q: What is the difference between `notify()` and `notifyAll()`?
 
-- `notify()`: wakes ONE waiting thread (undefined which one)
-- `notifyAll()`: wakes ALL waiting threads (they compete for the lock)
-
-Use `notifyAll()` unless you are sure only one waiting thread can proceed — `notify()` can cause missed signals.
+`notify()` wakes one arbitrary waiting thread; `notifyAll()` wakes all of them (they compete for the lock). Prefer `notifyAll()` unless you are certain only one waiting thread can proceed — `notify()` can cause missed signals.
 
 ---
 
 ### Q: What is a daemon thread?
 
-A daemon thread runs in the background and is automatically killed when all non-daemon (user) threads finish. Used for background services (GC, logging, heartbeats).
-
-```java
-Thread t = new Thread(() -> { while(true) { /* background work */ } });
-t.setDaemon(true); // must be set before start()
-t.start();
-```
+A background thread that is automatically killed when all non-daemon threads finish. Set before `start()`: `t.setDaemon(true)`. Used for GC, logging, heartbeats.
 
 ---
 
 ### Q: How does `ConcurrentHashMap` differ from `HashMap` and `Hashtable`?
 
-- `HashMap`: Not thread-safe; concurrent access causes data corruption
-- `Hashtable`: Thread-safe but uses a single lock — very poor performance under concurrency
-- `ConcurrentHashMap`: Thread-safe with fine-grained locking; concurrent reads, segmented writes — much better performance
+`HashMap` is not thread-safe. `Hashtable` is thread-safe but uses a single lock on every operation — poor concurrency. `ConcurrentHashMap` uses CAS + node-level locking, allowing concurrent reads and fine-grained writes with much better throughput.
 
 ---
 
 ### Q: What is the difference between `Runnable` and `Callable`?
 
-| | `Runnable` | `Callable<V>` |
-|---|---|---|
-| Return value | void | V (generic) |
-| Checked exceptions | Cannot throw | Can throw |
-| Use with | Thread, ExecutorService | ExecutorService only |
-| Introduced | Java 1.0 | Java 5 |
+`Runnable` returns void and cannot throw checked exceptions. `Callable<V>` returns a value and can throw checked exceptions. Use `Callable` with `ExecutorService` when you need a result or need to propagate exceptions.
 
 ---
 
 ### Q: Explain CompletableFuture vs Future.
 
-| | `Future` | `CompletableFuture` |
-|---|---|---|
-| Blocking | `get()` always blocks | Non-blocking pipeline with `thenApply` |
-| Chaining | Not supported | Yes — `thenApply`, `thenCompose` |
-| Manual completion | No | Yes — `complete()`, `completeExceptionally()` |
-| Combining | Not supported | `allOf`, `anyOf`, `thenCombine` |
-| Error handling | `try/catch` on `get()` | `exceptionally`, `handle` |
+`Future.get()` always blocks. `CompletableFuture` supports non-blocking pipelines (`thenApply`, `thenCompose`), combining futures (`allOf`, `thenCombine`), manual completion, and built-in error handling (`exceptionally`, `handle`).
 
 ---
 
 ### Q: What is a ThreadLocal?
 
-Provides a **per-thread variable** — each thread has its own independent copy of the value.
+Gives each thread its own independent copy of a variable — threads never share it. Common use: `SimpleDateFormat` (not thread-safe), per-request context in web apps. Always call `remove()` when done in thread-pool threads to prevent memory leaks.
 
 ```java
-ThreadLocal<SimpleDateFormat> dateFormat = ThreadLocal.withInitial(
-    () -> new SimpleDateFormat("yyyy-MM-dd")
-);
-
-// Each thread gets its own SimpleDateFormat (not thread-safe otherwise)
-String formatted = dateFormat.get().format(new Date());
-
-// Always remove in thread pool threads to prevent memory leaks
-dateFormat.remove();
+ThreadLocal<SimpleDateFormat> fmt = ThreadLocal.withInitial(
+    () -> new SimpleDateFormat("yyyy-MM-dd"));
+fmt.get().format(new Date());
+fmt.remove(); // prevent leak in pooled threads
 ```
 
 ---
@@ -671,30 +461,30 @@ dateFormat.remove();
 ```
 Thread states: NEW → RUNNABLE ↔ BLOCKED/WAITING/TIMED_WAITING → TERMINATED
 
-synchronized  → intrinsic lock on object; visibility + atomicity
-volatile      → visibility only; no atomicity for compound ops
-AtomicInteger → lock-free CAS; atomic compound ops (incrementAndGet)
+synchronized  → intrinsic lock; visibility + atomicity
+volatile      → visibility only; NOT atomic for compound ops
+AtomicInteger → lock-free CAS; atomic compound ops
 
 Thread creation:
   extends Thread         → simple, inflexible
   implements Runnable    → preferred (no return)
-  implements Callable    → use with ExecutorService (has return + exception)
+  implements Callable    → use with ExecutorService (return + exceptions)
 
 Thread Pools:
-  newFixedThreadPool(n)  → fixed n threads, bounded
+  newFixedThreadPool(n)  → fixed n threads
   newCachedThreadPool()  → unbounded (use carefully)
   new ThreadPoolExecutor(core, max, ttl, queue, rejectPolicy)
 
 CompletableFuture:
-  supplyAsync  → start async
-  thenApply    → transform (sync)
-  thenCompose  → chain async (flatMap)
-  thenCombine  → combine two futures
-  allOf / anyOf → wait for all / first
+  supplyAsync   → start async
+  thenApply     → sync transform
+  thenCompose   → async chain (flatMap)
+  thenCombine   → merge two futures
+  allOf / anyOf → wait for all / first to finish
 
 Locks:
-  ReentrantLock          → explicit lock, tryLock, interruptible
-  ReentrantReadWriteLock → multiple readers OR one writer
+  ReentrantLock          → tryLock, interruptible, fair mode
+  ReentrantReadWriteLock → many readers OR one writer
   synchronized           → simpler, good for most cases
 
 Deadlock prevention:
@@ -703,15 +493,15 @@ Deadlock prevention:
   3. Avoid nested locks
 
 Collections:
-  ConcurrentHashMap → thread-safe map, fine-grained locking
+  ConcurrentHashMap    → thread-safe map, fine-grained locking
   CopyOnWriteArrayList → read-heavy lists
-  BlockingQueue → producer-consumer (put/take block)
+  BlockingQueue        → producer-consumer (put/take block)
 
 wait() vs sleep():
-  wait() → releases lock, needs notify() to wake
+  wait()  → releases lock, needs notify() to wake
   sleep() → holds lock, wakes after timeout
 ```
 
 ---
 
-*Last Updated: 2026-06-04*
+*Last Updated: 2026-06-18*
