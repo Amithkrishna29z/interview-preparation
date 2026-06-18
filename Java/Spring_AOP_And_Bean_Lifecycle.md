@@ -1,6 +1,6 @@
 # Spring AOP and Bean Lifecycle — Complete Interview Guide
 
-> **New to this topic? Start here.** Two things get asked in almost every interview, so master these first: (1) the **order of the bean lifecycle** — when does Spring build a bean, inject its dependencies, run init methods, and create proxies? and (2) **how proxies make `@Transactional` (and `@Async`, `@Cacheable`) actually work** — because once you get the proxy idea, the famous "self-invocation" and "private method" gotchas suddenly make sense. Everything else in this guide builds on these two ideas. Don't try to memorize all 12 steps on day one; understand the story of *instantiate → inject → initialize → wrap in proxy → use → destroy*.
+> **Start here.** Two things get asked in almost every interview: (1) the **order of the bean lifecycle** — when does Spring build a bean, inject dependencies, run init methods, and create proxies? and (2) **how proxies make `@Transactional` (and `@Async`, `@Cacheable`) work** — because once you understand the proxy idea, the "self-invocation" and "private method" gotchas make sense. Everything builds on: *instantiate → inject → initialize → wrap in proxy → use → destroy*.
 
 ---
 
@@ -8,10 +8,8 @@
 
 ### The 12-Step Bean Lifecycle
 
-> **Think of it like:** a car on an assembly line. The frame gets built (instantiation), parts get bolted on (dependency injection), inspectors tune and test it (init methods like `@PostConstruct`), and right before it rolls off the line a protective wrapper is sometimes added (the AOP proxy). Only then is it ready to drive (served from the context). When the factory shuts down, the car is properly decommissioned (destruction). The order never changes — that predictability is exactly what interviewers test.
-
 ```
-1.  Instantiation            → Constructor called (no-arg or @Autowired constructor)
+1.  Instantiation            → Constructor called
 2.  Populate Properties      → @Autowired fields and setter injections resolved
 3.  BeanNameAware            → setBeanName(String name) called if implemented
 4.  BeanFactoryAware         → setBeanFactory(BeanFactory) called if implemented
@@ -21,7 +19,7 @@
 8.  InitializingBean         → afterPropertiesSet() runs if implemented
 9.  @Bean(initMethod)        → custom init-method runs if specified
 10. BeanPostProcessor        → postProcessAfterInitialization() called (PROXIES CREATED HERE)
-11. Bean Ready               → bean is placed in ApplicationContext and served
+11. Bean Ready               → bean placed in ApplicationContext and served
 --- context closes ---
 12. @PreDestroy              → cleanup method runs
     DisposableBean.destroy() → runs if implemented
@@ -65,8 +63,8 @@ public class OrderService {
 ```
 
 **Why constructor injection is preferred:**
-- Dependencies are explicitly required (fail fast if missing)
 - Fields can be `final` (immutable)
+- NPEs fail at startup, not runtime
 - Easy to test without Spring (just pass mocks)
 - Circular dependencies fail at startup (caught early)
 
@@ -76,43 +74,24 @@ public class OrderService {
 
 ```java
 @Component
-public class MyBean implements BeanNameAware, ApplicationContextAware,
-                                BeanFactoryAware, EnvironmentAware {
+public class MyBean implements BeanNameAware, ApplicationContextAware {
 
     private String beanName;
     private ApplicationContext context;
 
     @Override
-    public void setBeanName(String name) {
-        this.beanName = name;  // called after instantiation
-    }
+    public void setBeanName(String name) { this.beanName = name; }
 
     @Override
-    public void setApplicationContext(ApplicationContext ctx) {
-        this.context = ctx;  // gives access to the full context
-    }
-
-    @Override
-    public void setBeanFactory(BeanFactory factory) {
-        // access to BeanFactory (lower-level than ApplicationContext)
-    }
-
-    @Override
-    public void setEnvironment(Environment environment) {
-        // access to properties/profiles
-    }
+    public void setApplicationContext(ApplicationContext ctx) { this.context = ctx; }
 }
 ```
-
-**Other Aware interfaces:** `ResourceLoaderAware`, `MessageSourceAware`, `ApplicationEventPublisherAware`
 
 **Rule:** Avoid Aware interfaces in business logic — they couple your code to Spring. Use them only in infrastructure/framework code.
 
 ---
 
 ### BeanPostProcessor — The Most Important Lifecycle Extension Point
-
-> **Think of it like:** a quality inspector standing next to the assembly line. Every single bean (car) that passes gets a look from this inspector. The inspector can wave it through unchanged, or pull it aside and put it in a protective shell (a proxy) before sending it on. This "swap the real object for a wrapped version" power is exactly how Spring sneaks in features like `@Transactional` — and it all happens in `postProcessAfterInitialization`.
 
 ```java
 @Component
@@ -121,17 +100,13 @@ public class CustomBeanPostProcessor implements BeanPostProcessor {
     @Override
     public Object postProcessBeforeInitialization(Object bean, String beanName) {
         // Called BEFORE @PostConstruct and InitializingBean
-        // Return same bean or a wrapper
-        System.out.println("Before init: " + beanName);
         return bean;
     }
 
     @Override
     public Object postProcessAfterInitialization(Object bean, String beanName) {
-        // Called AFTER @PostConstruct and InitializingBean
-        // THIS IS WHERE SPRING CREATES AOP PROXIES
-        System.out.println("After init: " + beanName);
-        return bean;  // can return a proxy instead of the original bean!
+        // Called AFTER @PostConstruct — THIS IS WHERE AOP PROXIES ARE CREATED
+        return bean;  // can return a proxy instead of the original bean
     }
 }
 ```
@@ -140,15 +115,14 @@ public class CustomBeanPostProcessor implements BeanPostProcessor {
 - `AnnotationAwareAspectJAutoProxyCreator` — creates AOP proxies for `@Transactional`, `@Async`, `@Cacheable`
 - `AutowiredAnnotationBeanPostProcessor` — processes `@Autowired`
 - `CommonAnnotationBeanPostProcessor` — processes `@PostConstruct`, `@PreDestroy`, `@Resource`
-- `PersistenceAnnotationBeanPostProcessor` — processes `@PersistenceContext`
 
-When you have multiple BeanPostProcessors, order them with `@Order(n)` (lower number = higher priority = runs first).
+Use `@Order(n)` (lower = higher priority) when you have multiple BeanPostProcessors.
 
 ---
 
 ### BeanFactoryPostProcessor
 
-> **Awareness (advanced):** A `BeanFactoryPostProcessor` runs **before** any beans are instantiated and modifies bean *definitions* (metadata), not instances — think of editing the blueprints before any car is built. You rarely write one by hand at junior level, but Spring uses them internally: `PropertySourcesPlaceholderConfigurer` resolves `${property.name}` placeholders, and `ConfigurationClassPostProcessor` processes `@Configuration`, `@ComponentScan`, `@Bean`, and `@Import`. Just know it edits definitions, while `BeanPostProcessor` edits instances:
+Runs **before** any beans are instantiated and modifies bean *definitions* (metadata), not instances. You rarely write one by hand, but Spring uses them internally.
 
 | | BeanPostProcessor | BeanFactoryPostProcessor |
 |---|---|---|
@@ -160,16 +134,12 @@ When you have multiple BeanPostProcessors, order them with `@Order(n)` (lower nu
 
 ### Initialization Methods (Execution Order)
 
-> **Think of it like:** a "pre-flight checklist" the bean runs once everything is wired up but before anyone uses it — turn on the engine, warm up the cache, open the DB connection. The only catch is the *order*: `@PostConstruct` first, then `afterPropertiesSet()`, then your custom `initMethod`.
-
 ```java
 @Component
 public class DataSourceBean implements InitializingBean {
 
     @PostConstruct          // Step 1: runs first
-    public void postConstruct() {
-        System.out.println("@PostConstruct");
-    }
+    public void postConstruct() { System.out.println("@PostConstruct"); }
 
     @Override
     public void afterPropertiesSet() {  // Step 2: runs second
@@ -177,19 +147,13 @@ public class DataSourceBean implements InitializingBean {
     }
     // Step 3: @Bean(initMethod="customInit") runs last
 }
-
-// In @Configuration
-@Bean(initMethod = "customInit", destroyMethod = "customDestroy")
-public DataSourceBean dataSourceBean() { return new DataSourceBean(); }
 ```
 
-**Use cases for init methods:** establishing DB connections, warming caches, registering listeners, validating configuration.
+**Use cases for init methods:** establishing DB connections, warming caches, validating configuration.
 
 ---
 
 ### Bean Scopes
-
-> **Think of it like:** `singleton` is the **one shared office printer** — everybody uses the same one, and Spring creates exactly one for the whole application. `prototype` is a **fresh notepad handed out each time** — every time you ask, you get a brand-new one that nobody else shares. (`request` and `session` are like a coffee cup that lasts for one customer's visit.)
 
 ```java
 @Component
@@ -203,10 +167,6 @@ public class PrototypeBean { }
 @Component
 @Scope(value = "request", proxyMode = ScopedProxyMode.TARGET_CLASS)  // web
 public class RequestScopedBean { }
-
-@Component
-@Scope(value = "session", proxyMode = ScopedProxyMode.TARGET_CLASS)
-public class SessionScopedBean { }
 ```
 
 **Critical: Injecting prototype into singleton**
@@ -219,67 +179,37 @@ public class OrderService {
     private PrototypeBean prototypeBean;  // same instance every time!
 }
 
-// Solution 1: @Lookup method injection
-@Service
-public abstract class OrderService {
-    @Lookup
-    public abstract PrototypeBean getPrototypeBean();  // Spring overrides this
-
-    public void process() {
-        PrototypeBean fresh = getPrototypeBean();  // new instance each time
-    }
-}
-
-// Solution 2: ObjectProvider (recommended in Spring 4.3+)
+// Solution 1: ObjectProvider (recommended)
 @Service
 public class OrderService {
     @Autowired
     private ObjectProvider<PrototypeBean> prototypeBeanProvider;
 
     public void process() {
-        PrototypeBean fresh = prototypeBeanProvider.getObject();
+        PrototypeBean fresh = prototypeBeanProvider.getObject();  // new instance each time
     }
 }
 
-// Solution 3: ApplicationContext.getBean()
+// Solution 2: @Lookup method injection
 @Service
-public class OrderService implements ApplicationContextAware {
-    private ApplicationContext ctx;
-
-    public void process() {
-        PrototypeBean fresh = ctx.getBean(PrototypeBean.class);
-    }
+public abstract class OrderService {
+    @Lookup
+    public abstract PrototypeBean getPrototypeBean();  // Spring overrides this
 }
 ```
 
-**Important:** Spring does NOT call `@PreDestroy` or destroy methods for prototype-scoped beans. The caller is responsible for cleanup.
+**Important:** Spring does NOT call `@PreDestroy` or destroy methods for prototype-scoped beans.
 
 ---
 
 ### Circular Dependencies
 
-> **Think of it like:** two coworkers stuck in a deadlock — "I'll start once *you* start." / "No, I'll start once *you* start." Neither can begin, so nothing moves. With constructor injection Spring can't break the standoff and fails loudly at startup; with setter/field injection it can hand each one a half-finished version of the other to get things rolling.
-
 ```java
 // Constructor injection circular dependency → FAILS AT STARTUP
-@Service
-public class ServiceA {
-    public ServiceA(ServiceB b) { }  // A needs B
-}
-@Service
-public class ServiceB {
-    public ServiceB(ServiceA a) { }  // B needs A → BeanCurrentlyInCreationException
-}
+@Service public class ServiceA { public ServiceA(ServiceB b) { } }
+@Service public class ServiceB { public ServiceB(ServiceA a) { } }  // BeanCurrentlyInCreationException
 
-// Setter injection circular dependency → Spring resolves with 3-level cache
-@Service
-public class ServiceA {
-    @Autowired private ServiceB b;  // Spring creates A first (partially), injects into B
-}
-@Service
-public class ServiceB {
-    @Autowired private ServiceA a;  // Spring injects partially-constructed A
-}
+// Setter/field injection → Spring resolves with 3-level cache (injects partially-constructed bean)
 
 // Solution 1: @Lazy on one side
 @Service
@@ -288,8 +218,7 @@ public class ServiceA {
     public ServiceA(@Lazy ServiceB b) { }  // B is a lazy proxy, real B created on first use
 }
 
-// Solution 2: Refactor — extract shared logic into a third service
-// ServiceC holds shared logic; A and B both depend on C (no cycle)
+// Solution 2: Refactor — extract shared logic into a third service (preferred)
 ```
 
 ---
@@ -301,9 +230,7 @@ public class ServiceA {
 public class ResourceBean implements DisposableBean {
 
     @PreDestroy             // Step 1
-    public void preDestroy() {
-        System.out.println("@PreDestroy — releasing resources");
-    }
+    public void preDestroy() { System.out.println("@PreDestroy"); }
 
     @Override
     public void destroy() { // Step 2
@@ -313,51 +240,39 @@ public class ResourceBean implements DisposableBean {
 }
 ```
 
-Destruction is triggered when:
-- `context.close()` is called
-- JVM shutdown hook fires (SpringApplication registers this automatically)
-- Bean is evicted (prototype beans: never)
+Triggered by: `context.close()`, JVM shutdown hook (registered by SpringApplication), or eviction (prototype beans: never).
 
 ---
 
-### @Configuration vs @Component (Lite Mode vs Full Mode)
-
-> **Think of it like:** `@Configuration` is a head chef who keeps a tray of already-made dishes — ask for "the soup" twice and you get the *same* bowl back. A plain `@Component` with `@Bean` methods is a cook who makes a brand-new dish every time you call the recipe, so two calls give you two different bowls. That's why inter-`@Bean` calls behave differently between the two.
+### @Configuration vs @Component (Full Mode vs Lite Mode)
 
 ```java
 // Full Mode: @Configuration class is CGLIB-proxied
-// Inter-bean method calls go through the proxy → singleton guarantee
+// Inter-bean calls go through proxy → singleton guarantee
 @Configuration
 public class AppConfig {
     @Bean
     public ServiceA serviceA() {
-        return new ServiceA(serviceB());  // calls serviceB() through proxy
-        // same ServiceB instance returned (singleton)
+        return new ServiceA(serviceB());  // same ServiceB instance returned
     }
-
     @Bean
-    public ServiceB serviceB() {
-        return new ServiceB();
-    }
+    public ServiceB serviceB() { return new ServiceB(); }
 }
 
 // Lite Mode: @Component class is NOT proxied
+// Inter-bean calls are regular Java calls → creates NEW instance each time
 @Component
 public class AppConfig {
     @Bean
     public ServiceA serviceA() {
-        return new ServiceA(serviceB());  // direct Java method call!
-        // Creates a NEW ServiceB instance — different from the Spring-managed one!
+        return new ServiceA(serviceB());  // different ServiceB from Spring-managed one!
     }
-
     @Bean
-    public ServiceB serviceB() {
-        return new ServiceB();
-    }
+    public ServiceB serviceB() { return new ServiceB(); }
 }
 ```
 
-**Interview Tip:** This is why `@Configuration` is needed when `@Bean` methods call other `@Bean` methods. `@Component` works fine when `@Bean` methods don't call each other.
+**Interview Tip:** Use `@Configuration` when `@Bean` methods call each other. `@Component` is fine when they don't.
 
 ---
 
@@ -366,14 +281,7 @@ public class AppConfig {
 ```java
 // Built-in events
 @EventListener
-public void onContextRefreshed(ContextRefreshedEvent event) {
-    // Fires when context is fully initialized (including restarts)
-}
-
-@EventListener
-public void onContextClosed(ContextClosedEvent event) {
-    // Fires when context is being closed
-}
+public void onContextRefreshed(ContextRefreshedEvent event) { }
 
 // Custom events
 public class UserCreatedEvent {
@@ -402,27 +310,24 @@ public class UserCreatedHandler {
 }
 ```
 
-Two useful variants (awareness): add `@Async` to run a listener on another thread, or use `@TransactionalEventListener(phase = AFTER_COMMIT)` to fire only after the surrounding transaction commits (not on rollback).
+Add `@Async` to run a listener on another thread, or use `@TransactionalEventListener(phase = AFTER_COMMIT)` to fire only after the surrounding transaction commits.
 
 ---
 
-## Part 2: Spring AOP — Complete Deep Dive
+## Part 2: Spring AOP
 
 ### AOP Terminology
 
-> **Think of it like:** hiring security for an office building. Instead of teaching every employee to check IDs themselves (cross-cutting concerns scattered everywhere), you install one guard system that handles it at the doors. The table below maps each AOP word to a part of that security setup — once you see it as "a guard at a door," the jargon stops being scary.
+| Term | Definition |
+|------|-----------|
+| **Aspect** | Class containing cross-cutting logic |
+| **Join Point** | Point in execution (Spring: always a method call) |
+| **Pointcut** | Expression selecting which join points to intercept |
+| **Advice** | Action taken at a join point |
+| **Weaving** | Applying aspects to targets |
+| **AOP Proxy** | Wrapper around target (JDK proxy or CGLIB) |
 
-| Term | Definition | Analogy |
-|------|-----------|---------|
-| **Aspect** | Class containing cross-cutting logic | Security guard station |
-| **Join Point** | Point in execution (Spring: always a method call) | Doorway in a building |
-| **Pointcut** | Expression selecting which join points to intercept | "All doors on floor 3" |
-| **Advice** | Action taken at a join point | What the guard does at the door |
-| **Weaving** | Applying aspects to targets | Installing the guard |
-| **Target Object** | The original bean being advised | The actual room |
-| **AOP Proxy** | Wrapper around target (JDK proxy or CGLIB) | Guard standing in for the room |
-
-**Cross-cutting concerns AOP solves:** logging, security checks, transaction management, caching, retry logic, auditing, rate limiting, performance monitoring.
+**Cross-cutting concerns AOP solves:** logging, security, transaction management, caching, retry, auditing.
 
 ---
 
@@ -431,61 +336,32 @@ Two useful variants (awareness): add `@Async` to run a listener on another threa
 | Aspect | Spring AOP | AspectJ |
 |--------|-----------|---------|
 | Weaving time | Runtime (proxy-based) | Compile-time or load-time |
-| Join points | Method execution only | Field access, constructor, method, cast, etc. |
-| Requires AspectJ compiler | No | Yes (ajc) |
-| Works on Spring beans | Yes | Any Java object |
-| Performance | Proxy overhead per call | None at runtime |
-| Self-invocation | Doesn't work | Works |
+| Join points | Method execution only | Field access, constructor, static methods, etc. |
+| Works on | Spring beans only | Any Java object |
+| Self-invocation | Does NOT work | Works |
 | Setup | Zero config needed | Needs special compiler/agent |
 
-**When to use AspectJ over Spring AOP:**
-- Need to intercept field access, constructor calls, static methods
-- Need aspects on non-Spring objects (POJOs not managed by Spring)
-- Self-invocation must be intercepted
-- Performance-critical path where proxy overhead matters
+Use AspectJ when you need to intercept non-method join points, advise non-Spring objects, or need self-invocation to work.
 
 ---
 
-### Proxy Mechanisms — How Spring AOP Works
+### Proxy Mechanisms
 
-> **Think of it like:** a bodyguard standing in front of a celebrity. Anyone who wants to talk to the celebrity (the real bean) has to go through the bodyguard (the proxy) first. The bodyguard can check your ID, log who came in, or handle paperwork *before and after* letting you through — without the celebrity even noticing. Spring quietly replaces your real bean with this stand-in, which is how `@Transactional`, `@Async`, and logging get added for free.
-
-```
-ApplicationContext starts
-        ↓
-AnnotationAwareAspectJAutoProxyCreator (a BeanPostProcessor)
-        ↓
-postProcessAfterInitialization() called for each bean
-        ↓
-  Does bean match any pointcut?
-    YES → Create Proxy (JDK or CGLIB) and return proxy
-     NO → Return original bean
-        ↓
-Proxy is stored in context (not the original bean)
-        ↓
-At runtime: caller calls proxy method
-        ↓
-Proxy → runs advice chain → calls original bean method
-```
+> Spring quietly replaces your real bean with a proxy. The proxy runs advice (e.g., opens a transaction) before and after calling through to the real bean. This is how `@Transactional`, `@Async`, and logging get added transparently.
 
 #### JDK Dynamic Proxy
 - Created when target bean **implements at least one interface**
-- Proxy implements the same interfaces
-- Implemented via `java.lang.reflect.Proxy` + `InvocationHandler`
-- Cannot cast proxy to the concrete class
+- Proxy implements the same interfaces; cannot cast to concrete class
 
 #### CGLIB Proxy
 - Created when target bean has **no interface** (or `proxyTargetClass=true`)
-- Generates a subclass of the target class at runtime
-- **Cannot proxy `final` classes or `final` methods**
+- Generates a subclass at runtime — **cannot proxy `final` classes or methods**
 - Spring Boot 2.x+: **CGLIB is the default** even when interfaces exist
-- Enabled globally: `@EnableAspectJAutoProxy(proxyTargetClass = true)`
 
-**How to check which proxy type you have:**
 ```java
-@Autowired OrderService orderService;
+// How to check which proxy type you have:
 System.out.println(orderService.getClass().getName());
-// JDK:  com.sun.proxy.$Proxy47
+// JDK:   com.sun.proxy.$Proxy47
 // CGLIB: com.example.OrderService$$EnhancerBySpringCGLIB$$abc123
 ```
 
@@ -493,81 +369,56 @@ System.out.println(orderService.getClass().getName());
 
 ### The Self-Invocation Problem — Critical Interview Topic
 
-> **Think of it like:** the rule is "all visitors must sign in at the front desk." If an outsider walks in, the front desk (the proxy) stops them and applies the rule. But if a colleague who's *already inside* the building walks straight over to another colleague's desk, they skip the front desk entirely — so the sign-in rule never runs. That's exactly what happens when a bean calls `this.otherMethod()`: the call stays inside, bypasses the proxy, and `@Transactional`/`@Async` on that method is silently skipped.
-
 ```java
 @Service
 public class OrderService {
 
     @Transactional
     public void processOrder(Long orderId) {
-        // THIS WORKS: proxy intercepts this call
-        prepareItems(orderId);
-
-        // THIS DOES NOT WORK: self-invocation bypasses proxy
-        this.validateStock(orderId);  // goes to real object, not proxy!
-        // @Transactional(REQUIRES_NEW) on validateStock is IGNORED
+        this.validateStock(orderId);  // BYPASSES PROXY — @Transactional on validateStock is IGNORED
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public void validateStock(Long orderId) {
-        // This annotation is silently ignored when called via this.
-    }
+    public void validateStock(Long orderId) { ... }
 }
 ```
 
-**Why it happens:** When `processOrder` calls `this.validateStock`, `this` refers to the real object, not the proxy. The proxy is bypassed entirely.
+**Why:** `this` refers to the real object, not the proxy. Same problem affects `@Async`, `@Cacheable`, any AOP advice.
 
-**The same problem affects:** `@Async`, `@Cacheable`, `@Retry`, any AOP advice.
-
-#### Solutions:
+**Solutions:**
 
 ```java
 // Solution 1: Inject self (simplest)
 @Service
 public class OrderService {
-    @Autowired
-    @Lazy  // prevents circular dependency during construction
+    @Autowired @Lazy
     private OrderService self;
 
-    @Transactional
     public void processOrder(Long orderId) {
         self.validateStock(orderId);  // goes through proxy
     }
-
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public void validateStock(Long orderId) { ... }
 }
 
-// Solution 2: ApplicationContext.getBean()
-@Service
-public class OrderService implements ApplicationContextAware {
-    private ApplicationContext ctx;
-
-    public void processOrder(Long orderId) {
-        OrderService proxy = ctx.getBean(OrderService.class);
-        proxy.validateStock(orderId);
-    }
-}
-
-// Solution 3: Refactor — move validateStock to a different bean
+// Solution 2: Refactor — move validateStock to a different bean (cleanest)
 @Service
 public class StockValidationService {
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void validateStock(Long orderId) { ... }
 }
-
-// Solution 4: Use AspectJ weaving (compile-time, avoids proxy entirely)
-// Add aspectj-maven-plugin and remove Spring AOP
 ```
 
 ---
 
-### Advice Types — Complete Reference
+### Advice Types
 
-> **Think of it like:** a security guard at a door. `@Before` checks you *before* you enter, `@AfterReturning` waves goodbye after a *successful* visit, `@AfterThrowing` reacts only if something *went wrong*, `@After` always logs your exit no matter what (like a `finally` block), and `@Around` is the guard who escorts you the *whole way* — deciding whether to even let you in, timing your visit, and handling anything that happens in between.
+| Advice | When it runs | Can prevent/modify call? |
+|--------|-------------|--------------------------|
+| `@Before` | Before method | No |
+| `@AfterReturning` | After successful return | No (can read result) |
+| `@AfterThrowing` | After exception thrown | No (can read exception) |
+| `@After` | Always (like finally) | No |
+| `@Around` | Wraps entire call | Yes — full control |
 
-#### @Before
 ```java
 @Aspect
 @Component
@@ -576,84 +427,37 @@ public class LoggingAspect {
     @Before("execution(* com.example.service.*.*(..))")
     public void logBefore(JoinPoint jp) {
         System.out.println("Entering: " + jp.getSignature().toShortString());
-        System.out.println("Args: " + Arrays.toString(jp.getArgs()));
+    }
+
+    @AfterReturning(pointcut = "execution(* com.example.service.*.*(..))", returning = "result")
+    public void logAfterReturning(JoinPoint jp, Object result) {
+        System.out.println("Returned: " + result);
+    }
+
+    @Around("execution(* com.example.service.*.*(..))")
+    public Object around(ProceedingJoinPoint pjp) throws Throwable {
+        long start = System.currentTimeMillis();
+        try {
+            return pjp.proceed();       // invoke actual method
+        } finally {
+            log.info("{} took {}ms", pjp.getSignature(), System.currentTimeMillis() - start);
+        }
     }
 }
 ```
 
-#### @AfterReturning
-```java
-@AfterReturning(
-    pointcut = "execution(* com.example.service.*.*(..))",
-    returning = "result"   // binds return value to parameter
-)
-public void logAfterReturning(JoinPoint jp, Object result) {
-    System.out.println("Returned: " + result);
-}
-```
-
-#### @AfterThrowing
-```java
-@AfterThrowing(
-    pointcut = "execution(* com.example.service.*.*(..))",
-    throwing = "ex"   // binds exception to parameter
-)
-public void logException(JoinPoint jp, Exception ex) {
-    System.out.println("Exception in " + jp.getSignature() + ": " + ex.getMessage());
-}
-```
-
-#### @After (finally)
-```java
-@After("execution(* com.example.service.*.*(..))")
-public void logAfter(JoinPoint jp) {
-    // Runs whether method completed normally OR threw exception
-    System.out.println("Exiting: " + jp.getSignature().toShortString());
-}
-```
-
-#### @Around (Most Powerful)
-```java
-@Around("execution(* com.example.service.*.*(..))")
-public Object around(ProceedingJoinPoint pjp) throws Throwable {
-    long start = System.currentTimeMillis();
-
-    Object result;
-    try {
-        result = pjp.proceed();       // invoke actual method
-        // result = pjp.proceed(newArgs); // invoke with modified args
-        return result;                // can modify return value
-    } catch (Exception ex) {
-        log.error("Exception in {}", pjp.getSignature(), ex);
-        throw ex;                     // re-throw or handle
-    } finally {
-        long elapsed = System.currentTimeMillis() - start;
-        log.info("{} took {}ms", pjp.getSignature(), elapsed);
-    }
-}
-```
-
-**When to use which:**
-- `@Before`: validation, logging entry, security checks
-- `@AfterReturning`: logging result, modifying return value
-- `@AfterThrowing`: error logging, exception translation
-- `@After`: resource cleanup (like finally block)
-- `@Around`: timing, retry, circuit breaker, caching, transaction management — anything needing control over method execution
+Use `@Around` for timing, retry, caching, transaction management — anything needing control over method execution.
 
 ---
 
-### Pointcut Expressions — Complete Reference
-
-> **Think of it like:** a rule posted at the building entrance saying *"check everyone entering floor 3."* The pointcut is just that selector — it decides *which* methods (which doors) the guard should watch. It doesn't do anything itself; it only points at where the advice should apply. For example, `execution(* com.example.service.*.*(..))` means "watch every method in the service package."
+### Pointcut Expressions
 
 ```java
-@Aspect
-@Component
+@Aspect @Component
 public class Pointcuts {
 
     // execution: matches method signatures
     @Pointcut("execution(public * com.example.service.*.*(..))")
-    // execution(modifiers? returnType declaringType? methodName(params) throws?)
     public void serviceLayer() {}
 
     // within: all methods in matching type
@@ -665,277 +469,172 @@ public class Pointcuts {
     public void transactionalMethods() {}
 
     // bean: Spring bean name pattern
-    @Pointcut("bean(*Service)")   // all beans ending with "Service"
+    @Pointcut("bean(*Service)")
     public void beanNamed() {}
 
     // Combining with &&, ||, !
     @Pointcut("serviceLayer() && !beanNamed()")
-    public void serviceExcludingNamedBeans() {}
-
-    // Other designators (awareness): @within (type annotated with), args /
-    // @args (match on argument types/annotations), this (proxy type),
-    // target (wrapped object type). Reach for these only when execution/
-    // @annotation/bean can't express the match you need.
+    public void combined() {}
 }
-```
 
-#### Accessing Annotations and Arguments in Advice
-```java
-// Bind annotation object to advice parameter
-@Around("@annotation(transactional)")  // lowercase = parameter name
-public Object aroundTransactional(ProceedingJoinPoint pjp, 
-                                   Transactional transactional) throws Throwable {
+// Bind annotation/argument in advice
+@Around("@annotation(transactional)")
+public Object aroundTx(ProceedingJoinPoint pjp, Transactional transactional) throws Throwable {
     Propagation propagation = transactional.propagation();
-    // ...
     return pjp.proceed();
-}
-
-// Bind argument value to advice parameter
-@Before("execution(* *.*(..)) && args(userId, ..)")
-public void beforeWithUserId(JoinPoint jp, Long userId) {
-    log.info("Accessing data for user: {}", userId);
 }
 ```
 
 ---
 
-### Practical AOP Examples
+### Practical AOP Example — Performance Timing
 
-#### 1. Performance Timing Aspect
 ```java
-@Aspect
-@Component
-@Slf4j
+@Aspect @Component @Slf4j
 public class PerformanceAspect {
 
     @Around("@within(org.springframework.stereotype.Service) || " +
             "@within(org.springframework.web.bind.annotation.RestController)")
     public Object measureTime(ProceedingJoinPoint pjp) throws Throwable {
         long start = System.currentTimeMillis();
-        String method = pjp.getSignature().toShortString();
         try {
             return pjp.proceed();
         } finally {
             long elapsed = System.currentTimeMillis() - start;
-            if (elapsed > 500) {
-                log.warn("SLOW: {} took {}ms", method, elapsed);
-            } else {
-                log.debug("{} took {}ms", method, elapsed);
-            }
+            if (elapsed > 500) log.warn("SLOW: {} took {}ms", pjp.getSignature().toShortString(), elapsed);
+            else log.debug("{} took {}ms", pjp.getSignature().toShortString(), elapsed);
         }
     }
 }
 ```
-
-#### 2. Retry Aspect with Exponential Backoff
-```java
-@Retention(RetentionPolicy.RUNTIME)
-@Target(ElementType.METHOD)
-public @interface Retryable {
-    int maxAttempts() default 3;
-    Class<? extends Throwable>[] on() default {Exception.class};
-    long backoffMs() default 100;
-}
-
-@Aspect
-@Component
-public class RetryAspect {
-
-    @Around("@annotation(retryable)")
-    public Object retry(ProceedingJoinPoint pjp, Retryable retryable) throws Throwable {
-        int attempts = 0;
-        Throwable lastException = null;
-        long backoff = retryable.backoffMs();
-
-        while (attempts < retryable.maxAttempts()) {
-            try {
-                return pjp.proceed();
-            } catch (Throwable ex) {
-                if (!isRetryable(ex, retryable.on())) throw ex;
-                lastException = ex;
-                attempts++;
-                if (attempts < retryable.maxAttempts()) {
-                    Thread.sleep(backoff);
-                    backoff *= 2;  // exponential backoff
-                }
-            }
-        }
-        throw lastException;
-    }
-
-    private boolean isRetryable(Throwable ex, Class<? extends Throwable>[] retryOn) {
-        return Arrays.stream(retryOn).anyMatch(c -> c.isInstance(ex));
-    }
-}
-
-// Usage
-@Service
-public class PaymentService {
-    @Retryable(maxAttempts = 3, on = {IOException.class}, backoffMs = 200)
-    public PaymentResult charge(Payment payment) { ... }
-}
-```
-
-#### 3. Audit Logging Aspect
-A common third use case: a custom `@Audited("CREATE_USER")` annotation matched by `@annotation(audited)`, with an `@AfterReturning` advice that records who did what on success and an `@AfterThrowing` advice that logs failures — same annotation-binding pattern as the retry example above, applied to auditing.
 
 ---
 
-### How @Transactional Works Internally (AOP Under the Hood)
-
-> **Think of it like:** a bank teller handling your transaction. Before touching your account they open a "session" (start the transaction), do all your requested steps, and only stamp it as final (commit) if everything succeeded. If anything goes wrong midway, they tear up the whole slip and put your money back (rollback) — you never end up half-done. The proxy is the teller; your method is the list of steps they run.
+### How @Transactional Works Internally
 
 ```
-1. Spring startup:
-   TransactionInterceptor (an AOP Advice) is registered
-   AnnotationAwareAspectJAutoProxyCreator detects @Transactional beans
-
-2. Bean creation:
-   BeanPostProcessor.postProcessAfterInitialization() creates a CGLIB proxy
-   The proxy wraps TransactionInterceptor around every @Transactional method
-
+1. Startup: TransactionInterceptor registered; @Transactional beans detected
+2. Bean creation: BPP creates CGLIB proxy wrapping TransactionInterceptor
 3. Runtime call: myService.save(entity)
-   ↓
-   CGLIB Proxy receives call
-   ↓
-   TransactionInterceptor.invoke() executes:
-     - Check propagation: is there an active transaction?
-     - Get connection from pool (DataSourceTransactionManager)
-     - Set autoCommit = false
-     - Call real myService.save(entity)
-     - If success: connection.commit()
-     - If RuntimeException: connection.rollback()
-     - Release connection back to pool
+   → CGLIB Proxy receives call
+   → TransactionInterceptor: check propagation, get connection, set autoCommit=false
+   → Call real myService.save(entity)
+   → Success: commit; RuntimeException: rollback
+   → Release connection back to pool
 ```
 
 **Why @Transactional fails on:**
-- **Private methods:** proxy can't override private methods (CGLIB subclass approach)
-- **Final methods:** CGLIB subclass can't override final methods
-- **Self-invocation:** `this.method()` bypasses proxy — goes to real object
+- **Private methods:** proxy can't override private (CGLIB subclass approach)
+- **Final methods:** CGLIB can't override final
+- **Self-invocation:** `this.method()` bypasses proxy
 
 **Propagation levels:**
-```java
-REQUIRED          // join existing TX or create new (default)
-REQUIRES_NEW      // always create new TX, suspend existing
-NESTED            // nested TX within existing (savepoint)
-// also: SUPPORTS, NOT_SUPPORTED, MANDATORY, NEVER
+```
+REQUIRED      // join existing TX or create new (default)
+REQUIRES_NEW  // always create new TX, suspend existing
+NESTED        // nested TX within existing (savepoint)
 ```
 
-**Isolation levels:** `READ_UNCOMMITTED` < `READ_COMMITTED` (PostgreSQL default) < `REPEATABLE_READ` (MySQL InnoDB default) < `SERIALIZABLE` — higher = more isolation, less concurrency.
+**Isolation:** `READ_UNCOMMITTED` < `READ_COMMITTED` (PostgreSQL default) < `REPEATABLE_READ` (MySQL default) < `SERIALIZABLE`
 
 ---
 
-### @Async Works the Same Way
+### @Async
 
 ```java
 @Service
 public class NotificationService {
-
-    // @Async works via AOP proxy — same self-invocation problem applies
-    @Async
+    @Async  // runs on a separate thread — same proxy rules apply (no self-invocation)
     public CompletableFuture<Void> sendEmailAsync(String to) {
-        // Runs in a separate thread (TaskExecutor)
         emailClient.send(to);
         return CompletableFuture.completedFuture(null);
     }
 }
-
-// Enable with @EnableAsync on a @Configuration class. Define a
-// ThreadPoolTaskExecutor @Bean (core/max pool size, queue capacity) to control
-// the thread pool; otherwise Spring uses a default executor.
+// Enable with @EnableAsync. Define a ThreadPoolTaskExecutor @Bean to control thread pool.
 ```
 
 ---
 
 ### Aspect Ordering
 
-Put `@Order(n)` on each `@Aspect` class to control nesting when several aspects match the same method. Lower number = outermost.
-
 ```java
 @Aspect @Order(1) @Component  // Outermost — runs first entering, last exiting
-public class SecurityAspect { /* @Around: checkPermission(); pjp.proceed(); */ }
+public class SecurityAspect { }
 
-@Aspect @Order(2) @Component  // Middle
-public class LoggingAspect { /* @Around: log in; pjp.proceed(); log out; */ }
+@Aspect @Order(2) @Component
+public class LoggingAspect { }
 
 @Aspect @Order(3) @Component  // Innermost — closest to actual method
-public class MetricsAspect { ... }
+public class MetricsAspect { }
 ```
 
-**Execution order for @Order(1), @Order(2), @Order(3):**
-```
-Security.before → Logging.before → Metrics.before
-→ ACTUAL METHOD
-Metrics.after → Logging.after → Security.after
-```
+**Execution: Security.before → Logging.before → Metrics.before → METHOD → Metrics.after → Logging.after → Security.after**
 
-**Spring's internal aspect ordering:**
-- `@Transactional`: `Integer.MAX_VALUE - 1` (very low priority = innermost proxy)
-- `@Async`: `Integer.MAX_VALUE` (lowest priority)
+Spring internals: `@Transactional` = `MAX_VALUE - 1` (innermost), `@Async` = `MAX_VALUE`.
 
 ---
 
 ## Interview Questions & Answers
 
-**Q1: Walk me through the complete Spring bean lifecycle.**
+**Q1: Walk me through the Spring bean lifecycle.**
 
-Instantiation → DI (field/setter) → Aware interfaces → BeanPostProcessor.before → @PostConstruct → InitializingBean → initMethod → BeanPostProcessor.after (proxies created here) → Bean ready → (on close) @PreDestroy → DisposableBean → destroyMethod.
+Instantiation → DI (field/setter) → Aware interfaces → BPP.before → `@PostConstruct` → `afterPropertiesSet()` → initMethod → BPP.after (proxies created here) → Bean ready → (on close) `@PreDestroy` → `DisposableBean.destroy()` → destroyMethod.
 
 **Q2: What is BeanPostProcessor? What does Spring use it for?**
 
-BeanPostProcessor intercepts bean creation to modify or wrap beans. Spring uses it to create AOP proxies (`AnnotationAwareAspectJAutoProxyCreator`), inject `@Autowired` dependencies (`AutowiredAnnotationBeanPostProcessor`), and call `@PostConstruct`/`@PreDestroy` (`CommonAnnotationBeanPostProcessor`). The proxy creation happens in `postProcessAfterInitialization`.
+BeanPostProcessor intercepts every bean after creation to modify or wrap it. Spring uses it to create AOP proxies (`AnnotationAwareAspectJAutoProxyCreator` in `postProcessAfterInitialization`), inject `@Autowired` dependencies, and call `@PostConstruct`/`@PreDestroy`.
 
-**Q3: What is the difference between BeanPostProcessor and BeanFactoryPostProcessor?**
+**Q3: BeanPostProcessor vs BeanFactoryPostProcessor?**
 
-BeanFactoryPostProcessor runs **before** any beans are created — it modifies bean definitions (metadata). BeanPostProcessor runs **after** each bean is instantiated — it modifies bean instances. `ConfigurationClassPostProcessor` is a BeanFactoryPostProcessor; `AutowiredAnnotationBeanPostProcessor` is a BeanPostProcessor.
+`BeanFactoryPostProcessor` runs before any beans are created and modifies bean definitions (metadata). `BeanPostProcessor` runs after each bean is instantiated and modifies bean instances. The former edits blueprints; the latter edits the built objects.
 
 **Q4: Why is constructor injection preferred over field injection?**
 
-Fields can be final (immutable), NPEs fail at startup not runtime, easy to test without Spring (just call constructor with mocks), circular dependencies fail early at startup, and intent is explicit.
+Fields can be `final` (immutable), failures are caught at startup not runtime, easy to test without Spring, and circular dependencies are detected early.
 
 **Q5: How do you inject a prototype bean into a singleton?**
 
-Three ways: `@Lookup` method injection (Spring overrides method), `ObjectProvider<T>` (call `getObject()` each time), or `ApplicationContext.getBean(Type.class)`. Never use direct `@Autowired` injection — prototype becomes effectively singleton.
+Use `ObjectProvider<T>` (call `getObject()` each time) or `@Lookup` method injection. Never use direct `@Autowired` — the prototype becomes effectively singleton.
 
 **Q6: What is circular dependency? How is it resolved?**
 
-When Bean A depends on Bean B and Bean B depends on Bean A. Constructor injection circular deps fail with `BeanCurrentlyInCreationException` (good — caught at startup). Setter/field injection can be resolved by Spring's three-level bean cache (early exposure of partially-constructed beans). Best fix: `@Lazy` on one side or refactor to remove the cycle.
+Bean A needs Bean B and Bean B needs Bean A. Constructor injection fails with `BeanCurrentlyInCreationException` at startup. Setter/field injection is resolved via Spring's three-level bean cache (early exposure of partially-constructed beans). Best fix: `@Lazy` on one side or refactor to remove the cycle.
 
 **Q7: What is Spring AOP and how does it work?**
 
-Spring AOP enables cross-cutting concerns (logging, transactions, security) through proxies. At startup, `AnnotationAwareAspectJAutoProxyCreator` wraps matching beans in a CGLIB or JDK dynamic proxy. At runtime, method calls go to the proxy, which runs the advice chain and then calls the real method.
+Spring AOP adds cross-cutting concerns (logging, transactions, security) through proxies. At startup, `AnnotationAwareAspectJAutoProxyCreator` wraps matching beans in a CGLIB or JDK proxy. At runtime, method calls go to the proxy, which runs the advice chain before calling the real method.
 
-**Q8: What is the difference between Spring AOP and AspectJ?**
+**Q8: Spring AOP vs AspectJ?**
 
-Spring AOP uses runtime proxies and only intercepts method calls on Spring beans. AspectJ uses compile-time or load-time weaving and can intercept any join point (field access, constructors, static methods) on any Java object. Spring AOP is simpler to use; AspectJ is more powerful.
+Spring AOP uses runtime proxies and only intercepts method calls on Spring beans. AspectJ uses compile/load-time weaving and can intercept any join point on any Java object. Spring AOP is simpler; AspectJ is more powerful but needs special tooling.
 
 **Q9: What is the self-invocation problem?**
 
-When a Spring bean calls another of its own methods via `this.method()`, it bypasses the proxy. The proxy only intercepts calls from outside the bean. So `@Transactional`, `@Async`, `@Cacheable` on the called method are silently ignored. Solutions: inject self with `@Lazy`, use `ApplicationContext.getBean()`, or refactor the method to a different bean.
+When a bean calls its own method via `this.method()`, it bypasses the proxy. `@Transactional`, `@Async`, `@Cacheable` on the called method are silently ignored. Fix: inject self with `@Lazy`, use `ApplicationContext.getBean()`, or move the method to another bean.
 
 **Q10: Why doesn't @Transactional work on private methods?**
 
-Spring AOP creates proxies by subclassing (CGLIB) or implementing interfaces (JDK proxy). Private methods cannot be overridden by subclasses (CGLIB) and are not part of interfaces (JDK proxy), so the proxy cannot intercept them. The annotation is silently ignored.
+CGLIB creates proxies by subclassing — private methods can't be overridden. JDK proxies use interfaces — private methods aren't in interfaces. Either way the proxy can't intercept them, so the annotation is silently ignored.
 
-**Q11: What is CGLIB proxy vs JDK dynamic proxy?**
+**Q11: CGLIB proxy vs JDK dynamic proxy?**
 
-JDK dynamic proxy: created when bean implements interface, uses `java.lang.reflect.Proxy`. Cannot proxy concrete class directly. CGLIB proxy: creates a runtime subclass of the target class. Can proxy concrete classes but cannot proxy final classes/methods. Spring Boot 2.x+ uses CGLIB by default even when interfaces exist.
+JDK proxy requires the bean to implement an interface; proxy implements the same interface. CGLIB creates a runtime subclass — works on concrete classes but cannot proxy `final` classes or methods. Spring Boot 2.x+ uses CGLIB by default.
 
-**Q12: What is the difference between @Before, @After, and @Around?**
+**Q12: @Before vs @After vs @Around?**
 
-`@Before` runs before method execution but cannot prevent the call or change return value. `@After` runs after method execution (like finally), regardless of outcome. `@Around` wraps the entire method — calls `pjp.proceed()` to invoke the actual method and can control execution, modify args/return value, or prevent execution entirely.
+`@Before` runs before the method but can't stop or change it. `@After` runs after regardless of outcome (like finally). `@Around` wraps the whole call — call `pjp.proceed()` to invoke the real method, and you can control execution, modify args/return value, or skip entirely.
 
 **Q13: What is a pointcut expression? Give examples.**
 
-Pointcut expressions select which join points to intercept. Examples: `execution(* com.example.service.*.*(..))` — all methods in service package; `@annotation(Transactional)` — methods with @Transactional; `within(com.example.service.*)` — all methods within service classes; `bean(*Service)` — all beans ending with "Service".
+Selects which methods to intercept. `execution(* com.example.service.*.*(..))` — all service methods; `@annotation(Transactional)` — annotated methods; `bean(*Service)` — beans ending with "Service".
 
 **Q14: How do you control the order of multiple aspects?**
 
-Use `@Order(n)` on the aspect class. Lower number = higher priority = outermost proxy in the chain. The outermost advice runs first before the method and last after the method. Implement `Ordered` interface for programmatic ordering.
+Use `@Order(n)` on the aspect class. Lower number = outermost proxy in the chain (runs first before, last after).
 
-**Q15: What is @Configuration full mode vs lite mode?**
+**Q15: @Configuration full mode vs lite mode?**
 
-`@Configuration` class is CGLIB-proxied (full mode). Inter-`@Bean` method calls go through the proxy, ensuring singleton semantics. `@Component` class with `@Bean` is NOT proxied (lite mode) — inter-`@Bean` method calls are regular Java calls, creating new instances each time. Use `@Configuration` when `@Bean` methods call each other.
+`@Configuration` is CGLIB-proxied — inter-`@Bean` method calls return the same singleton. `@Component` with `@Bean` is not proxied — inter-`@Bean` calls are plain Java calls creating new instances. Use `@Configuration` when `@Bean` methods call each other.
 
 ---
 
@@ -943,68 +642,64 @@ Use `@Order(n)` on the aspect class. Lower number = higher priority = outermost 
 
 | Pitfall | Cause | Fix |
 |---------|-------|-----|
-| @Transactional silently ignored | Self-invocation (this.method()) | Inject self with @Lazy |
-| @Transactional on private method | Proxy can't override private | Make method package-private or public |
+| @Transactional silently ignored | Self-invocation (`this.method()`) | Inject self with `@Lazy` |
+| @Transactional on private method | Proxy can't override private | Make method public |
 | @Async on private method | Same proxy limitation | Make method public |
-| Prototype acts as singleton | Direct @Autowired injection | Use ObjectProvider or @Lookup |
-| Circular dependency (constructor) | A→B, B→A in constructors | @Lazy on one, or refactor |
-| @PostConstruct never called | Bean not managed by Spring | Ensure @Component / @Bean present |
-| Wrong proxy type | Expect interface proxy, get CGLIB | Check Spring Boot defaults |
-| Aspect not applied | Bean not in component scan | Ensure @EnableAspectJAutoProxy |
-| @EventListener fires twice | Multiple context init (refresh) | Filter by event type or use condition |
+| Prototype acts as singleton | Direct `@Autowired` injection | Use `ObjectProvider` or `@Lookup` |
+| Circular dependency (constructor) | A→B, B→A in constructors | `@Lazy` on one, or refactor |
+| @PostConstruct never called | Bean not managed by Spring | Ensure `@Component` / `@Bean` present |
+| Aspect not applied | Bean not in component scan | Ensure `@EnableAspectJAutoProxy` |
 | Destroy not called on prototype | Spring doesn't track prototypes | Handle cleanup manually |
-| @Transactional on new thread | TX bound to thread | Use @Transactional(propagation=REQUIRED) on called service |
-| initMethod exception swallowed | Checked exception in init | Wrap in RuntimeException |
-| CGLIB fails | final class or method | Remove final modifier |
+| CGLIB fails | `final` class or method | Remove `final` modifier |
+| Checked exception doesn't rollback | Not a RuntimeException | `@Transactional(rollbackFor = X.class)` |
 
 ---
 
 ## Quick Reference Cheat Sheet
 
 ```
-BEAN LIFECYCLE (order matters — memorize the story, not the numbers):
+BEAN LIFECYCLE (order matters):
   1. Instantiate            → constructor runs
   2. Inject dependencies    → @Autowired fields/setters filled
   3. Aware callbacks        → setBeanName / setBeanFactory / setApplicationContext
-  4. BPP.before             → postProcessBeforeInitialization (all beans)
-  5. @PostConstruct         → your "pre-flight" setup
+  4. BPP.before             → postProcessBeforeInitialization
+  5. @PostConstruct         → your setup logic
   6. InitializingBean       → afterPropertiesSet()
   7. initMethod             → @Bean(initMethod = "...")
   8. BPP.after              → postProcessAfterInitialization  ← PROXIES CREATED HERE
   9. Bean ready             → served from ApplicationContext
  --- on context close ---
  10. @PreDestroy → DisposableBean.destroy() → @Bean(destroyMethod)
- (prototype beans: destroy callbacks are NOT called — you clean up)
+ (prototype beans: destroy callbacks NOT called — you clean up)
 
-INIT ORDER (one bean, all three present):
-  @PostConstruct  →  afterPropertiesSet()  →  custom initMethod
+INIT ORDER (all three present):  @PostConstruct → afterPropertiesSet() → initMethod
 ```
 
-### Key Annotations — what they do
+### Key Annotations
 
 | Annotation | What it does |
 |---|---|
-| `@Component` / `@Service` / `@Repository` | Marks a class as a Spring-managed bean |
-| `@Autowired` | Injects a dependency (prefer it on the constructor) |
-| `@Scope("singleton" / "prototype")` | One shared instance vs a fresh one each time |
-| `@PostConstruct` / `@PreDestroy` | Run setup / cleanup logic at the right lifecycle point |
-| `@Lazy` | Delay creation; also used to break circular dependencies |
+| `@Component` / `@Service` / `@Repository` | Marks a Spring-managed bean |
+| `@Autowired` | Injects a dependency (prefer on constructor) |
+| `@Scope("singleton" / "prototype")` | One shared instance vs fresh each time |
+| `@PostConstruct` / `@PreDestroy` | Setup / cleanup at the right lifecycle point |
+| `@Lazy` | Delays creation; also breaks circular dependencies |
 | `@Configuration` | Full-mode config — inter-`@Bean` calls return the same singleton |
-| `@Aspect` | Marks a class that holds cross-cutting advice |
-| `@Pointcut` | Names a reusable "which methods to match" expression |
-| `@Transactional` | Wraps a method in a DB transaction (via proxy) |
-| `@Async` | Runs a method on a separate thread (via proxy) |
+| `@Aspect` | Marks a class holding cross-cutting advice |
+| `@Pointcut` | Names a reusable method-matching expression |
+| `@Transactional` | Wraps method in a DB transaction (via proxy) |
+| `@Async` | Runs method on a separate thread (via proxy) |
 
-### @Transactional / proxy gotchas (one-liners)
+### Proxy Gotchas (one-liners)
 
 ```
-Self-invocation   → this.method() skips the proxy → annotation ignored. Fix: inject self (@Lazy) or move to another bean.
-Private method    → proxy can't override it → @Transactional/@Async ignored. Fix: make it public.
-Final method/class→ CGLIB can't subclass it → proxy fails. Fix: remove final.
-Checked exception → does NOT roll back by default. Fix: @Transactional(rollbackFor = X.class).
+Self-invocation    → this.method() skips proxy → annotation ignored. Fix: inject self (@Lazy) or move to another bean.
+Private method     → proxy can't override → @Transactional/@Async ignored. Fix: make it public.
+Final method/class → CGLIB can't subclass → proxy fails. Fix: remove final.
+Checked exception  → does NOT roll back by default. Fix: @Transactional(rollbackFor = X.class).
 Prototype in singleton → injected once, acts singleton. Fix: ObjectProvider / @Lookup.
 ```
 
 ---
 
-*Last Updated: 2026-06-06*
+*Last Updated: 2026-06-18*
