@@ -1,60 +1,58 @@
-# Dynamic Programming — Complete Interview Preparation Guide
+# Dynamic Programming — Interview Preparation Guide
 
-> **New to DP? Read this first.** Dynamic Programming sounds scary, but it is really just **brute-force recursion + remembering answers you already computed so you never solve the same subproblem twice.** That's the whole idea. If you can write a plain recursive solution, you are most of the way there — DP simply adds a notebook to store results. Focus first on these five classics, in this order: **Fibonacci**, **Climbing Stairs**, **House Robber**, **Coin Change**, and **Longest Common Subsequence (LCS)**. Once those patterns click, most other DP problems will start to look familiar.
+> **New to DP? Read this first.** DP is just **brute-force recursion + remembering answers you already computed**. If you can write a plain recursive solution, you're most of the way there. Focus on these five classics in order: **Fibonacci**, **Climbing Stairs**, **House Robber**, **Coin Change**, and **Longest Common Subsequence (LCS)**.
+
+---
+
+## Table of Contents
+
+1. [What is Dynamic Programming?](#1-what-is-dynamic-programming)
+2. [Two Approaches to DP](#2-two-approaches-to-dp)
+3. [How to Identify DP Problems](#3-how-to-identify-dp-problems)
+4. [General DP Problem-Solving Template](#4-general-dp-problem-solving-template)
+5. [1D DP Problems](#5-1d-dp-problems)
+6. [2D DP Problems](#6-2d-dp-problems)
+7. [Interval DP (Awareness)](#7-interval-dp-awareness)
+8. [String DP](#8-string-dp)
+9. [DP on Trees (Awareness)](#9-dp-on-trees-awareness)
+10. [DP Patterns Summary Table](#10-dp-patterns-summary-table)
+11. [Space Optimization Techniques](#11-space-optimization-techniques)
+12. [Interview Questions & Answers](#12-interview-questions--answers)
+13. [Complexity Reference Sheet](#13-complexity-reference-sheet)
+14. [Quick Revision Cheat Sheet](#14-quick-revision-cheat-sheet)
 
 ---
 
 ## 1. What is Dynamic Programming?
 
-Dynamic Programming (DP) is an algorithmic technique for solving problems by breaking them into **overlapping subproblems** and storing the results of already-solved subproblems to avoid redundant computation.
+Dynamic Programming (DP) solves problems by breaking them into **overlapping subproblems** and storing the results to avoid redundant computation.
 
-**Real-world analogy:**
-- Imagine calculating your commute time. Instead of re-measuring every road segment each time, you write down segment times once and reuse them.
-- DP is essentially **"remember what you've computed so you never compute it twice."**
+**Two properties required:**
 
-> **Think of it like:** doing your math homework and writing down the answers to problems you've already solved. The next time the same little calculation shows up, you just copy your earlier answer instead of redoing all the work.
+**1. Optimal Substructure** — the optimal solution is built from optimal solutions to subproblems.
+Example: shortest path A→B→C is optimal only if A→B is optimal for that sub-path.
 
-### Two Properties Required for DP
-
-**1. Optimal Substructure**
-The optimal solution to the problem can be constructed from optimal solutions to its subproblems.
-
-Example: Shortest path from A to C through B — if A→B→C is optimal, then A→B must be optimal for the sub-path A to B.
-
-> **Think of it like:** planning the cheapest road trip. The best route from your home to a far city is built out of the best routes between the cities along the way — good big answers are made of good smaller answers.
-
-**2. Overlapping Subproblems**
-The same subproblems recur multiple times during the computation. Without this, plain recursion or divide-and-conquer suffices — no memoization needed.
-
-Example: Fibonacci(5) requires Fibonacci(3) twice. Computing it once and caching the result is DP.
-
-> **Think of it like:** a question that keeps popping up over and over — "what's 7 times 8?" If your work asks it ten times, you solve it once and remember the answer; you don't recompute it each time.
+**2. Overlapping Subproblems** — the same subproblems recur multiple times.
+Example: Fibonacci(5) needs Fibonacci(3) twice. Compute once, cache, reuse.
 
 ### DP vs Divide and Conquer
 
 | Aspect | Divide and Conquer | Dynamic Programming |
 |--------|-------------------|---------------------|
-| Subproblems | Non-overlapping (independent) | Overlapping (repeated) |
-| Example | Merge Sort, Quick Sort | Fibonacci, Knapsack |
+| Subproblems | Non-overlapping | Overlapping |
+| Example | Merge Sort | Fibonacci, Knapsack |
 | Caching | Not needed | Essential |
-| Direction | Top-down, no memoization needed | Top-down with memo OR bottom-up |
-
-In Merge Sort, the left half and right half never overlap. In Fibonacci, the subproblems (fib(3), fib(2)) are called repeatedly — that is the key difference.
 
 ### DP vs Greedy
 
 | Aspect | Greedy | Dynamic Programming |
 |--------|--------|---------------------|
-| Strategy | Take locally optimal choice at each step | Consider ALL choices, pick globally optimal |
-| Completeness | May not find optimal solution | Always finds optimal solution (if applicable) |
-| Speed | Usually faster (O(n log n) or O(n)) | Usually slower (O(n²) or O(n·W)) |
-| Example | Activity Selection, Huffman Coding | 0/1 Knapsack, Edit Distance |
+| Strategy | Locally optimal at each step | Considers all choices |
+| Finds optimal? | Not always | Yes (if applicable) |
+| Speed | Faster | Slower |
+| Example | Activity Selection | 0/1 Knapsack, Edit Distance |
 
-**Key insight:** Greedy works when the locally optimal choice leads to a globally optimal solution. DP works when it does not — you need to explore multiple branches.
-
-Example: Coin change with coins [1, 3, 4] and target 6.
-- Greedy: 4+1+1 = 3 coins
-- DP: 3+3 = 2 coins (optimal)
+**Key insight:** Coin change with coins [1, 3, 4] and target 6 — Greedy gives 4+1+1 = 3 coins; DP finds 3+3 = 2 coins.
 
 ---
 
@@ -62,93 +60,49 @@ Example: Coin change with coins [1, 3, 4] and target 6.
 
 ### Top-Down (Memoization)
 
-Write the natural recursive solution. Add a cache (HashMap or array) to store computed results. Before computing, check if the result is already in the cache.
-
-> **Think of it like:** solving problems on demand and jotting each answer in a notebook as you go. You start from the big question, dive into whatever smaller questions you need, and write down each answer the first time so you never repeat it.
-
-**When to prefer top-down:**
-- Not all subproblems need to be solved (sparse computation)
-- The recursion tree is naturally intuitive
-- Subproblem space is large but only a fraction is visited
-- Easier to implement from the recursive definition
-
-**Java Template — Top-Down (array memo is faster than a HashMap):**
+Write the natural recursive solution; add a cache to store results. Check before computing.
 
 ```java
-public class TopDownTemplate {
-    private long[] memo;
+public long solve(int n) {
+    long[] memo = new long[n + 1];
+    Arrays.fill(memo, -1);
+    return dp(n, memo);
+}
 
-    public long solve(int n) {
-        memo = new long[n + 1];
-        Arrays.fill(memo, -1); // -1 = not computed
-        return dp(n);
-    }
-
-    private long dp(int n) {
-        if (n <= 1) return n;                  // base cases
-        if (memo[n] != -1) return memo[n];     // already cached
-        memo[n] = dp(n - 1) + dp(n - 2);       // compute, store, return
-        return memo[n];
-    }
+private long dp(int n, long[] memo) {
+    if (n <= 1) return n;
+    if (memo[n] != -1) return memo[n];
+    memo[n] = dp(n - 1, memo) + dp(n - 2, memo);
+    return memo[n];
 }
 ```
+
+**Prefer top-down when:** only a fraction of subproblems are needed; recursion is intuitive.
 
 ### Bottom-Up (Tabulation)
 
-Build the solution iteratively from the smallest subproblems upward. Fill a table (array or 2D array) starting from base cases.
-
-> **Think of it like:** building a pyramid from the ground up. You lay the smallest base cases first, then stack each new answer on top of the ones below it, until you reach the final answer at the peak.
-
-**When to prefer bottom-up:**
-- All subproblems need to be solved
-- Want to avoid recursion stack overflow (large n)
-- Need to optimize space (easier to see which rows/columns to discard)
-- Slightly faster in practice (no function call overhead)
-
-**Java Template — Bottom-Up:**
+Build iteratively from smallest subproblems upward. Fill a table starting from base cases.
 
 ```java
-public class BottomUpTemplate {
-    public long solve(int n) {
-        if (n <= 1) return n;
-
-        long[] dp = new long[n + 1];
-
-        // Base cases
-        dp[0] = 0;
-        dp[1] = 1;
-
-        // Fill table in order of increasing subproblem size
-        for (int i = 2; i <= n; i++) {
-            dp[i] = dp[i - 1] + dp[i - 2]; // example recurrence
-        }
-
-        return dp[n];
-    }
+public long solve(int n) {
+    if (n <= 1) return n;
+    long[] dp = new long[n + 1];
+    dp[0] = 0; dp[1] = 1;
+    for (int i = 2; i <= n; i++) dp[i] = dp[i-1] + dp[i-2];
+    return dp[n];
 }
 ```
 
-### Converting Top-Down to Bottom-Up
+**Prefer bottom-up when:** all subproblems are needed; n is large (stack overflow risk); want easier space optimization.
 
-Quick recipe: the parameters that change in recursive calls become the dp array indices; recursive base cases become initial table values; iterate in an order where every value's dependencies are already filled (usually dp[0] up to dp[n]); return dp[n] just as top-down returned memo[n]. (See Fibonacci below for a worked example.)
+### Space Optimization: 2D → 1D
 
-### Space Optimization: Reducing 2D DP to 1D DP
+When `dp[i][j]` only depends on the previous row, use a single 1D array. For 0/1 knapsack, traverse `j` in **reverse** to avoid using updated values (which would allow reuse of items):
 
-When dp[i][j] only depends on dp[i-1][...] (the previous row), you can use a single 1D array and overwrite it row by row.
-
-**Rule:** If the current row only needs the previous row, keep only two arrays (or one with careful traversal direction).
-
-**2D version:**
 ```java
-for (int i = 1; i <= n; i++)
-    for (int j = 0; j <= W; j++)
-        dp[i][j] = Math.max(dp[i-1][j], dp[i-1][j-w[i]] + v[i]);
-```
-
-**1D version (traverse j in reverse to avoid using updated values):**
-```java
+// 0/1 knapsack: reverse traversal
 for (int i = 0; i < n; i++)
-    for (int j = W; j >= w[i]; j--)  // REVERSE to use old dp[j-w[i]]
+    for (int j = W; j >= w[i]; j--)
         dp[j] = Math.max(dp[j], dp[j - w[i]] + v[i]);
 ```
 
@@ -158,110 +112,52 @@ for (int i = 0; i < n; i++)
 
 ### Keywords That Signal DP
 
-| Keyword | Example Problem |
-|---------|----------------|
+| Keyword | Example |
+|---------|---------|
 | "minimum / maximum" | Minimum coins, Maximum profit |
 | "count the number of ways" | Climbing stairs, Coin change ways |
 | "is it possible / can you reach" | Jump game, Subset sum |
 | "longest / shortest" | LCS, Edit distance |
 | "partition / split" | Palindrome partitioning |
-| "all combinations / arrangements" | Combination sum |
 
-### DP Problem Identification Checklist
+### Checklist
 
-Ask yourself these questions:
-1. Can the problem be broken into smaller versions of itself? (recursive structure)
-2. Do the smaller versions overlap? (same subproblem called multiple times)
-3. Does an optimal solution to the whole problem depend on optimal solutions to subproblems?
-4. Does the problem ask for a count, min, max, or yes/no over a combinatorial space?
+1. Can the problem be broken into smaller versions of itself?
+2. Do the smaller versions overlap?
+3. Does the optimal solution depend on optimal sub-solutions?
+4. Does it ask for count, min, max, or yes/no over a combinatorial space?
 
-If you answer YES to all 4, it is almost certainly a DP problem.
-
-### What is NOT DP
-
-- Sorting problems (no overlapping subproblems)
-- Graph traversal (BFS/DFS — unless computing shortest path with DP like Bellman-Ford)
-- Pure greedy problems (activity selection)
-- Binary search problems
+YES to all → almost certainly DP.
 
 ---
 
 ## 4. General DP Problem-Solving Template
 
-Follow these 5 steps for every DP problem:
-
 ```
-Step 1: Define the state
-  dp[i] means: [describe what this value represents]
-  Example: dp[i] = minimum coins needed to make amount i
-
-Step 2: Write the recurrence relation
-  dp[i] = f(dp[i-1], dp[i-2], ...)
-  Example: dp[i] = min over all coins c: dp[i-c] + 1
-
-Step 3: Identify base cases
-  dp[0] = 0 (base: 0 coins for amount 0)
-
-Step 4: Determine iteration order
-  For most 1D DP: left to right (i = 1 to n)
-  For 0/1 knapsack: right to left when space-optimized
-
-Step 5: Extract the answer
-  Return dp[n], dp[target], dp[m][n], etc.
+Step 1: Define the state — dp[i] means [what this value represents]
+Step 2: Write the recurrence — dp[i] = f(dp[i-1], dp[i-2], ...)
+Step 3: Identify base cases — dp[0] = ?
+Step 4: Determine iteration order — usually left to right; reverse for 0/1 knapsack
+Step 5: Extract the answer — return dp[n], dp[target], dp[m][n], etc.
 ```
 
 ---
 
 ## 5. 1D DP Problems
 
----
-
 ### Problem 1: Fibonacci Sequence
 
 **Definition:** F(n) = F(n-1) + F(n-2), F(0)=0, F(1)=1
 
-> **Think of it like:** each number is just the sum of the two numbers before it — like a rabbit family where this month's babies equal last month's plus the month before's. It's the "hello world" of DP because the same small Fibonacci values get asked for again and again.
-
-**Approach 1 — Naive recursion** is `return fibNaive(n-1) + fibNaive(n-2);` — O(2^n) because each call spawns two more and fib(3), fib(2)... get recomputed. The fix is to remember results.
-
-#### Approach 2 — Memoization: O(n) time, O(n) space
-
-```java
-public long fibMemo(int n) {
-    long[] memo = new long[n + 1];   // notebook: memo[i] will hold F(i) once we compute it
-    Arrays.fill(memo, -1);           // -1 means "not computed yet"
-    return fibHelper(n, memo);
-}
-
-private long fibHelper(int n, long[] memo) {
-    if (n <= 1) return n;            // base cases: F(0)=0, F(1)=1
-    if (memo[n] != -1) return memo[n]; // already solved this? return the saved answer
-    // not solved yet: compute it from the two smaller Fibonacci numbers...
-    memo[n] = fibHelper(n - 1, memo) + fibHelper(n - 2, memo);
-    return memo[n];                 // ...and save it in the notebook before returning
-}
-// Each subproblem computed exactly once.
-```
-
-#### Approach 3 — Tabulation: O(n) time, O(n) space
+| Approach | Time | Space |
+|----------|------|-------|
+| Naive recursion | O(2^n) | O(n) stack |
+| Memoization | O(n) | O(n) |
+| Tabulation | O(n) | O(n) |
+| Space optimized | O(n) | O(1) |
 
 ```java
-public long fibTab(int n) {
-    if (n <= 1) return n;
-    long[] dp = new long[n + 1];     // dp[i] = the i-th Fibonacci number
-    dp[0] = 0;                       // base case
-    dp[1] = 1;                       // base case
-    // build upward: every value uses the two we already filled in below it
-    for (int i = 2; i <= n; i++) {
-        dp[i] = dp[i - 1] + dp[i - 2];
-    }
-    return dp[n];                    // the answer sits at the top of the table
-}
-```
-
-#### Approach 4 — Space Optimized: O(n) time, O(1) space
-
-```java
+// Space optimized — O(n) time, O(1) space
 public long fibOptimal(int n) {
     if (n <= 1) return n;
     long prev2 = 0, prev1 = 1;
@@ -272,50 +168,20 @@ public long fibOptimal(int n) {
     }
     return prev1;
 }
-// Only keep the last two values — no array needed.
 ```
-
-**Complexity Summary:**
-
-| Approach | Time | Space |
-|----------|------|-------|
-| Naive recursion | O(2^n) | O(n) stack |
-| Memoization | O(n) | O(n) |
-| Tabulation | O(n) | O(n) |
-| Space optimized | O(n) | O(1) |
 
 ---
 
 ### Problem 2: Climbing Stairs
 
-**Problem:** You are climbing a staircase with n steps. You can climb 1 or 2 steps at a time. How many distinct ways can you reach the top?
+**Problem:** n steps, can climb 1 or 2 at a time. How many distinct ways to the top?
 
-> **Think of it like:** standing on any stair and looking back. You could only have arrived here from one step below (a 1-step hop) or two steps below (a 2-step hop), so the ways to reach this stair are just the ways to reach those two stairs added together.
-
-**State definition:** dp[i] = number of distinct ways to reach step i
-
+**State:** dp[i] = number of ways to reach step i
 **Recurrence:** dp[i] = dp[i-1] + dp[i-2]
-- To reach step i: come from step i-1 (take 1 step) OR from step i-2 (take 2 steps)
-
-**Base cases:** dp[0] = 1 (one way to stay at ground), dp[1] = 1
+**Base cases:** dp[0] = 1, dp[1] = 1
 
 ```java
-// Bottom-up tabulation
 public int climbStairs(int n) {
-    if (n <= 2) return n;
-    int[] dp = new int[n + 1];       // dp[i] = number of ways to reach step i
-    dp[0] = 1;                       // 1 way to be at the ground (do nothing)
-    dp[1] = 1;                       // 1 way to reach the first step
-    // ways to reach step i = ways arriving from i-1 (1-step) + from i-2 (2-step)
-    for (int i = 2; i <= n; i++) {
-        dp[i] = dp[i - 1] + dp[i - 2];
-    }
-    return dp[n];                    // ways to reach the top step
-}
-// Time: O(n), Space: O(n)
-
-// Space optimized
-public int climbStairsOptimal(int n) {
     if (n <= 2) return n;
     int prev2 = 1, prev1 = 1;
     for (int i = 2; i <= n; i++) {
@@ -328,34 +194,24 @@ public int climbStairsOptimal(int n) {
 // Time: O(n), Space: O(1)
 ```
 
-**Variant: k steps at a time** — if you may climb 1..k steps, the recurrence becomes `dp[i] = sum of dp[i-j] for j = 1..k` (O(n*k)).
-
-**Note:** Climbing stairs is structurally identical to Fibonacci (with different base cases). This is a very common interview entry question.
+**Note:** Structurally identical to Fibonacci (different base cases). Very common interview entry question.
 
 ---
 
 ### Problem 3: House Robber
 
-**Problem:** Given an array of non-negative integers representing money in houses, find the maximum amount you can rob. You cannot rob two adjacent houses (alarm triggers).
+**Problem:** Max money from houses; cannot rob two adjacent houses.
 
-> **Think of it like:** a burglar walking down a street of houses where robbing two next-door houses sets off the alarm. At each house you make one decision: skip it (keep what you had) or rob it (take its cash plus whatever you'd grabbed up to two houses back).
-
-**State definition:** dp[i] = maximum money robbed considering first i houses
-
+**State:** dp[i] = max money from first i houses
 **Recurrence:** dp[i] = max(dp[i-1], dp[i-2] + nums[i])
-- Either skip house i (take dp[i-1]) or rob house i (take dp[i-2] + nums[i])
-
-**Base cases:** dp[0] = nums[0], dp[1] = max(nums[0], nums[1])
 
 ```java
-// Space-optimized: keep only the best totals up to i-1 and i-2
 public int rob(int[] nums) {
     int n = nums.length;
     if (n == 1) return nums[0];
     int prev2 = nums[0];
     int prev1 = Math.max(nums[0], nums[1]);
     for (int i = 2; i < n; i++) {
-        // skip house i (keep prev1) OR rob it (its cash + best up to i-2)
         int curr = Math.max(prev1, prev2 + nums[i]);
         prev2 = prev1;
         prev1 = curr;
@@ -365,154 +221,109 @@ public int rob(int[] nums) {
 // Time: O(n), Space: O(1)
 ```
 
-**Variant: House Robber II (circular)** — first and last houses are adjacent, so run the line solution twice (on houses `0..n-2` and `1..n-1`) and take the max.
+**Variant: House Robber II (circular)** — run the line solution twice (houses `0..n-2` and `1..n-1`), take the max.
 
 ---
 
 ### Problem 4: Coin Change — Minimum Coins
 
-**Problem:** Given coin denominations and a target amount, find the minimum number of coins needed to make up that amount. Return -1 if impossible.
+**Problem:** Given coins and a target amount, find the minimum number of coins. Return -1 if impossible.
 
-> **Think of it like:** a cashier making change with as few coins as possible. To make 6 cents, you try each coin you own, see how few coins it took to make the leftover amount, and pick whichever choice uses the fewest coins overall.
-
-**State definition:** dp[i] = minimum number of coins to make amount i
-
-**Recurrence:** dp[i] = min over all coins c where c <= i: (dp[i - c] + 1)
-- For each coin, try using it and see if we get a better answer
-
-**Base cases:** dp[0] = 0 (zero coins for amount zero)
-
-**Initialization:** dp[i] = Integer.MAX_VALUE (infinity — not yet achievable)
-
-**Full Java Solution with Trace:**
+**State:** dp[i] = minimum coins to make amount i
+**Recurrence:** dp[i] = min over each coin c: dp[i-c] + 1
+**Base case:** dp[0] = 0; initialize all others to `amount + 1` (safe "infinity")
 
 ```java
 public int coinChange(int[] coins, int amount) {
-    int[] dp = new int[amount + 1];  // dp[i] = fewest coins to make amount i
-    Arrays.fill(dp, amount + 1); // fill with "infinity" (amount+1 is impossible)
-    dp[0] = 0;                       // 0 coins needed to make amount 0
-
-    for (int i = 1; i <= amount; i++) {       // solve every amount from 1 up to the target
-        for (int coin : coins) {              // try paying with each coin we have
-            // coin must fit, and the leftover amount must actually be makeable
+    int[] dp = new int[amount + 1];
+    Arrays.fill(dp, amount + 1);
+    dp[0] = 0;
+    for (int i = 1; i <= amount; i++) {
+        for (int coin : coins) {
             if (coin <= i && dp[i - coin] != amount + 1) {
-                // using this coin = 1 coin + best way to make the remainder; keep the smallest
                 dp[i] = Math.min(dp[i], dp[i - coin] + 1);
             }
         }
     }
-    // still "infinity"? then the amount can't be made → return -1
     return dp[amount] > amount ? -1 : dp[amount];
 }
 // Time: O(amount * coins.length), Space: O(amount)
 ```
 
-**Trace:** coins = [1, 3, 4], amount = 6 → dp = [0,1,2,1,1,2,2]. Answer: 2 (using 3+3). Greedy would wrongly give 4+1+1 = 3.
+**Why `amount+1` and not `Integer.MAX_VALUE`?** `Integer.MAX_VALUE + 1` overflows. `amount+1` is always larger than any valid answer.
 
-**Why initialize with amount+1 and not Integer.MAX_VALUE?** Integer.MAX_VALUE + 1 overflows. amount+1 is safe — always larger than any valid answer (the worst case is `amount` using all 1-coins).
+**Trace:** coins = [1,3,4], amount = 6 → dp = [0,1,2,1,1,2,2]. Answer: 2 (3+3). Greedy gives 3 coins.
 
 ---
 
-### Problem 5: Coin Change — Number of Ways (Combination Sum IV)
+### Problem 5: Coin Change — Number of Ways
 
-**Problem:** Count the number of distinct combinations (order matters) of coins that sum to the target.
-
-> **Think of it like:** counting how many different ways a cashier could hand you the same change — not the fewest coins this time, but every possible coin combination that adds up to the amount.
-
-**State definition:** dp[i] = number of ways to make amount i
-
-**Recurrence:** dp[i] += dp[i - coin] for each coin where coin <= i
-
-**Base case:** dp[0] = 1 (one way to make amount 0: use no coins)
+**State:** dp[i] = number of ways to make amount i; **Base case:** dp[0] = 1
 
 ```java
-// Order matters (like Combination Sum IV / Climbing Stairs)
+// Order matters (Combination Sum IV): amount outer, coin inner
 public int countWaysOrdered(int[] coins, int target) {
     int[] dp = new int[target + 1];
     dp[0] = 1;
-    for (int i = 1; i <= target; i++) {
-        for (int coin : coins) {
-            if (coin <= i) {
-                dp[i] += dp[i - coin];
-            }
-        }
-    }
+    for (int i = 1; i <= target; i++)
+        for (int coin : coins)
+            if (coin <= i) dp[i] += dp[i - coin];
     return dp[target];
 }
-// Time: O(target * coins.length), Space: O(target)
-// [1,2] for target=3: {1,1,1}, {1,2}, {2,1} = 3 ways (order matters)
 
-// Order does NOT matter (classic coin change ways / unbounded knapsack)
+// Order does NOT matter: coin outer, amount inner
 public int countWaysUnordered(int[] coins, int target) {
     int[] dp = new int[target + 1];
     dp[0] = 1;
-    for (int coin : coins) {          // outer loop: coins
-        for (int i = coin; i <= target; i++) { // inner loop: amounts
+    for (int coin : coins)
+        for (int i = coin; i <= target; i++)
             dp[i] += dp[i - coin];
-        }
-    }
     return dp[target];
 }
-// Time: O(coins.length * target), Space: O(target)
-// [1,2] for target=3: {1,1,1}, {1,2} = 2 ways (order doesn't matter)
 ```
 
-**Key difference between the two:**
-- Order matters: outer loop over amounts, inner loop over coins
-- Order does NOT matter: outer loop over coins, inner loop over amounts
+**Key difference:** Order matters → amount outer, coin inner. Order doesn't matter → coin outer, amount inner.
 
 ---
 
 ### Problem 6: Word Break
 
-**Problem:** Given a string s and a dictionary of words, determine if s can be segmented into a space-separated sequence of dictionary words.
+**Problem:** Can string `s` be segmented into dictionary words?
 
-> **Think of it like:** reading a sign with no spaces, such as "applepie", and checking if you can chop it into real words from your dictionary ("apple" + "pie"). You go left to right asking, "does a valid word end right here, with valid words before it?"
-
-**State definition:** dp[i] = true if s[0..i-1] can be segmented using dictionary words
-
-**Recurrence:** dp[i] = true if there exists j < i such that dp[j] == true AND s[j..i-1] is in the dictionary
-
-**Base case:** dp[0] = true (empty string is always segmentable)
+**State:** dp[i] = true if s[0..i-1] can be segmented
+**Recurrence:** dp[i] = true if dp[j] && s[j..i-1] is in dictionary, for some j < i
+**Base case:** dp[0] = true
 
 ```java
 public boolean wordBreak(String s, List<String> wordDict) {
     Set<String> wordSet = new HashSet<>(wordDict);
     int n = s.length();
     boolean[] dp = new boolean[n + 1];
-    dp[0] = true; // base case: empty prefix
-
+    dp[0] = true;
     for (int i = 1; i <= n; i++) {
         for (int j = 0; j < i; j++) {
             if (dp[j] && wordSet.contains(s.substring(j, i))) {
                 dp[i] = true;
-                break; // no need to check further for this i
+                break;
             }
         }
     }
     return dp[n];
 }
-// Time: O(n^2) — n^2 substrings, each check O(1) with HashSet
-// Space: O(n + dict size)
+// Time: O(n^2), Space: O(n + dict size)
 ```
-
-**Trace:** s = "leetcode", dict = ["leet", "code"] → dp[4] true ("leet"), then dp[8] true ("leet"+"code"). Answer: true.
-
-**Variant: Word Break II (return all segmentations)** — recurse from each index, memoizing the list of sentences for each suffix. Worst case O(n^2 · 2^n) since there can be exponentially many sentences.
 
 ---
 
-### Problem 7: Jump Game
+### Problem 7: Jump Game & Jump Game II
 
-**Problem:** Given an array nums where nums[i] is the max jump length from index i, determine if you can reach the last index.
-
-**Greedy approach (optimal):**
+**Jump Game** — can you reach the last index? Greedy is optimal:
 
 ```java
 public boolean canJump(int[] nums) {
     int maxReach = 0;
     for (int i = 0; i < nums.length; i++) {
-        if (i > maxReach) return false; // can't reach i
+        if (i > maxReach) return false;
         maxReach = Math.max(maxReach, i + nums[i]);
     }
     return true;
@@ -520,253 +331,120 @@ public boolean canJump(int[] nums) {
 // Time: O(n), Space: O(1)
 ```
 
-There is also an O(n²) DP (`dp[i]` = is index i reachable), but greedy is strictly better here.
-
----
-
-### Problem 8: Jump Game II — Minimum Jumps
-
-**Problem:** Find the minimum number of jumps to reach the last index. Assume you can always reach.
-
-**Greedy (optimal):**
+**Jump Game II** — minimum jumps to reach the end:
 
 ```java
 public int jump(int[] nums) {
     int jumps = 0, currentEnd = 0, farthest = 0;
     for (int i = 0; i < nums.length - 1; i++) {
         farthest = Math.max(farthest, i + nums[i]);
-        if (i == currentEnd) {
-            jumps++;
-            currentEnd = farthest;
-        }
+        if (i == currentEnd) { jumps++; currentEnd = farthest; }
     }
     return jumps;
 }
 // Time: O(n), Space: O(1)
 ```
 
-An O(n²) DP (`dp[i]` = min jumps to reach i) also works but is slower; greedy is preferred.
-
 ---
 
-### Problem 9: Decode Ways
+### Problem 8: Decode Ways
 
-**Problem:** A message containing letters A-Z is encoded as 1-26. Given a digit string, count the number of ways to decode it.
+**Problem:** Count ways to decode a digit string (A=1...Z=26).
 
-**State definition:** dp[i] = number of ways to decode s[0..i-1]
-
-**Recurrence:**
-- If s[i-1] != '0': dp[i] += dp[i-1] (single digit decode)
-- If s[i-2..i-1] forms a valid two-digit number (10-26): dp[i] += dp[i-2]
-
-**Base cases:** dp[0] = 1, dp[1] = (s[0] != '0') ? 1 : 0
+**State:** dp[i] = ways to decode s[0..i-1]
+**Base cases:** dp[0] = 1, dp[1] = s[0]!='0' ? 1 : 0
 
 ```java
 public int numDecodings(String s) {
     int n = s.length();
     if (n == 0 || s.charAt(0) == '0') return 0;
-
     int[] dp = new int[n + 1];
-    dp[0] = 1; // empty string: one way
-    dp[1] = s.charAt(0) != '0' ? 1 : 0;
-
+    dp[0] = 1;
+    dp[1] = 1;
     for (int i = 2; i <= n; i++) {
-        // Single digit decode
         int oneDigit = s.charAt(i - 1) - '0';
-        if (oneDigit != 0) {
-            dp[i] += dp[i - 1];
-        }
-
-        // Two digit decode
+        if (oneDigit != 0) dp[i] += dp[i - 1];
         int twoDigit = Integer.parseInt(s.substring(i - 2, i));
-        if (twoDigit >= 10 && twoDigit <= 26) {
-            dp[i] += dp[i - 2];
-        }
+        if (twoDigit >= 10 && twoDigit <= 26) dp[i] += dp[i - 2];
     }
     return dp[n];
 }
 // Time: O(n), Space: O(n)
 ```
 
-**Trace:** s = "226" → dp = [1,1,2,3]. Answer: 3 → {2,2,6}, {22,6}, {2,26}.
+**Trace:** "226" → dp = [1,1,2,3]. Answer: 3 ({2,2,6}, {22,6}, {2,26}).
 
 ---
 
 ## 6. 2D DP Problems
 
----
+### Problem 9: Unique Paths
 
-### Problem 10: Unique Paths
+**Problem:** Robot at top-left of m×n grid, can only move right or down. Count paths to bottom-right.
 
-**Problem:** A robot starts at top-left of an m×n grid and wants to reach bottom-right. It can only move right or down. Count all unique paths.
-
-> **Think of it like:** walking through a city grid where you can only go right or down. To count the ways to reach any corner, add up the ways to reach the corner just above it and the corner just to its left — those are the only two spots you could have stepped from.
-
-**State definition:** dp[i][j] = number of unique paths to reach cell (i, j)
-
+**State:** dp[i][j] = unique paths to (i,j)
 **Recurrence:** dp[i][j] = dp[i-1][j] + dp[i][j-1]
-- Can only arrive from above or from the left
-
-**Base cases:** dp[0][j] = 1 for all j (top row), dp[i][0] = 1 for all i (left column)
+**Base cases:** first row and first column all = 1
 
 ```java
 public int uniquePaths(int m, int n) {
     int[][] dp = new int[m][n];
-
-    // Base cases: first row and first column
     for (int i = 0; i < m; i++) dp[i][0] = 1;
     for (int j = 0; j < n; j++) dp[0][j] = 1;
-
-    for (int i = 1; i < m; i++) {
-        for (int j = 1; j < n; j++) {
-            dp[i][j] = dp[i - 1][j] + dp[i][j - 1];
-        }
-    }
-    return dp[m - 1][n - 1];
+    for (int i = 1; i < m; i++)
+        for (int j = 1; j < n; j++)
+            dp[i][j] = dp[i-1][j] + dp[i][j-1];
+    return dp[m-1][n-1];
 }
-// Time: O(m*n), Space: O(m*n) — can drop to O(n) with a single row that you
-// update in place: dp[j] += dp[j-1].
+// Time: O(m*n), Space: O(m*n) — reducible to O(n) with 1D row
 ```
 
-**Variant: Unique Paths II (with obstacles)** — same recurrence, but force `dp[i][j] = 0` on any obstacle cell (it contributes no paths).
+**Variant: Unique Paths II (with obstacles)** — set dp[i][j] = 0 on obstacle cells.
 
 ---
 
-### Problem 11: Minimum Path Sum
+### Problem 10: Minimum Path Sum
 
-**Problem:** Given an m×n grid of non-negative integers, find the path from top-left to bottom-right that minimizes the sum. You can only move right or down.
-
-**State definition:** dp[i][j] = minimum path sum to reach (i, j)
-
+**State:** dp[i][j] = minimum sum to reach (i,j)
 **Recurrence:** dp[i][j] = grid[i][j] + min(dp[i-1][j], dp[i][j-1])
 
 ```java
 public int minPathSum(int[][] grid) {
     int m = grid.length, n = grid[0].length;
     int[][] dp = new int[m][n];
-
     dp[0][0] = grid[0][0];
-    // Fill first column
     for (int i = 1; i < m; i++) dp[i][0] = dp[i-1][0] + grid[i][0];
-    // Fill first row
     for (int j = 1; j < n; j++) dp[0][j] = dp[0][j-1] + grid[0][j];
-
-    for (int i = 1; i < m; i++) {
-        for (int j = 1; j < n; j++) {
+    for (int i = 1; i < m; i++)
+        for (int j = 1; j < n; j++)
             dp[i][j] = grid[i][j] + Math.min(dp[i-1][j], dp[i][j-1]);
-        }
-    }
     return dp[m-1][n-1];
-}
-// Time: O(m*n), Space: O(m*n) — reducible to O(n) with a rolling 1D row.
-```
-
----
-
-### Problem 12: Longest Common Subsequence (LCS)
-
-**Definition:**
-- **Subsequence:** Characters in order but not necessarily contiguous. "ACE" is a subsequence of "ABCDE".
-- **Substring:** Characters in order AND contiguous. "BCD" is a substring of "ABCDE".
-- LCS finds the longest subsequence common to both strings.
-
-> **Think of it like:** two friends listing the movies they each watched this year, in the order they saw them. The LCS is the longest list of movies both saw in the same relative order — they don't have to be back-to-back, just in order.
-
-**State definition:** dp[i][j] = length of LCS of s1[0..i-1] and s2[0..j-1]
-
-**Recurrence:**
-- If s1[i-1] == s2[j-1]: dp[i][j] = dp[i-1][j-1] + 1 (characters match, extend)
-- Else: dp[i][j] = max(dp[i-1][j], dp[i][j-1]) (skip one character from either string)
-
-**Base cases:** dp[0][j] = 0, dp[i][0] = 0 (LCS with empty string is 0)
-
-```java
-public int lcs(String s1, String s2) {
-    int m = s1.length(), n = s2.length();
-    // dp[i][j] = LCS length using first i chars of s1 and first j chars of s2.
-    // Row/col 0 stay 0 (an empty string shares nothing) — these are the base cases.
-    int[][] dp = new int[m + 1][n + 1];
-
-    for (int i = 1; i <= m; i++) {           // walk through every char of s1
-        for (int j = 1; j <= n; j++) {       // against every char of s2
-            if (s1.charAt(i - 1) == s2.charAt(j - 1)) {
-                // chars match: extend the LCS found before both of these chars
-                dp[i][j] = dp[i - 1][j - 1] + 1;
-            } else {
-                // no match: drop one char from s1 or from s2, keep the better result
-                dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1]);
-            }
-        }
-    }
-    return dp[m][n];                         // bottom-right cell = LCS of the full strings
 }
 // Time: O(m*n), Space: O(m*n)
 ```
 
-**Full Table Trace:** s1 = "ABCBDAB", s2 = "BDCAB"
-
-```
-    ""  B  D  C  A  B
-""   0  0  0  0  0  0
-A    0  0  0  0  1  1
-B    0  1  1  1  1  2
-C    0  1  1  2  2  2
-B    0  1  1  2  2  3
-D    0  1  2  2  2  3
-A    0  1  2  2  3  3
-B    0  1  2  2  3  4
-
-LCS length = 4 ("BCAB" or "BDAB")
-```
-
-**Reconstruct the actual LCS (awareness):** backtrack from dp[m][n] — on a match, take that char and go diagonally; otherwise move toward the larger of dp[i-1][j] / dp[i][j-1]. Reverse the collected chars.
-
-**Variant: Shortest Common Supersequence (awareness)** — the shortest string containing both s1 and s2 as subsequences; its length is `m + n - LCS(s1, s2)`, and it is rebuilt by a similar backtrack.
-
 ---
 
-### Problem 13: Edit Distance (Levenshtein Distance)
+### Problem 11: Longest Common Subsequence (LCS)
 
-**Problem:** Given two strings word1 and word2, find the minimum number of operations (insert, delete, replace) to transform word1 into word2.
+**Subsequence** = characters in order but not necessarily contiguous. LCS finds the longest such sequence common to both strings.
 
-> **Think of it like:** the autocorrect on your phone deciding how close two words are. It counts the fewest single-letter edits — add a letter, remove a letter, or swap a letter — needed to turn one word into the other.
-
-**State definition:** dp[i][j] = minimum operations to transform word1[0..i-1] into word2[0..j-1]
-
+**State:** dp[i][j] = LCS length of s1[0..i-1] and s2[0..j-1]
 **Recurrence:**
-- If word1[i-1] == word2[j-1]: dp[i][j] = dp[i-1][j-1] (no operation needed)
-- Else: dp[i][j] = 1 + min(
-    dp[i-1][j],    // delete from word1
-    dp[i][j-1],    // insert into word1 (= delete from word2)
-    dp[i-1][j-1]   // replace
-  )
-
-**Base cases:**
-- dp[i][0] = i (delete all i characters from word1)
-- dp[0][j] = j (insert all j characters)
+- s1[i-1] == s2[j-1]: dp[i][j] = dp[i-1][j-1] + 1
+- else: dp[i][j] = max(dp[i-1][j], dp[i][j-1])
+**Base cases:** dp[0][j] = 0, dp[i][0] = 0
 
 ```java
-public int minDistance(String word1, String word2) {
-    int m = word1.length(), n = word2.length();
+public int lcs(String s1, String s2) {
+    int m = s1.length(), n = s2.length();
     int[][] dp = new int[m + 1][n + 1];
-
-    // Base cases
-    for (int i = 0; i <= m; i++) dp[i][0] = i;
-    for (int j = 0; j <= n; j++) dp[0][j] = j;
-
     for (int i = 1; i <= m; i++) {
         for (int j = 1; j <= n; j++) {
-            if (word1.charAt(i - 1) == word2.charAt(j - 1)) {
-                dp[i][j] = dp[i - 1][j - 1]; // no operation
-            } else {
-                dp[i][j] = 1 + Math.min(
-                    dp[i - 1][j],      // delete
-                    Math.min(
-                        dp[i][j - 1],  // insert
-                        dp[i - 1][j - 1] // replace
-                    )
-                );
-            }
+            if (s1.charAt(i-1) == s2.charAt(j-1))
+                dp[i][j] = dp[i-1][j-1] + 1;
+            else
+                dp[i][j] = Math.max(dp[i-1][j], dp[i][j-1]);
         }
     }
     return dp[m][n];
@@ -774,54 +452,58 @@ public int minDistance(String word1, String word2) {
 // Time: O(m*n), Space: O(m*n)
 ```
 
-**Full Table Trace:** word1 = "horse", word2 = "ros"
+---
 
+### Problem 12: Edit Distance (Levenshtein Distance)
+
+**Problem:** Minimum insert/delete/replace operations to transform word1 into word2.
+
+**State:** dp[i][j] = min operations to transform word1[0..i-1] into word2[0..j-1]
+**Recurrence:**
+- Characters match: dp[i][j] = dp[i-1][j-1]
+- Mismatch: dp[i][j] = 1 + min(dp[i-1][j], dp[i][j-1], dp[i-1][j-1]) (delete, insert, replace)
+**Base cases:** dp[i][0] = i, dp[0][j] = j
+
+```java
+public int minDistance(String word1, String word2) {
+    int m = word1.length(), n = word2.length();
+    int[][] dp = new int[m + 1][n + 1];
+    for (int i = 0; i <= m; i++) dp[i][0] = i;
+    for (int j = 0; j <= n; j++) dp[0][j] = j;
+    for (int i = 1; i <= m; i++) {
+        for (int j = 1; j <= n; j++) {
+            if (word1.charAt(i-1) == word2.charAt(j-1))
+                dp[i][j] = dp[i-1][j-1];
+            else
+                dp[i][j] = 1 + Math.min(dp[i-1][j],
+                                Math.min(dp[i][j-1], dp[i-1][j-1]));
+        }
+    }
+    return dp[m][n];
+}
+// Time: O(m*n), Space: O(m*n)
 ```
-    ""  r  o  s
-""   0  1  2  3
-h    1  1  2  3
-o    2  2  1  2
-r    3  2  2  2
-s    4  3  3  2
-e    5  4  4  3
-
-Answer: 3 operations
-  horse → rorse (replace 'h' with 'r')
-  rorse → rose  (delete 'r')
-  rose  → ros   (delete 'e')
-```
-
-**Applications:** spell checkers, DNA sequence alignment, git diff, plagiarism detection.
-
-**Space:** O(m·n) reduces to O(n) with a 1D rolling array — keep the diagonal value `dp[i-1][j-1]` in a `prev` variable before overwriting `dp[j]`.
 
 ---
 
-### Problem 14: Longest Common Substring
+### Problem 13: Longest Common Substring
 
-**Problem:** Find the length of the longest contiguous substring common to both strings.
+**Difference from LCS:** Must be contiguous. Mismatch → reset to 0 (don't take max).
 
-**Difference from LCS:** Substring must be contiguous. When characters don't match, reset to 0 (unlike LCS which takes max of skipping).
-
-**State definition:** dp[i][j] = length of longest common substring ending at s1[i-1] and s2[j-1]
-
-**Recurrence:**
-- If s1[i-1] == s2[j-1]: dp[i][j] = dp[i-1][j-1] + 1
-- Else: dp[i][j] = 0
+**State:** dp[i][j] = length of longest common substring ending at s1[i-1] and s2[j-1]
 
 ```java
 public int longestCommonSubstring(String s1, String s2) {
     int m = s1.length(), n = s2.length();
     int[][] dp = new int[m + 1][n + 1];
     int maxLen = 0;
-
     for (int i = 1; i <= m; i++) {
         for (int j = 1; j <= n; j++) {
-            if (s1.charAt(i - 1) == s2.charAt(j - 1)) {
-                dp[i][j] = dp[i - 1][j - 1] + 1;
+            if (s1.charAt(i-1) == s2.charAt(j-1)) {
+                dp[i][j] = dp[i-1][j-1] + 1;
                 maxLen = Math.max(maxLen, dp[i][j]);
             } else {
-                dp[i][j] = 0; // KEY difference from LCS: reset, don't take max
+                dp[i][j] = 0; // reset — substring is broken
             }
         }
     }
@@ -830,144 +512,67 @@ public int longestCommonSubstring(String s1, String s2) {
 // Time: O(m*n), Space: O(m*n)
 ```
 
-**LCS vs Longest Common Substring Summary:**
-
 | Aspect | LCS | Longest Common Substring |
 |--------|-----|--------------------------|
 | Contiguous? | No | Yes |
-| Mismatch case | dp[i][j] = max(dp[i-1][j], dp[i][j-1]) | dp[i][j] = 0 |
-| Track | dp[m][n] | maxLen across all cells |
+| Mismatch case | max(dp[i-1][j], dp[i][j-1]) | 0 (reset) |
+| Answer | dp[m][n] | max value across all cells |
 
 ---
 
-### Problem 15: 0/1 Knapsack
+### Problem 14: 0/1 Knapsack
 
-**Problem:** Given n items, each with weight w[i] and value v[i], and a knapsack of capacity W, maximize the total value. Each item can be taken at most once (0 or 1 times).
+**Problem:** n items with weight w[i] and value v[i]; capacity W. Maximize value. Each item used at most once.
 
-> **Think of it like:** packing a backpack with a weight limit before a trip. Each item weighs something and is worth something, and you want the most valuable load that still fits. For every item you face one choice: leave it out or put it in (if there's room).
-
-**State definition:** dp[i][w] = maximum value using first i items with knapsack capacity w
-
-**Recurrence:**
-- Exclude item i: dp[i][w] = dp[i-1][w]
-- Include item i (if w[i] <= w): dp[i][w] = dp[i-1][w - w[i]] + v[i]
-- dp[i][w] = max of the two
-
-**Base cases:** dp[0][w] = 0 (no items → no value), dp[i][0] = 0 (no capacity → no value)
+**State:** dp[i][w] = max value using first i items with capacity w
+**Recurrence:** dp[i][w] = max(dp[i-1][w], dp[i-1][w-w[i]] + v[i]) if w[i] <= w
+**Base cases:** dp[0][w] = 0, dp[i][0] = 0
 
 ```java
+// Space-optimized 1D (reverse traversal for 0/1)
 public int knapsack(int[] weights, int[] values, int W) {
     int n = weights.length;
-    int[][] dp = new int[n + 1][W + 1];
-
-    for (int i = 1; i <= n; i++) {
-        for (int w = 0; w <= W; w++) {
-            // Option 1: exclude item i
-            dp[i][w] = dp[i - 1][w];
-            // Option 2: include item i (if it fits)
-            if (weights[i - 1] <= w) {
-                dp[i][w] = Math.max(dp[i][w],
-                    dp[i - 1][w - weights[i - 1]] + values[i - 1]);
-            }
-        }
-    }
-    return dp[n][W];
-}
-// Time: O(n*W), Space: O(n*W)
-```
-
-**Full Table Trace:** items = [{w=2,v=6},{w=2,v=10},{w=3,v=12}], W=5
-
-```
-Items: (w=2,v=6), (w=2,v=10), (w=3,v=12)
-
-    w=0  w=1  w=2  w=3  w=4  w=5
-i=0:  0    0    0    0    0    0
-i=1:  0    0    6    6    6    6   ← item1(2,6): fits at w>=2
-i=2:  0    0   10   10   16   16  ← item2(2,10): at w=4: item1+item2=16
-i=3:  0    0   10   12   16   22  ← item3(3,12): at w=5: item2+item3=22
-
-Answer: 22 (items 2 and 3: 10+12)
-```
-
-**Space Optimization to 1D (MUST iterate w from W down to w[i]):**
-
-```java
-public int knapsack1D(int[] weights, int[] values, int W) {
-    int n = weights.length;
     int[] dp = new int[W + 1];
-
-    for (int i = 0; i < n; i++) {
-        // Traverse from right to left to avoid using item i twice
-        for (int w = W; w >= weights[i]; w--) {
+    for (int i = 0; i < n; i++)
+        for (int w = W; w >= weights[i]; w--)
             dp[w] = Math.max(dp[w], dp[w - weights[i]] + values[i]);
-        }
-    }
     return dp[W];
 }
 // Time: O(n*W), Space: O(W)
 ```
 
-**Why reverse traversal?** If we go left to right, dp[w - weights[i]] might have already been updated in this iteration (using item i again), turning it into an unbounded knapsack. Reverse traversal ensures we only use each item once.
-
-**Reconstruct selected items (awareness):** keep the full 2D table, then backtrack from dp[n][W] — whenever `dp[i][w] != dp[i-1][w]`, item i was taken, so record it and subtract its weight from w.
+**Why reverse?** Left-to-right would let item i be selected multiple times (unbounded knapsack). Reverse ensures each item is used at most once.
 
 ---
 
-### Problem 16: Subset Sum
+### Problem 15: Subset Sum & Partition Equal Subset Sum
 
-**Problem:** Given an array of positive integers and a target sum, determine if any subset sums to the target.
-
-> **Think of it like:** checking whether you can pick some bills from your wallet to pay an exact price with no change. You don't need every bill — just some combination that adds up exactly to the target.
-
-**Relation to Knapsack:** Treat each number as an item with weight = value. Can we fill capacity exactly?
-
-**State definition:** dp[i][s] = true if a subset of first i elements sums to s
-
-**Recurrence:**
-- Exclude element: dp[i][s] = dp[i-1][s]
-- Include element: dp[i][s] |= dp[i-1][s - nums[i-1]] (if nums[i-1] <= s)
+**Subset Sum:** Can any subset sum to target?
 
 ```java
 public boolean subsetSum(int[] nums, int target) {
-    int n = nums.length;
     boolean[] dp = new boolean[target + 1];
-    dp[0] = true; // empty subset sums to 0
-
-    for (int num : nums) {
-        // Traverse right to left (0/1 — each element used at most once)
-        for (int s = target; s >= num; s--) {
+    dp[0] = true;
+    for (int num : nums)
+        for (int s = target; s >= num; s--)
             dp[s] = dp[s] || dp[s - num];
-        }
-    }
     return dp[target];
 }
-// Time: O(n * target), Space: O(target)
 ```
 
----
-
-### Problem 17: Partition Equal Subset Sum
-
-**Problem:** Given an array, determine if it can be partitioned into two subsets with equal sum.
-
-**Key insight:** If total sum is odd, impossible. Otherwise, find a subset summing to total/2.
+**Partition Equal Subset Sum:** Can array be split into two equal-sum halves?
 
 ```java
 public boolean canPartition(int[] nums) {
     int total = 0;
     for (int num : nums) total += num;
-    if (total % 2 != 0) return false; // odd total → impossible
-
+    if (total % 2 != 0) return false;
     int target = total / 2;
     boolean[] dp = new boolean[target + 1];
     dp[0] = true;
-
-    for (int num : nums) {
-        for (int s = target; s >= num; s--) {
+    for (int num : nums)
+        for (int s = target; s >= num; s--)
             dp[s] = dp[s] || dp[s - num];
-        }
-    }
     return dp[target];
 }
 // Time: O(n * total/2), Space: O(total/2)
@@ -975,213 +580,126 @@ public boolean canPartition(int[] nums) {
 
 ---
 
-### Problem 18: Target Sum (Assign +/- to Array Elements)
+### Problem 16: Target Sum
 
-**Problem:** Given an integer array nums and an integer target, assign + or - to each element and count the number of ways to reach the target.
+**Problem:** Assign + or - to each element; count ways to reach target.
 
-**Mathematical reduction to Subset Sum:**
-Let P = sum of elements with +, N = sum of elements with -.
-P + N = total, P - N = target
-→ P = (total + target) / 2
-
-So count subsets with sum = (total + target) / 2.
+**Math reduction:** Let P = sum of positive elements. P = (total + target) / 2. Count subsets summing to P.
 
 ```java
 public int findTargetSumWays(int[] nums, int target) {
     int total = 0;
     for (int num : nums) total += num;
-
-    // If (total + target) is odd or target > total, no solution
     if ((total + target) % 2 != 0 || Math.abs(target) > total) return 0;
-
     int subsetSum = (total + target) / 2;
     int[] dp = new int[subsetSum + 1];
     dp[0] = 1;
-
-    for (int num : nums) {
-        for (int s = subsetSum; s >= num; s--) {
+    for (int num : nums)
+        for (int s = subsetSum; s >= num; s--)
             dp[s] += dp[s - num];
-        }
-    }
     return dp[subsetSum];
 }
 // Time: O(n * subsetSum), Space: O(subsetSum)
 ```
 
-**Alternative (awareness):** you can also memoize a direct recursion on `(index, runningSum)` that tries +nums[i] and -nums[i] at each step, without the subset-sum reduction.
-
 ---
 
-## 7. Interval DP
+## 7. Interval DP (Awareness)
 
-Interval DP solves problems on contiguous subarrays/subsequences. The state is `dp[i][j]` = answer for interval [i, j], and you try every "split point" k inside it. The iteration order is **by increasing interval length** so shorter intervals are ready before longer ones. These are advanced and rarely asked at the junior level — know that they exist and recognize the shape.
+Interval DP solves problems on contiguous subarrays. State is `dp[i][j]` = answer for interval [i,j]; try every split point k. Iterate by **increasing interval length**. Rarely asked at junior level — know they exist.
 
-- **Matrix Chain Multiplication:** given matrix dimensions, find the cheapest order to multiply a chain. `dp[i][j] = min over k of dp[i][k] + dp[k+1][j] + p[i-1]*p[k]*p[j]`, base `dp[i][i]=0`. O(n³) time, O(n²) space.
-
-- **Burst Balloons:** maximize coins from bursting balloons, where bursting i pays `nums[i-1]*nums[i]*nums[i+1]`. Trick: think about which balloon is burst **last** in an interval to remove the dependency. `dp[i][j] = max over k of dp[i][k] + dp[k][j] + nums[i]*nums[k]*nums[j]` over the open interval. O(n³) time.
-
-- **Palindrome Partitioning II (min cuts):** fewest cuts so every piece is a palindrome. Precompute `isPalin[i][j]`, then `dp[i]` = min cuts for prefix s[0..i], taking `dp[i] = min(dp[j-1]+1)` over palindromic suffixes s[j..i]. O(n²).
+- **Matrix Chain Multiplication:** cheapest order to multiply a matrix chain. O(n³) time.
+- **Burst Balloons:** maximize coins from bursting; think about which balloon is burst **last** in an interval. O(n³) time.
+- **Palindrome Partitioning II (min cuts):** fewest cuts so every piece is a palindrome. O(n²) time.
 
 ---
 
 ## 8. String DP
 
----
+### Longest Palindromic Subsequence (awareness)
 
-### Problem 22: Longest Palindromic Subsequence (awareness)
+LPS(s) = LCS(s, reverse(s)). Reuse the LCS solution directly. O(n²).
 
-**Problem:** length of the longest subsequence of s that reads as a palindrome.
+### Longest Palindromic Substring
 
-**Key insight:** LPS(s) = LCS(s, reverse(s)) — so you can reuse the LCS solution directly. Alternatively, an interval DP on `dp[i][j]` (= LPS within s[i..j]) with `dp[i][j] = dp[i+1][j-1] + 2` when ends match, else `max(dp[i+1][j], dp[i][j-1])`. O(n²).
-
----
-
-### Problem 23: Longest Palindromic Substring
-
-**Problem:** Find the longest *contiguous* substring of s that is a palindrome. The clean O(1)-space answer is **expand-around-center**: treat each index (and each gap between indices) as a center and expand outward while characters match. (An O(n²)-space `boolean dp[i][j]` table also works but is heavier.)
-
-**Expand-Around-Center (optimal — O(1) space):**
+Optimal approach: **expand around center** — O(n²) time, O(1) space.
 
 ```java
-// O(n^2) time, O(1) space
-public String longestPalindromeExpand(String s) {
-    int n = s.length();
+public String longestPalindrome(String s) {
     int start = 0, maxLen = 1;
-
-    for (int center = 0; center < n; center++) {
-        // Odd length palindromes
-        int len1 = expandAroundCenter(s, center, center);
-        // Even length palindromes
-        int len2 = expandAroundCenter(s, center, center + 1);
-
+    for (int center = 0; center < s.length(); center++) {
+        int len1 = expand(s, center, center);     // odd length
+        int len2 = expand(s, center, center + 1); // even length
         int len = Math.max(len1, len2);
-        if (len > maxLen) {
-            maxLen = len;
-            start = center - (len - 1) / 2;
-        }
+        if (len > maxLen) { maxLen = len; start = center - (len - 1) / 2; }
     }
     return s.substring(start, start + maxLen);
 }
 
-private int expandAroundCenter(String s, int left, int right) {
-    while (left >= 0 && right < s.length()
-           && s.charAt(left) == s.charAt(right)) {
-        left--;
-        right++;
+private int expand(String s, int left, int right) {
+    while (left >= 0 && right < s.length() && s.charAt(left) == s.charAt(right)) {
+        left--; right++;
     }
-    return right - left - 1; // length of palindrome
+    return right - left - 1;
 }
-// Time: O(n^2), Space: O(1)
 ```
 
----
+### Distinct Subsequences (awareness)
 
-### Problem 24: Distinct Subsequences (awareness)
-
-**Problem:** count how many distinct subsequences of s equal t. `dp[i][j]` = ways to form t[0..j-1] from s[0..i-1]: always `dp[i-1][j]` (skip s[i-1]), plus `dp[i-1][j-1]` when `s[i-1] == t[j-1]` (use it). Base `dp[i][0] = 1`. O(m·n).
+Count how many distinct subsequences of s equal t. `dp[i][j]` = ways to form t[0..j-1] from s[0..i-1]: always add `dp[i-1][j]` (skip s[i-1]), plus `dp[i-1][j-1]` when characters match. Base: `dp[i][0] = 1`. O(m·n).
 
 ---
 
-## 9. DP on Trees
+## 9. DP on Trees (Awareness)
 
-Tree DP runs a post-order DFS and combines children's results at each node. State lives "per node" rather than in an array. These are advanced — awareness is enough for a junior interview.
+Tree DP runs post-order DFS and combines children's results at each node. Advanced — awareness is enough for junior interviews.
 
-- **House Robber III (binary tree):** parent and child can't both be robbed. Each DFS call returns a pair `{robThis, skipThis}`: `robThis = node.val + left.skip + right.skip`, `skipThis = max(left) + max(right)`. Answer is `max` of the root's pair. O(n) time, O(h) space.
-
-- **Maximum Path Sum in Binary Tree:** the best path may bend at a node, using both children. At each node compute `gain = node.val + max(leftGain,0) + max(rightGain,0)` and update a global max with it, but **return** only `node.val + max(leftGain, rightGain)` (a path can extend through a parent in just one direction). O(n) time.
+- **House Robber III:** each DFS returns `{robThis, skipThis}`. `robThis = node.val + left.skip + right.skip`, `skipThis = max(left) + max(right)`. O(n).
+- **Maximum Path Sum:** at each node, compute `gain = node.val + max(leftGain,0) + max(rightGain,0)`, update global max, but return `node.val + max(leftGain, rightGain)` upward. O(n).
 
 ---
 
 ## 10. DP Patterns Summary Table
 
-| Pattern | Representative Problems | Key State Definition | Key Recurrence |
-|---------|------------------------|---------------------|----------------|
+| Pattern | Representative Problems | Key State | Key Recurrence |
+|---------|------------------------|-----------|----------------|
 | Linear 1D | Fibonacci, Climbing Stairs, House Robber | dp[i] = answer for first i elements | dp[i] = f(dp[i-1], dp[i-2]) |
-| Linear with decisions | Coin Change (min), Jump Game | dp[i] = min/max for value i | dp[i] = opt over transitions to i |
-| Counting | Coin Change (ways), Decode Ways | dp[i] = number of ways for i | dp[i] += dp[i - choice] |
-| 2D Grid | Unique Paths, Min Path Sum | dp[i][j] = answer at cell (i,j) | dp[i][j] = f(dp[i-1][j], dp[i][j-1]) |
-| Two strings | LCS, Edit Distance, Distinct Subseq | dp[i][j] = answer for s1[0..i-1], s2[0..j-1] | Match/mismatch cases |
+| Linear with decisions | Coin Change (min), Jump Game | dp[i] = min/max for value i | dp[i] = opt over transitions |
+| Counting | Coin Change (ways), Decode Ways | dp[i] = number of ways | dp[i] += dp[i - choice] |
+| 2D Grid | Unique Paths, Min Path Sum | dp[i][j] = answer at cell | dp[i][j] = f(above, left) |
+| Two strings | LCS, Edit Distance | dp[i][j] = answer for prefixes | Match/mismatch cases |
 | 0/1 Knapsack | Knapsack, Subset Sum, Partition | dp[i][w] = answer with i items, capacity w | Include or exclude item |
 | Unbounded Knapsack | Coin Change, Rod Cutting | dp[w] = answer for capacity w | dp[w] = max(dp[w], dp[w-wi]+vi) |
-| Interval DP | Matrix Chain, Burst Balloons, Palindrome Cuts | dp[i][j] = answer for interval [i,j] | Try all split points k |
-| String palindrome | LPS, Palindromic Substring, Min Cuts | dp[i][j] = answer for s[i..j] | Match ends or expand |
+| Interval DP | Matrix Chain, Burst Balloons | dp[i][j] = answer for interval | Try all split points k |
+| String palindrome | LPS, Palindromic Substring | dp[i][j] = answer for s[i..j] | Match ends or expand |
 | Tree DP | House Robber III, Max Path Sum | pair[node] = {rob, skip} | Combine children results |
 
 ---
 
 ## 11. Space Optimization Techniques
 
-### Technique 1: When Current Row Only Depends on Previous Row
-
-**Rule:** If dp[i][j] only depends on dp[i-1][...], you can use a 1D array.
-
-**Example: LCS (0/1 version — space reduction not as clean for LCS due to diagonal dependency)**
-
-For problems like Knapsack and Subset Sum where dp[i][j] = f(dp[i-1][j], dp[i-1][j-w]):
-
+**Rolling variables** — when dp[i] depends only on dp[i-1] and dp[i-2]:
 ```java
-// 2D version
-for (int i = 1; i <= n; i++)
-    for (int j = 0; j <= W; j++)
-        dp[i][j] = Math.max(dp[i-1][j], w[i]<=j ? dp[i-1][j-w[i]]+v[i] : 0);
-
-// 1D version — iterate j in reverse so dp[j-w[i]] is still from previous row
-for (int i = 0; i < n; i++)
-    for (int j = W; j >= w[i]; j--)
-        dp[j] = Math.max(dp[j], dp[j - w[i]] + v[i]);
-```
-
-### Technique 2: Current + Previous Variables (Rolling Variables)
-
-**Use when:** dp[i] only depends on dp[i-1] and dp[i-2].
-
-```java
-// Fibonacci / House Robber / Climbing Stairs
 int prev2 = base0, prev1 = base1;
 for (int i = 2; i <= n; i++) {
-    int curr = prev1 + prev2; // or: max(prev1, prev2 + nums[i])
-    prev2 = prev1;
-    prev1 = curr;
+    int curr = Math.max(prev1, prev2 + nums[i]); // or prev1 + prev2
+    prev2 = prev1; prev1 = curr;
 }
 return prev1;
 ```
 
-### Technique 3: Rolling Array for 2D DP
+**1D rolling array** — when dp[i][j] depends only on the previous row:
+- 0/1 knapsack: iterate j **right to left**
+- Unbounded knapsack / counting ways: iterate j **left to right**
 
-**Use when:** dp[i][j] only depends on dp[i-1][j], dp[i][j-1], dp[i-1][j-1].
-
-```java
-// Two-row rolling array
-int[][] dp = new int[2][n + 1];
-for (int i = 1; i <= m; i++) {
-    int curr = i % 2;
-    int prev = 1 - curr;
-    for (int j = 1; j <= n; j++) {
-        // use dp[prev][j] instead of dp[i-1][j]
-        // use dp[curr][j-1] instead of dp[i][j-1]
-    }
-}
-```
-
-### When NOT to Optimize Space
-
-- When you need to reconstruct the actual solution (need the full table for backtracking)
-- When the space savings are negligible compared to code complexity
-- When the problem is 1D already
+**When NOT to optimize:** when you need to reconstruct the actual solution (backtracking requires the full table).
 
 ---
 
-## 12. Interview Questions & Answers (30+)
-
----
+## 12. Interview Questions & Answers
 
 **Q1: What makes a problem a DP problem?**
-
-A problem is suitable for DP if it has two key properties:
-1. **Optimal substructure:** The optimal solution contains optimal solutions to subproblems. For example, the shortest path from A to C through B requires the shortest path from A to B.
-2. **Overlapping subproblems:** The same subproblem is encountered multiple times. For example, computing Fibonacci(5) requires Fibonacci(3) in multiple branches.
-
-Additionally, the problem typically asks for: minimum/maximum value, count of ways, or feasibility (can it be done?).
+Two properties: **optimal substructure** (optimal solution is built from optimal sub-solutions) and **overlapping subproblems** (same subproblem solved multiple times). Problems typically ask for min/max, count, or feasibility.
 
 ---
 
@@ -1189,133 +707,51 @@ Additionally, the problem typically asks for: minimum/maximum value, count of wa
 
 | Aspect | Memoization (Top-Down) | Tabulation (Bottom-Up) |
 |--------|----------------------|----------------------|
-| Direction | Start from original problem, recurse down | Start from base cases, build up |
+| Direction | Start from problem, recurse | Start from base, build up |
 | Implementation | Recursive + cache | Iterative + table |
-| Subproblems computed | Only needed ones | All subproblems |
-| Overhead | Function call stack | None (iterative) |
-| Stack overflow risk | Yes (deep recursion) | No |
-| Space optimization | Harder | Easier to reduce dimensions |
-| Code clarity | Often mirrors the recurrence | Sometimes requires thinking in reverse |
-
-For large inputs where recursion depth could cause stack overflow, prefer tabulation. For problems where only a fraction of subproblems are needed, memoization avoids unnecessary computation.
+| Subproblems | Only needed ones | All subproblems |
+| Stack overflow risk | Yes | No |
+| Space optimization | Harder | Easier |
 
 ---
 
 **Q3: How do you identify the state in a DP problem?**
-
-The state captures everything you need to know to solve a subproblem — no more, no less.
-
-Steps to identify the state:
-1. Look at what changes between recursive calls. Those are your state variables.
-2. Ask: "What information do I need to make a decision at this step?" Those become the parameters.
-3. The state should be minimal — adding unnecessary state variables increases time/space complexity.
-
-Examples:
-- Fibonacci: state = n (only depends on position)
-- 0/1 Knapsack: state = (item_index, remaining_capacity) → dp[i][w]
-- Edit Distance: state = (i, j) = positions in both strings → dp[i][j]
-- Burst Balloons: state = (i, j) = the open interval → dp[i][j]
+Look at what parameters change between recursive calls — those become your state variables. The state must capture everything needed to make a decision, and no more. Knapsack needs (item index, remaining capacity); Edit Distance needs (position in each string).
 
 ---
 
-**Q4: What is optimal substructure? Give an example where it does NOT hold.**
+**Q4: What is the difference between LCS (subsequence) and Longest Common Substring?**
 
-Optimal substructure means the optimal solution to the whole problem is composed of optimal solutions to its subproblems.
-
-**Holds:** Shortest path (Dijkstra/Bellman-Ford). If the shortest path from A to C goes through B, then A→B and B→C are also shortest paths.
-
-**Does NOT hold:** Longest simple path in a graph with cycles. The longest path from A to C might go through B, but the longest path from A to B might be a different route that makes A→C longer overall. Greedy/DP fails; this problem is NP-hard.
-
----
-
-**Q5: What is the difference between LCS (subsequence) and Longest Common Substring?**
-
-| Aspect | Longest Common Subsequence | Longest Common Substring |
-|--------|--------------------------|-------------------------|
-| Contiguous? | No — characters in order but may skip | Yes — contiguous characters |
-| Example | LCS("ABCDE", "ACE") = "ACE" (length 3) | LCS("ABCDE", "BCEF") = "BCE" (length 3) |
-| Mismatch recurrence | dp[i][j] = max(dp[i-1][j], dp[i][j-1]) | dp[i][j] = 0 (reset) |
-| Answer location | dp[m][n] | max value across all dp[i][j] |
-| Typical use | DNA matching, diff tools | Pattern matching, plagiarism |
-
-The key code difference: on a character mismatch, LCS takes the max of skipping either character, while Longest Common Substring resets to 0 because the substring is broken.
+| Aspect | LCS | Longest Common Substring |
+|--------|-----|--------------------------|
+| Contiguous? | No | Yes |
+| Mismatch recurrence | max(dp[i-1][j], dp[i][j-1]) | dp[i][j] = 0 (reset) |
+| Answer location | dp[m][n] | max across all cells |
 
 ---
 
-**Q6: Walk me through the 0/1 Knapsack problem.**
-
-"Given n items with weights and values, and a knapsack of capacity W, maximize the total value while keeping total weight ≤ W. Each item can be used at most once."
-
-**State:** dp[i][w] = maximum value using first i items with capacity w.
-
-**Decision at each step:** For item i, either:
-- Exclude it: dp[i][w] = dp[i-1][w]
-- Include it (if it fits): dp[i][w] = dp[i-1][w - weight[i]] + value[i]
-
-**Take the max of both options.**
-
-**Base cases:** dp[0][w] = 0 (no items) and dp[i][0] = 0 (no capacity).
-
-**Time complexity:** O(n × W). This is pseudo-polynomial — polynomial in the numeric value of W, not in the number of bits needed to represent W.
-
-**Space optimization:** We can reduce to 1D dp[W+1] by traversing w from W down to weight[i] for each item. Reverse traversal ensures we use each item at most once (otherwise we'd be allowing reuse — which is the unbounded knapsack variant).
+**Q5: Walk me through 0/1 Knapsack.**
+State: `dp[i][w]` = max value using first i items with capacity w. For each item: either exclude it (take `dp[i-1][w]`) or include it (take `dp[i-1][w-weight[i]] + value[i]`). Time: O(n×W) — pseudo-polynomial. Space-optimized to 1D with reverse traversal to prevent item reuse.
 
 ---
 
-**Q7: How do you reduce knapsack from 2D to 1D DP?**
-
-The 2D recurrence is: dp[i][w] = max(dp[i-1][w], dp[i-1][w-wt[i]] + val[i])
-
-Notice that row i only depends on row i-1. So we can use a single 1D array, but we must be careful about overwriting values we still need.
-
-If we iterate w from left to right (increasing), when we compute dp[w - wt[i]], that value may have already been updated in this same i-iteration (meaning item i was already added). That would count item i multiple times — turning it into an unbounded knapsack.
-
-**Solution:** Iterate w from right to left (W down to wt[i]). This ensures that when we access dp[w - wt[i]], it still reflects the state from the previous item (i-1), not the current item.
-
-```java
-for (int i = 0; i < n; i++)
-    for (int w = W; w >= weights[i]; w--)  // RIGHT to LEFT
-        dp[w] = Math.max(dp[w], dp[w - weights[i]] + values[i]);
-```
-
-For unbounded knapsack (item can be used multiple times), iterate LEFT to RIGHT.
+**Q6: Why does 0/1 Knapsack 1D use reverse traversal?**
+Left-to-right means `dp[w-weight[i]]` may have already been updated in the current iteration, allowing item i to be picked multiple times (unbounded knapsack). Reverse traversal ensures `dp[w-weight[i]]` still reflects the previous item's state.
 
 ---
 
-**Q8: What is the time and space complexity of Edit Distance?**
-
-- **Time:** O(m × n) where m = length of word1, n = length of word2. We fill an (m+1) × (n+1) table, each cell in O(1).
-- **Space:** O(m × n) for the full table. Can be reduced to O(min(m, n)) using a 1D rolling array.
-
-**Space optimization explanation:** dp[i][j] depends on dp[i-1][j-1] (diagonal), dp[i-1][j] (above), dp[i][j-1] (left). When processing row i, we only need row i-1. We use a 1D array but save the diagonal value (dp[i-1][j-1]) in a `prev` variable before overwriting.
+**Q7: What is the time complexity of Edit Distance?**
+O(m×n) time to fill the (m+1)×(n+1) table; O(m×n) space reducible to O(min(m,n)) with a 1D rolling array (save the diagonal value before overwriting).
 
 ---
 
-**Q9: How do you reconstruct the actual solution (not just the optimal value) from a DP table?**
+**Q8: How do you handle the "impossible" case in Coin Change?**
+Initialize `dp[i] = amount + 1` (safe infinity — never overflows unlike `Integer.MAX_VALUE + 1`). After filling, if `dp[amount] > amount`, return -1.
 
-Store the full DP table (do not space-optimize), then backtrack from the final answer cell.
+---
 
-**General approach:**
-1. At cell dp[i][j], check which decision led to the current value.
-2. Move to the predecessor cell that was chosen.
-3. Repeat until you reach a base case.
-
-**Example — 0/1 Knapsack reconstruction:**
-```java
-int w = W;
-for (int i = n; i >= 1; i--) {
-    if (dp[i][w] != dp[i-1][w]) {
-        // Item i was included
-        selectedItems.add(i);
-        w -= weights[i-1];
-    }
-    // else: item i was excluded, dp[i][w] == dp[i-1][w]
-}
-```
-
-**Example — LCS reconstruction:** At dp[i][j], if characters match, go diagonal (both characters are in LCS). If not, go in the direction of the larger value (skip that character).
-
-**Key rule:** The reconstruction simply reverses the decision made when filling the table.
+**Q9: How do you reconstruct the actual solution from a DP table?**
+Keep the full 2D table, then backtrack from the final cell. At each cell, check which decision led to the current value and move to that predecessor. Example for knapsack: if `dp[i][w] != dp[i-1][w]`, item i was included — record it and subtract its weight.
 
 ---
 
@@ -1323,331 +759,71 @@ for (int i = n; i >= 1; i--) {
 
 | Aspect | Min Coins | Count Ways |
 |--------|-----------|------------|
-| Goal | Minimum number of coins | Number of distinct combinations |
-| Initialization | dp[0]=0, others=∞ | dp[0]=1, others=0 |
-| Recurrence | dp[i] = min(dp[i], dp[i-coin]+1) | dp[i] += dp[i-coin] |
-| Return impossible as | -1 if dp[amount] stays ∞ | 0 naturally (dp[amount] stays 0) |
-| Order matters? | No (same structure) | Depends on loop order |
-| Loop structure | Either outer-loop order works | Order matters → amount outer; No order → coin outer |
-
-**Critical distinction for "count ways":** If order matters ({1,2} and {2,1} are different), the outer loop should be over the amount. If order does NOT matter ({1,2} and {2,1} are the same combination), the outer loop should be over coins. This is the difference between permutations and combinations.
+| Initialization | dp[0]=0, others=amount+1 | dp[0]=1, others=0 |
+| Update | dp[i] = min(dp[i], dp[i-coin]+1) | dp[i] += dp[i-coin] |
+| Loop order | Either works | Order matters → amount outer; no order → coin outer |
 
 ---
 
-**Q11: What is the time complexity of the naive recursive Fibonacci? Why?**
-
-O(2^n). Each call to fib(n) makes two recursive calls — fib(n-1) and fib(n-2). This creates a binary tree of calls. The tree has depth n, so the number of nodes is approximately 2^n. Many of these are redundant (fib(3) is computed O(2^(n-3)) times), which is exactly why memoization brings it down to O(n).
-
----
-
-**Q12: Can greedy solve the 0/1 Knapsack problem? Why or why not?**
-
-No. Greedy approaches (like taking highest value/weight ratio first) do not guarantee an optimal solution for 0/1 Knapsack because items cannot be split (unlike the Fractional Knapsack, which greedy solves optimally).
-
-Counterexample:
-- Items: A(w=1, v=6), B(w=2, v=10), C(w=3, v=12), W=5
-- Greedy by v/w ratio: A(6), B(5), C(4) → Take A+B (w=3, v=16) or A+C (w=4, v=18) or B+C (w=5, v=22)
-- Greedy would pick A first (ratio=6), then B (ratio=5), giving v=16
-- DP finds B+C = v=22
-
-The problem is that choosing the locally best item can prevent a globally better combination.
+**Q11: Why is naive recursive Fibonacci O(2^n)?**
+Each call spawns two more (fib(n-1) and fib(n-2)), creating a binary tree of depth n. Many calls are redundant — fib(3) is recomputed many times. Memoization caches each result, cutting it to O(n).
 
 ---
 
-**Q13: What is the difference between 0/1 Knapsack and Unbounded Knapsack?**
+**Q12: Can greedy solve 0/1 Knapsack?**
+No. Items cannot be split, so taking the highest value/weight ratio first can block a globally better combination. Example: items A(w=1,v=6), B(w=2,v=10), C(w=3,v=12), W=5 — greedy picks A+B=16, DP finds B+C=22.
+
+---
+
+**Q13: 0/1 Knapsack vs Unbounded Knapsack?**
 
 | Aspect | 0/1 Knapsack | Unbounded Knapsack |
 |--------|-------------|-------------------|
-| Item usage | Each item at most once | Each item unlimited times |
-| 1D traversal | Right to left (prevent reuse) | Left to right (allow reuse) |
-| Example | Classic knapsack | Coin change (min coins) |
-| Recurrence | dp[w] = max(dp[w], dp[w-wt]+val) with reverse traversal | Same but forward traversal |
+| Item usage | At most once | Unlimited |
+| 1D traversal | Right to left | Left to right |
+| Example | Classic knapsack | Coin change |
 
-The only code difference in the 1D version is the direction of the inner loop.
-
----
-
-**Q14: Explain the "all intervals" iteration pattern in interval DP.**
-
-In interval DP (like Matrix Chain Multiplication), we cannot iterate i from 1 to n in the outer loop because dp[i][j] might depend on dp[i][k] and dp[k][j] which aren't computed yet.
-
-Instead, iterate by **interval length**:
-```java
-for (int len = 2; len <= n; len++) {       // increasing interval length
-    for (int i = 0; i <= n - len; i++) {   // starting index
-        int j = i + len - 1;               // ending index
-        for (int k = i; k < j; k++) {      // all split points
-            dp[i][j] = min/max(dp[i][j], dp[i][k] + dp[k+1][j] + cost);
-        }
-    }
-}
-```
-
-When processing an interval of length L, all intervals of length < L have already been computed, so dependencies are satisfied.
+The only code difference in 1D is the inner loop direction.
 
 ---
 
-**Q15: How does the Word Break DP work, and what is the state?**
-
-dp[i] = true if s[0..i-1] can be segmented into dictionary words.
-
-For each position i, we check all j < i: "Is dp[j] true AND is s[j..i-1] in the dictionary?" If both are true, dp[i] = true.
-
-Base case: dp[0] = true (empty string requires no words).
-
-The answer is dp[n] where n = length of s.
-
-Time: O(n²) with HashSet for O(1) dictionary lookup. Space: O(n + dict_size).
+**Q14: How does Word Break DP work?**
+`dp[i]` = true if s[0..i-1] can be segmented. For each i, check all j < i: if `dp[j]` is true AND `s[j..i-1]` is in the dictionary, set `dp[i] = true`. Base case: `dp[0] = true`. Time O(n²).
 
 ---
 
-**Q16: When would you use top-down over bottom-up in production code?**
-
-**Use top-down (memoization) when:**
-- Only a fraction of subproblems will be needed (sparse computation)
-- The problem has complex state that is hard to enumerate in order
-- You want to write code quickly and the recursive formulation is intuitive
-- The recursion depth is manageable (n < ~10,000)
-
-**Use bottom-up (tabulation) when:**
-- All or most subproblems will be visited
-- n is large and you risk stack overflow with recursion
-- You need to optimize space (easier to drop rows you no longer need)
-- Performance is critical (no function call overhead)
-
-In interviews, either is usually acceptable. Mention both, then implement the one that comes most naturally.
+**Q15: When prefer top-down over bottom-up?**
+Top-down when only a fraction of subproblems are needed (sparse computation) or the recursion is more intuitive. Bottom-up when all subproblems are visited, n is large (stack overflow risk), or space optimization is needed.
 
 ---
 
-**Q17: What is the Bellman-Ford algorithm and how is it DP?**
-
-Bellman-Ford finds shortest paths from a source in a graph with potentially negative weights. It is a DP algorithm:
-
-- **State:** dp[v][k] = shortest path to vertex v using at most k edges
-- **Recurrence:** dp[v][k] = min over all edges (u,v): dp[u][k-1] + weight(u,v)
-- **Iterations:** Run n-1 rounds (any shortest path has at most n-1 edges)
-- **Time:** O(V × E)
-
-The DP insight is that the shortest path from source to v using at most k hops is built from the shortest path using at most k-1 hops.
+**Q16: Why does Coin Change (count ways, order doesn't matter) use coin as outer loop?**
+The outer-coin loop ensures each combination is counted once. Since we fix available coins before iterating amounts, {1,2} and {2,1} are never counted separately. Swapping loops (amount outer) counts each ordering separately — permutations instead of combinations.
 
 ---
 
-**Q18: How do you handle the "impossible" case in Coin Change (minimum coins)?**
-
-Initialize dp[i] = amount + 1 for all i > 0 (a value larger than any valid answer — since the maximum valid answer using 1-coins is `amount`).
-
-If dp[amount] remains > amount after filling the table, it was never reachable, so return -1.
-
-Do not use Integer.MAX_VALUE directly because Integer.MAX_VALUE + 1 overflows to Integer.MIN_VALUE, causing incorrect comparisons.
-
-```java
-Arrays.fill(dp, amount + 1);  // safe "infinity"
-dp[0] = 0;
-// ... fill table ...
-return dp[amount] > amount ? -1 : dp[amount];
-```
+**Q17: What are the limitations of DP?**
+(1) **Pseudo-polynomial** — Knapsack is O(n×W); W could be exponentially large in input bits. (2) **Space** — O(n²) or O(n×W) can be prohibitive. (3) **No optimal substructure** — longest simple path in a graph is NP-hard. (4) **Wrong state** — misidentifying state leads to wrong answers.
 
 ---
 
-**Q19: What is memoization's relationship to the call graph?**
-
-Memoization ensures each unique input to a recursive function is computed exactly once. The call graph for an unmemoized function is a tree (each call spawns new children). With memoization, repeated subtrees are collapsed — the call graph becomes a DAG (Directed Acyclic Graph). The time complexity drops from exponential (tree size) to linear or polynomial (DAG node count).
-
----
-
-**Q20: Describe the Longest Palindromic Subsequence and its relationship to LCS.**
-
-LPS of a string s = LCS(s, reverse(s)).
-
-**Why?** A palindrome reads the same forward and backward. So the longest palindromic subsequence of s is the longest subsequence that matches the reverse of s.
-
-Example: s = "BBBAB", reverse = "BABBB"
-LCS("BBBAB", "BABBB") = "BBBB" → length 4. This is the LPS.
-
-This reduction allows us to reuse the LCS solution directly.
+**Q18: How do you debug a wrong DP answer?**
+1. Verify base cases manually. 2. Trace a small (3-4 element) example and print the full table. 3. Check iteration order — all dependencies computed before use. 4. Check off-by-one errors. 5. Re-derive the recurrence on paper.
 
 ---
 
-**Q21: What are the limitations of Dynamic Programming?**
+**Q19: What DP problems are commonly asked at interviews?**
 
-1. **Pseudo-polynomial time:** Knapsack is O(n × W), which looks polynomial but W could be exponentially large in terms of input bits. True polynomial is O(n × log W).
-2. **Space:** Many DP problems require O(n²) or O(n × W) space, which can be prohibitive for large inputs.
-3. **Not applicable without optimal substructure:** Problems like longest simple path in a graph (NP-hard) cannot be solved with DP.
-4. **State explosion:** If the state requires many dimensions, the table size explodes (curse of dimensionality).
-5. **Problem framing:** Identifying the correct state definition is non-trivial. Wrong state → wrong recurrence → wrong answer.
+**Tier 1 (must know):** LCS, 0/1 Knapsack variants (Subset Sum, Partition), Coin Change (both), Edit Distance, House Robber, Fibonacci/Climbing Stairs.
 
----
+**Tier 2 (should know):** Word Break, Decode Ways, Longest Palindromic Substring, Unique Paths.
 
-**Q22: How is Climbing Stairs different from Fibonacci?**
-
-They are structurally identical but with different base cases:
-- Fibonacci: F(0)=0, F(1)=1 → 0,1,1,2,3,5,8...
-- Climbing Stairs: cs(1)=1, cs(2)=2 → 1,2,3,5,8,13...
-
-Climbing Stairs is Fibonacci shifted by one: cs(n) = Fib(n+1).
-
-The underlying recurrence is the same: f(n) = f(n-1) + f(n-2).
+**Tier 3 (awareness):** DP on trees, Interval DP, Bitmask DP.
 
 ---
 
-**Q23: Why does Coin Change (count ways, order doesn't matter) use coin as outer loop?**
-
-The outer-coin/inner-amount pattern ensures each combination is counted exactly once. When we process coin c, dp[amount] accumulates counts using coins seen so far. Since we fix the set of coins available before iterating amounts, we never count {1,2} and {2,1} as different — the coin is always added in the order we encounter it in the outer loop.
-
-If we swapped (amount outer, coin inner), every ordering of the same coins would be counted separately, giving permutations instead of combinations.
-
----
-
-**Q24: What is the time complexity of LCS and can it be improved?**
-
-Standard DP LCS is O(m × n) time and space. Space drops to O(min(m, n)) with a two-row rolling array. (Specialized algorithms like Hunt–Szymanski can beat O(m·n) on sparse matches, but O(m × n) is the expected interview answer.)
-
----
-
-**Q25: Explain why Edit Distance has 3 operations in the recurrence.**
-
-When characters s1[i-1] and s2[j-1] don't match:
-- **Delete:** Remove s1[i-1]. Now align s1[0..i-2] with s2[0..j-1] → dp[i-1][j]
-- **Insert:** Insert s2[j-1] into s1 at position i. Now align s1[0..i-1] with s2[0..j-2] → dp[i][j-1]
-- **Replace:** Replace s1[i-1] with s2[j-1]. Now align s1[0..i-2] with s2[0..j-2] → dp[i-1][j-1]
-
-Each operation costs 1, and we take the minimum. When characters match, no operation is needed → dp[i][j] = dp[i-1][j-1] (free diagonal move).
-
----
-
-**Q26: What is the difference between "change the minimum coins" and "can we make exact change"?**
-
-- Min coins: dp[i] = min coins to make exactly amount i. Initialize dp[0]=0, others=∞. Final: dp[amount] or -1 if ∞.
-- Exact change (subset sum style): dp[i] = boolean — can we make exactly amount i. Initialize dp[0]=true, others=false. Final: dp[target] is true/false.
-
-Both use the same loop structure. The difference is in the DP array type (int vs boolean), initialization, and update operation (min vs OR).
-
----
-
-**Q27: How would you solve House Robber III without using a pair return?**
-
-Use two separate recursive functions: one for "rob this node" and one for "skip this node". But this leads to O(n²) due to recomputation. The pair-return approach computes both in a single O(n) pass.
-
-Alternatively, use a Map<TreeNode, int[]> as memoization:
-
-```java
-Map<TreeNode, int[]> memo = new HashMap<>();
-
-int[] dp(TreeNode node) {
-    if (node == null) return new int[]{0, 0};
-    if (memo.containsKey(node)) return memo.get(node);
-    int[] left = dp(node.left), right = dp(node.right);
-    int rob = node.val + left[1] + right[1];
-    int skip = Math.max(left[0], left[1]) + Math.max(right[0], right[1]);
-    int[] result = {rob, skip};
-    memo.put(node, result);
-    return result;
-}
-```
-
----
-
-**Q28: In the 0/1 Knapsack 1D optimization, what happens if you iterate left to right?**
-
-Iterating left to right means when computing dp[w], dp[w - weight[i]] has already been updated for item i in the same iteration. This means item i can be selected multiple times (once when processing dp[w - weight[i]] and again when processing dp[w]). This accidentally implements the unbounded knapsack (each item can be used any number of times).
-
-Right-to-left traversal ensures dp[w - weight[i]] still reflects the state before item i was considered, so each item is used at most once.
-
----
-
-**Q29: Memoization vs tabulation on space.**
-
-Tabulation fills a dense array (4 bytes/int, no stack frames). Memoization with a HashMap stores only visited states but carries per-entry overhead (~40 bytes) plus O(depth) recursion stack. So tabulation wins when most cells are visited, while memoization can win on large, sparse state spaces where only a small fraction is ever touched.
-
----
-
-**Q30: What is the difference between overlapping subproblems and repeated work in general recursion?**
-
-All repeated work in recursion is not necessarily overlapping subproblems. In Merge Sort, the same array positions are processed in every call, but each call processes a different subarray — there is no re-computation of the same subproblem.
-
-Overlapping subproblems specifically means: the same function call with the same arguments is made multiple times. In naive Fibonacci, fib(3) is called with argument 3 from multiple parent calls — that is true overlap. In Merge Sort, each subarray range [l, r] is processed exactly once — no overlap.
-
-DP only helps when there is genuine overlap — when caching saves repeated computation.
-
----
-
-**Q31: How do you debug a DP solution that gives a wrong answer?**
-
-1. **Verify base cases:** Print dp[0], dp[1], dp[0][0], etc. and check they are correct manually.
-2. **Trace on a small example:** Run on a 3-4 element input and print the full DP table. Verify each cell manually.
-3. **Check iteration order:** Ensure that when computing dp[i][j], all dependencies (dp[i-1][j], dp[i][j-1], etc.) are already computed.
-4. **Check off-by-one errors:** Is dp[n] or dp[n-1] the answer? Are indices shifted by 1 (dp[i] represents s[0..i-1] vs s[0..i])?
-5. **Verify recurrence:** Re-derive the recurrence from scratch on paper. Misidentifying the decision choices is the most common error.
-6. **Test edge cases:** Empty input, single element, target=0, impossible cases.
-
----
-
-**Q32: What DP problems are commonly asked at FAANG-level interviews?**
-
-Tier 1 (must know perfectly):
-- Longest Common Subsequence
-- 0/1 Knapsack and variants (Subset Sum, Partition Equal Subset Sum)
-- Coin Change (both variants)
-- Edit Distance
-- Longest Palindromic Subsequence/Substring
-- House Robber and variants
-
-Tier 2 (should understand well):
-- Word Break
-- Decode Ways
-- Burst Balloons
-- Matrix Chain Multiplication
-- Distinct Subsequences
-- Maximum Profit in Stock (with cooldown, transaction limits)
-
-Tier 3 (good to know):
-- DP on trees (House Robber III, Max Path Sum)
-- DP on intervals (palindrome partitioning)
-- Bitmask DP (Travelling Salesman Problem)
-
----
-
-**Q33: Explain how "Decode Ways" handles the leading zero edge case.**
-
-A '0' cannot be decoded as a single digit (there is no letter 0). It can only be decoded as part of a two-digit number (10 or 20).
-
-In the recurrence:
-- Single digit decode: only if s[i-1] != '0' → dp[i] += dp[i-1]
-- Two digit decode: only if s[i-2..i-1] is between 10 and 26 → dp[i] += dp[i-2]
-
-If s starts with '0', dp[1] = 0 (no valid decoding for the first character), and this cascades to give dp[n] = 0.
-
-If a '0' appears in the middle and the preceding digit is neither 1 nor 2, there is no valid decoding → dp[i] = 0, propagating failure forward.
-
----
-
-**Q34: What is bitmask DP and when is it used? (awareness)**
-
-Bitmask DP uses an integer's bits to represent a subset of elements as the DP state. It applies when the element count is small (≤ ~20). The classic example is the Travelling Salesman Problem: `dp[mask][v]` = min cost to visit the set of cities in `mask` ending at city `v`, running in O(2ⁿ · n²). A junior interview rarely requires coding this — just know the idea.
-
----
-
-**Q35: How do you approach a DP problem you've never seen before in an interview?**
-
-Follow this systematic approach:
-
-1. **Identify it's DP:** Does it ask for min/max/count/feasibility? Is there a combinatorial space? Can subproblems overlap?
-
-2. **Define the state:** What are the changing parameters? What does dp[...] represent? State this explicitly: "dp[i] means the maximum profit considering the first i transactions."
-
-3. **Write the recurrence on paper:** Consider what decisions you can make at each state. Write all cases (include/exclude, match/mismatch, etc.).
-
-4. **Identify base cases:** What is the trivially known answer? (dp[0], dp[i][0], etc.)
-
-5. **Check iteration order:** Can you compute dp[i] from dp[i-1]? Or do you need a specific order like interval DP?
-
-6. **Code it up top-down first:** It is easier to code recursion + memoization and verify correctness before optimizing.
-
-7. **Verify on a small example:** Trace through a 2-3 element example by hand.
-
-8. **Optimize if asked:** Reduce space, convert to bottom-up.
-
-State your reasoning out loud throughout — interviewers value the thought process as much as the final solution.
+**Q20: How do you approach an unseen DP problem in an interview?**
+1. Identify it's DP (min/max/count/feasibility + combinatorial space). 2. Define the state explicitly. 3. Write the recurrence on paper with all cases. 4. Identify base cases. 5. Code top-down (memoization) first — easier to verify. 6. Trace a small example. 7. Optimize if asked. State reasoning out loud throughout.
 
 ---
 
@@ -1658,7 +834,6 @@ State your reasoning out loud throughout — interviewers value the thought proc
 | Fibonacci | O(n) | O(n) | O(1) |
 | Climbing Stairs | O(n) | O(n) | O(1) |
 | House Robber | O(n) | O(n) | O(1) |
-| House Robber II | O(n) | O(1) | O(1) |
 | Coin Change (min) | O(n·W) | O(W) | O(W) |
 | Coin Change (ways) | O(n·W) | O(W) | O(W) |
 | Word Break | O(n²) | O(n) | O(n) |
@@ -1676,12 +851,10 @@ State your reasoning out loud throughout — interviewers value the thought proc
 | Target Sum | O(n·sum) | O(sum) | O(sum) |
 | Matrix Chain Multiplication | O(n³) | O(n²) | O(n²) |
 | Burst Balloons | O(n³) | O(n²) | O(n²) |
-| Palindrome Partitioning II | O(n²) | O(n²) | O(n²) |
 | Longest Palindromic Subsequence | O(n²) | O(n²) | O(n) |
-| Longest Palindromic Substring | O(n²) | O(1) expand-center | O(1) |
+| Longest Palindromic Substring | O(n²) | O(1) | O(1) |
 | Distinct Subsequences | O(m·n) | O(m·n) | O(n) |
 | House Robber III | O(n) | O(h) | O(h) |
-| Maximum Path Sum | O(n) | O(h) | O(h) |
 
 *W = target/capacity, h = tree height*
 
@@ -1698,23 +871,23 @@ DP Identification:
 
 State Design:
   → Identify all changing parameters
-  → dp[i] means: "best answer for [first i elements / amount i / prefix of length i]"
+  → dp[i] means: "best answer for [first i elements / amount i / prefix i]"
 
-Recurrence Strategy by Problem Type:
+Recurrence by Problem Type:
   Linear (1D):       dp[i] = f(dp[i-1], dp[i-2])
   String/Grid (2D):  dp[i][j] = f(dp[i-1][j], dp[i][j-1], dp[i-1][j-1])
   Knapsack:          dp[i][w] = max(dp[i-1][w], dp[i-1][w-wi]+vi)
-  Interval:          dp[i][j] = min/max over k in [i,j] of f(dp[i][k], dp[k+1][j])
+  Interval:          dp[i][j] = min/max over k of f(dp[i][k], dp[k+1][j])
   Counting:          dp[i] += dp[i-choice] for all valid choices
 
 Common Iteration Orders:
-  Most 1D: left to right
-  0/1 Knapsack 1D: right to left (reverse)
-  Unbounded Knapsack 1D: left to right
-  Interval DP: by increasing interval length
+  Most 1D:                left to right
+  0/1 Knapsack 1D:        right to left (reverse)
+  Unbounded Knapsack 1D:  left to right
+  Interval DP:            by increasing interval length
 
 Space Optimization:
-  dp[i] = f(dp[i-1], dp[i-2]) → two variables (prev1, prev2)
-  dp[i][j] = f(dp[i-1][...]) → 1D array, careful about direction
-  Need reconstruction? → Keep full table (don't optimize space)
+  dp[i] = f(dp[i-1], dp[i-2])  → two variables (prev1, prev2)
+  dp[i][j] = f(dp[i-1][...])   → 1D array + careful direction
+  Need reconstruction?          → Keep full table
 ```
