@@ -2,7 +2,7 @@
 
 ## Overview
 
-Kubernetes (K8s) is the industry-standard container orchestration platform. It is heavily tested in backend, DevOps, and cloud engineering interviews. This guide covers architecture, core objects, networking, storage, security, and common interview questions.
+Kubernetes (K8s) is the industry-standard container orchestration platform. It automates deployment, scaling, self-healing, and load balancing of containerized applications. Heavily tested in backend, DevOps, and cloud engineering interviews.
 
 ---
 
@@ -28,7 +28,7 @@ Kubernetes (K8s) is the industry-standard container orchestration platform. It i
 
 ## What is Kubernetes?
 
-Kubernetes is an open-source container orchestration system that automates:
+Kubernetes automates:
 - **Deployment** of containerized applications
 - **Scaling** up or down based on demand
 - **Self-healing** by restarting failed containers
@@ -52,7 +52,6 @@ Kubernetes is an open-source container orchestration system that automates:
 ```
 ┌──────────────────────────────────────────────────────┐
 │                  Kubernetes Cluster                  │
-│                                                      │
 │  ┌─────────────────────────────────────────────────┐ │
 │  │               Control Plane (Master)            │ │
 │  │  ┌────────────┐  ┌──────────────┐  ┌────────┐  │ │
@@ -62,15 +61,14 @@ Kubernetes is an open-source container orchestration system that automates:
 │  │  │     Controller Manager       │               │ │
 │  │  └──────────────────────────────┘               │ │
 │  └─────────────────────────────────────────────────┘ │
-│                                                      │
-│  ┌──────────────┐  ┌──────────────┐  ┌────────────┐ │
-│  │  Worker Node  │  │  Worker Node │  │ Worker Node│ │
-│  │  ┌─────────┐  │  │  ┌────────┐ │  │            │ │
-│  │  │ kubelet │  │  │  │ Pod(s) │ │  │            │ │
-│  │  │kube-proxy│ │  │  └────────┘ │  │            │ │
-│  │  │Container │ │  │  Container  │  │            │ │
-│  │  │ Runtime  │ │  │  Runtime    │  │            │ │
-│  │  └─────────┘  │  └────────────┘  └────────────┘ │
+│  ┌──────────────┐  ┌──────────────┐                  │
+│  │  Worker Node  │  │  Worker Node │                  │
+│  │  ┌─────────┐  │  │  ┌────────┐ │                  │
+│  │  │ kubelet │  │  │  │ Pod(s) │ │                  │
+│  │  │kube-proxy│ │  │  └────────┘ │                  │
+│  │  │Container │ │  │  Container  │                  │
+│  │  │ Runtime  │ │  │  Runtime    │                  │
+│  │  └─────────┘  │  └────────────┘                  │
 │  └──────────────┘                                   │
 └──────────────────────────────────────────────────────┘
 ```
@@ -82,15 +80,14 @@ Kubernetes is an open-source container orchestration system that automates:
 | **API Server** | Entry point for all K8s commands; validates and processes REST requests |
 | **etcd** | Distributed key-value store; single source of truth for cluster state |
 | **Scheduler** | Assigns pods to nodes based on resource availability and constraints |
-| **Controller Manager** | Runs controllers that watch cluster state and reconcile to desired state |
-| **Cloud Controller Manager** | Integrates with cloud provider APIs (AWS, GCP, Azure) |
+| **Controller Manager** | Watches cluster state and reconciles to desired state |
 
 ### Worker Node Components
 
 | Component | Role |
 |---|---|
 | **kubelet** | Agent on each node; ensures containers in pods are running and healthy |
-| **kube-proxy** | Network proxy; maintains iptables rules for Service routing |
+| **kube-proxy** | Maintains iptables rules for Service routing |
 | **Container Runtime** | Runs containers — containerd, CRI-O (Docker deprecated in K8s 1.24+) |
 
 ---
@@ -99,7 +96,7 @@ Kubernetes is an open-source container orchestration system that automates:
 
 ### Pod
 
-The **smallest deployable unit** in Kubernetes. A pod wraps one or more containers that share network and storage.
+The **smallest deployable unit** in Kubernetes. Wraps one or more containers that share network and storage.
 
 ```yaml
 apiVersion: v1
@@ -127,29 +124,7 @@ spec:
 
 ### ReplicaSet
 
-Ensures a specified number of identical pod replicas are running at all times.
-
-```yaml
-apiVersion: apps/v1
-kind: ReplicaSet
-metadata:
-  name: my-app-rs
-spec:
-  replicas: 3
-  selector:
-    matchLabels:
-      app: my-app
-  template:
-    metadata:
-      labels:
-        app: my-app
-    spec:
-      containers:
-        - name: app
-          image: nginx:1.25
-```
-
-> Deployments manage ReplicaSets. Use Deployments, not ReplicaSets directly.
+Ensures a specified number of identical pod replicas are running. Use Deployments instead — they manage ReplicaSets for you.
 
 ### Deployment
 
@@ -186,45 +161,13 @@ spec:
 
 Like a Deployment but for **stateful applications** (databases, message queues). Provides:
 - Stable, unique pod names (`pod-0`, `pod-1`, `pod-2`)
-- Stable network identity (DNS: `pod-0.service.namespace.svc.cluster.local`)
+- Stable DNS: `pod-0.service.namespace.svc.cluster.local`
 - Ordered, graceful deployment and scaling
 - Persistent storage per pod via VolumeClaimTemplates
 
-```yaml
-apiVersion: apps/v1
-kind: StatefulSet
-metadata:
-  name: postgres
-spec:
-  serviceName: "postgres"
-  replicas: 3
-  selector:
-    matchLabels:
-      app: postgres
-  template:
-    metadata:
-      labels:
-        app: postgres
-    spec:
-      containers:
-        - name: postgres
-          image: postgres:15
-  volumeClaimTemplates:
-    - metadata:
-        name: data
-      spec:
-        accessModes: ["ReadWriteOnce"]
-        resources:
-          requests:
-            storage: 10Gi
-```
-
 ### DaemonSet
 
-Ensures **one pod runs on every node** (or selected nodes). Used for:
-- Log collectors (Fluentd, Filebeat)
-- Monitoring agents (Prometheus Node Exporter)
-- Network plugins (CNI)
+Ensures **one pod runs on every node**. Used for log collectors (Fluentd), monitoring agents (Prometheus Node Exporter), and network plugins.
 
 ### Job & CronJob
 
@@ -233,7 +176,6 @@ Ensures **one pod runs on every node** (or selected nodes). Used for:
 apiVersion: batch/v1
 kind: Job
 spec:
-  completions: 1
   template:
     spec:
       containers:
@@ -245,7 +187,7 @@ spec:
 apiVersion: batch/v1
 kind: CronJob
 spec:
-  schedule: "0 2 * * *"   # every day at 2am (cron syntax)
+  schedule: "0 2 * * *"   # every day at 2am
   jobTemplate:
     spec:
       template:
@@ -260,26 +202,15 @@ spec:
 
 ## Services & Networking
 
-A **Service** provides a stable IP and DNS name for a set of pods (pods are ephemeral; their IPs change).
+A **Service** provides a stable IP and DNS name for a set of pods (pod IPs are ephemeral and change).
 
 ### Service Types
 
 ```
-ClusterIP (default)
-  └── Internal IP only; accessible within the cluster
-  └── Use for: internal microservice communication
-
-NodePort
-  └── Exposes service on each node's IP at a static port (30000–32767)
-  └── Use for: simple external access (dev/testing)
-
-LoadBalancer
-  └── Provisions a cloud load balancer (AWS ELB, GCP LB)
-  └── Use for: production external access on cloud
-
-ExternalName
-  └── Maps service to a DNS name (CNAME)
-  └── Use for: accessing external services by name
+ClusterIP (default) — internal IP only; use for microservice-to-microservice communication
+NodePort            — exposes on each node's IP at a static port (30000–32767); use for dev/testing
+LoadBalancer        — provisions a cloud load balancer (AWS ELB, GCP LB); use for production
+ExternalName        — maps service to a DNS name (CNAME); use to alias external services
 ```
 
 ```yaml
@@ -288,7 +219,7 @@ kind: Service
 metadata:
   name: my-app-svc
 spec:
-  type: ClusterIP           # or NodePort, LoadBalancer
+  type: ClusterIP
   selector:
     app: my-app             # routes to pods with this label
   ports:
@@ -299,18 +230,13 @@ spec:
 
 ### Ingress
 
-An **Ingress** is an API object that manages external HTTP/HTTPS access to services, providing:
-- Path-based routing
-- Host-based routing
-- TLS termination
+Manages external HTTP/HTTPS access to services — path-based routing, host-based routing, TLS termination.
 
 ```yaml
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: my-ingress
-  annotations:
-    nginx.ingress.kubernetes.io/rewrite-target: /
 spec:
   ingressClassName: nginx
   tls:
@@ -342,47 +268,35 @@ spec:
 Every service gets a DNS entry:
 ```
 <service-name>.<namespace>.svc.cluster.local
-
-# Example
-my-app.default.svc.cluster.local
-postgres.database.svc.cluster.local
+# Example: postgres.database.svc.cluster.local
 ```
 
 ---
 
 ## Storage
 
-### Volumes vs PersistentVolumes
-
 ```
-Volume
-  └── Tied to pod lifecycle — deleted when pod is deleted
-  └── Types: emptyDir, hostPath, configMap, secret
-
-PersistentVolume (PV)
-  └── Cluster-wide storage resource, independent of pod lifecycle
-  └── Provisioned by admin or dynamically via StorageClass
-
-PersistentVolumeClaim (PVC)
-  └── User's request for storage (size, access mode)
-  └── Binds to a matching PV
+Volume              — tied to pod lifecycle; deleted when pod is deleted
+PersistentVolume    — cluster-wide storage resource, independent of pod lifecycle
+PersistentVolumeClaim — user's request for storage (size, access mode); binds to a PV
 ```
 
 ```yaml
-# PersistentVolumeClaim
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: my-pvc
 spec:
   accessModes:
-    - ReadWriteOnce   # RWO: one node | RWX: many nodes | ROX: many nodes (read-only)
+    - ReadWriteOnce   # RWO: one node | RWX: many nodes | ROX: many nodes read-only
   resources:
     requests:
       storage: 5Gi
   storageClassName: standard
+```
 
-# Use PVC in Pod
+```yaml
+# Use PVC in a Pod
 volumes:
   - name: data
     persistentVolumeClaim:
@@ -406,8 +320,7 @@ metadata:
 provisioner: kubernetes.io/aws-ebs
 parameters:
   type: gp3
-  fsType: ext4
-reclaimPolicy: Delete      # Delete | Retain
+reclaimPolicy: Delete   # Delete | Retain
 allowVolumeExpansion: true
 ```
 
@@ -425,21 +338,12 @@ metadata:
 data:
   APP_ENV: "production"
   LOG_LEVEL: "info"
-  config.yaml: |
-    server:
-      port: 8080
 ```
 
 ```yaml
 # Use as environment variables
 envFrom:
   - configMapRef:
-      name: app-config
-
-# Use as volume (file)
-volumes:
-  - name: config-vol
-    configMap:
       name: app-config
 ```
 
@@ -453,11 +357,9 @@ metadata:
 type: Opaque
 data:
   DB_PASSWORD: cGFzc3dvcmQxMjM=   # base64 encoded
-  DB_USER: YWRtaW4=
 ```
 
 ```yaml
-# Use in pod
 env:
   - name: DB_PASSWORD
     valueFrom:
@@ -472,15 +374,14 @@ env:
 
 ## Scaling & Autoscaling
 
-### Manual Scaling
-
 ```bash
+# Manual scaling
 kubectl scale deployment my-app --replicas=5
 ```
 
 ### Horizontal Pod Autoscaler (HPA)
 
-Automatically scales pod replicas based on CPU/memory utilization or custom metrics.
+Automatically scales pod replicas based on CPU/memory or custom metrics.
 
 ```yaml
 apiVersion: autoscaling/v2
@@ -503,13 +404,10 @@ spec:
           averageUtilization: 70   # scale up if avg CPU > 70%
 ```
 
-### Vertical Pod Autoscaler (VPA)
+### VPA & Cluster Autoscaler
 
-Adjusts CPU/memory **requests and limits** for pods based on actual usage. Pods may need to be restarted to apply new resource values.
-
-### Cluster Autoscaler
-
-Automatically adds or removes **nodes** in the cluster based on pending pods and node utilization. Works with cloud provider node groups (ASGs on AWS).
+- **VPA (Vertical Pod Autoscaler)**: Adjusts CPU/memory requests and limits for pods based on actual usage. Pods may restart to apply new values.
+- **Cluster Autoscaler**: Adds or removes nodes based on pending pods and node utilization.
 
 ---
 
@@ -525,7 +423,7 @@ strategy:
     maxSurge: 25%         # extra pods allowed during update
     maxUnavailable: 25%   # pods that can be unavailable
 
-# Recreate — kill all old pods, then create new (downtime!)
+# Recreate — kills all old pods first, then creates new (causes downtime)
 strategy:
   type: Recreate
 ```
@@ -533,19 +431,10 @@ strategy:
 ### Rollout Commands
 
 ```bash
-# Check rollout status
 kubectl rollout status deployment/my-app
-
-# View rollout history
 kubectl rollout history deployment/my-app
-
-# Rollback to previous version
 kubectl rollout undo deployment/my-app
-
-# Rollback to specific revision
 kubectl rollout undo deployment/my-app --to-revision=2
-
-# Pause rollout (canary-style)
 kubectl rollout pause deployment/my-app
 kubectl rollout resume deployment/my-app
 ```
@@ -559,8 +448,8 @@ kubectl rollout resume deployment/my-app
 Logical isolation within a cluster. Resources in different namespaces don't interfere.
 
 ```bash
-# Common namespaces
-default        # where your apps go if no namespace specified
+# Built-in namespaces
+default        # where apps go if no namespace specified
 kube-system    # K8s system components
 kube-public    # publicly readable
 kube-node-lease # node heartbeats
@@ -599,7 +488,7 @@ roleRef:
   apiGroup: rbac.authorization.k8s.io
 ```
 
-> **ClusterRole** and **ClusterRoleBinding** apply cluster-wide (across all namespaces).
+> **ClusterRole** and **ClusterRoleBinding** apply cluster-wide across all namespaces.
 
 ---
 
@@ -610,9 +499,9 @@ livenessProbe:      # Is the container alive? If not, restart it.
   httpGet:
     path: /health
     port: 8080
-  initialDelaySeconds: 10  # wait before first check
-  periodSeconds: 10        # check every 10s
-  failureThreshold: 3      # restart after 3 failures
+  initialDelaySeconds: 10
+  periodSeconds: 10
+  failureThreshold: 3
 
 readinessProbe:     # Is the container ready to receive traffic?
   httpGet:
@@ -621,21 +510,19 @@ readinessProbe:     # Is the container ready to receive traffic?
   initialDelaySeconds: 5
   periodSeconds: 5
   failureThreshold: 3
-  # Pod removed from Service endpoints if probe fails (no traffic sent)
 
-startupProbe:       # Is the container still starting up?
+startupProbe:       # Still starting? Disables liveness/readiness until done.
   httpGet:
     path: /health
     port: 8080
-  failureThreshold: 30     # give 30 × 10s = 5 minutes to start
+  failureThreshold: 30   # 30 × 10s = 5 minutes to start
   periodSeconds: 10
-  # Disables liveness/readiness until startup succeeds
 ```
 
 | Probe | On Failure | Use Case |
 |---|---|---|
 | `livenessProbe` | Restart container | Detect deadlocks, hung processes |
-| `readinessProbe` | Remove from Service | Graceful startup, temporary unavailability |
+| `readinessProbe` | Remove from Service endpoints | Startup grace periods, temporary unavailability |
 | `startupProbe` | Restart container | Slow-starting apps |
 
 ---
@@ -644,12 +531,12 @@ startupProbe:       # Is the container still starting up?
 
 ```yaml
 resources:
-  requests:           # minimum guaranteed resources (used by scheduler)
+  requests:           # minimum guaranteed (used by scheduler)
     cpu: "100m"       # 100 millicores = 0.1 CPU
-    memory: "128Mi"   # 128 MiB
-  limits:             # maximum allowed resources
-    cpu: "500m"       # 500 millicores = 0.5 CPU
-    memory: "256Mi"   # 256 MiB
+    memory: "128Mi"
+  limits:             # maximum allowed
+    cpu: "500m"
+    memory: "256Mi"
 ```
 
 ### QoS Classes
@@ -657,13 +544,13 @@ resources:
 | Class | Condition | Behavior |
 |---|---|---|
 | **Guaranteed** | requests == limits for all containers | Last to be evicted |
-| **Burstable** | requests < limits | Evicted if node is under pressure |
-| **BestEffort** | No requests or limits set | First to be evicted |
+| **Burstable** | requests < limits | Evicted under node pressure |
+| **BestEffort** | No requests or limits | First to be evicted |
 
 ### LimitRange & ResourceQuota
 
 ```yaml
-# LimitRange — default limits per pod/container in a namespace
+# LimitRange — default limits per container in a namespace
 apiVersion: v1
 kind: LimitRange
 metadata:
@@ -688,40 +575,22 @@ spec:
     pods: "20"
     requests.cpu: "4"
     requests.memory: "8Gi"
-    limits.cpu: "8"
-    limits.memory: "16Gi"
 ```
 
 ---
 
 ## Helm
 
-Helm is the **package manager for Kubernetes** — it bundles K8s manifests into reusable, versioned **charts**.
+Helm is the **package manager for Kubernetes** — bundles K8s manifests into reusable, versioned **charts**.
 
 ```bash
-# Add a chart repository
 helm repo add bitnami https://charts.bitnami.com/bitnami
 helm repo update
-
-# Search for a chart
-helm search repo nginx
-
-# Install a chart
 helm install my-nginx bitnami/nginx
-
-# Install with custom values
 helm install my-app ./my-chart -f values.yaml --set image.tag=v2
-
-# Upgrade a release
 helm upgrade my-app ./my-chart -f values.yaml
-
-# Rollback to previous release
 helm rollback my-app 1
-
-# List installed releases
 helm list
-
-# Uninstall
 helm uninstall my-app
 ```
 
@@ -734,7 +603,6 @@ my-chart/
   templates/
     deployment.yaml  ← templated K8s manifests
     service.yaml
-    ingress.yaml
     _helpers.tpl     ← reusable template helpers
 ```
 
@@ -743,49 +611,46 @@ my-chart/
 ## kubectl Cheat Sheet
 
 ```bash
-# --- Context & Cluster ---
+# Context & Cluster
 kubectl config get-contexts
 kubectl config use-context my-cluster
 kubectl cluster-info
 
-# --- Pods ---
+# Pods
 kubectl get pods
 kubectl get pods -n kube-system
-kubectl get pods -o wide           # show node info
+kubectl get pods -o wide
 kubectl describe pod my-pod
 kubectl logs my-pod
-kubectl logs my-pod -c container   # multi-container pod
-kubectl logs -f my-pod             # follow/tail logs
-kubectl exec -it my-pod -- bash    # exec into pod
+kubectl logs -f my-pod                  # follow logs
+kubectl exec -it my-pod -- bash
 kubectl delete pod my-pod
 
-# --- Deployments ---
+# Deployments
 kubectl get deployments
 kubectl apply -f deployment.yaml
-kubectl delete -f deployment.yaml
 kubectl scale deployment my-app --replicas=5
 kubectl set image deployment/my-app app=my-app:v2
 kubectl rollout status deployment/my-app
 kubectl rollout undo deployment/my-app
 
-# --- Services ---
+# Services
 kubectl get services
 kubectl expose deployment my-app --type=ClusterIP --port=80
 
-# --- Debugging ---
+# Debugging
 kubectl get events --sort-by=.metadata.creationTimestamp
-kubectl top pods                   # CPU/memory usage (metrics-server required)
+kubectl top pods
 kubectl top nodes
 kubectl port-forward pod/my-pod 8080:8080
 kubectl run tmp --image=busybox --rm -it -- sh   # debug pod
 
-# --- Namespaces ---
+# Namespaces
 kubectl get all -n my-namespace
 kubectl create namespace my-ns
 
-# --- Output formats ---
+# Output formats
 kubectl get pods -o yaml
-kubectl get pods -o json
 kubectl get pods -o jsonpath='{.items[*].metadata.name}'
 ```
 
@@ -800,58 +665,45 @@ kubectl get pods -o jsonpath='{.items[*].metadata.name}'
 | Pod identity | Random names (`pod-abc123`) | Stable names (`pod-0`, `pod-1`) |
 | Storage | Shared or none | Dedicated PVC per pod |
 | Scaling order | Arbitrary | Ordered (0 → 1 → 2) |
-| Deletion order | Arbitrary | Reverse order (2 → 1 → 0) |
-| Use case | Stateless apps (web, API) | Stateful apps (DB, Kafka, Zookeeper) |
+| Use case | Stateless apps (web, API) | Stateful apps (DB, Kafka) |
 
 ---
 
 ### Q: What is the difference between a Service and an Ingress?
 
-- **Service**: Layer 4 (TCP/UDP) load balancing within the cluster. Routes traffic to pods by label selector. ClusterIP, NodePort, or LoadBalancer.
-- **Ingress**: Layer 7 (HTTP/HTTPS) routing. Routes by hostname and URL path. Requires an Ingress Controller (NGINX, Traefik). Single entry point for multiple services.
+- **Service**: Layer 4 (TCP/UDP) load balancing. Routes traffic to pods by label selector. Types: ClusterIP, NodePort, LoadBalancer.
+- **Ingress**: Layer 7 (HTTP/HTTPS) routing by hostname and URL path. Requires an Ingress Controller (NGINX, Traefik). Single entry point for multiple services.
 
 ---
 
 ### Q: What happens when a pod crashes in Kubernetes?
 
-1. **kubelet** detects the container has exited
-2. K8s checks the **restartPolicy** (`Always`, `OnFailure`, `Never`)
-3. Container is restarted with **exponential backoff** (10s → 20s → 40s → ... max 5min)
-4. Pod shows `CrashLoopBackOff` if it keeps failing
-5. **ReplicaSet** ensures desired replica count is maintained — if pod is unrecoverable, new pod is scheduled
+kubelet detects the container exited and restarts it with **exponential backoff** (10s → 20s → 40s → max 5min). The pod shows `CrashLoopBackOff` if it keeps failing. The ReplicaSet ensures the desired replica count is maintained by scheduling a new pod if needed.
 
 ---
 
 ### Q: What is the difference between `livenessProbe` and `readinessProbe`?
 
-- **livenessProbe**: Checks if the container is **alive**. Failure causes K8s to **restart** the container. Use to detect deadlocks.
-- **readinessProbe**: Checks if the container is **ready to serve traffic**. Failure removes the pod from **Service endpoints** (no restart). Use for startup grace periods and temporary unavailability.
+- **livenessProbe**: Checks if the container is alive. Failure causes a **restart**. Use to detect deadlocks or hung processes.
+- **readinessProbe**: Checks if the container is ready for traffic. Failure removes the pod from **Service endpoints** (no restart). Use for startup grace periods.
 
 ---
 
 ### Q: How does Kubernetes handle rolling updates?
 
-1. A new ReplicaSet is created for the new version
-2. Pods from the new ReplicaSet are spun up (`maxSurge`)
-3. Old pods are terminated (`maxUnavailable`) only after new pods pass readiness probes
-4. This continues until all pods are running the new version
-5. Old ReplicaSet is kept at 0 replicas (for rollback)
+A new ReplicaSet is created for the new version. New pods are spun up (`maxSurge`) and old pods are terminated (`maxUnavailable`) only after new pods pass readiness probes. This continues until all pods run the new version. The old ReplicaSet is kept at 0 replicas for rollback.
 
 ---
 
 ### Q: What is etcd and why is it critical?
 
-`etcd` is a distributed key-value store that stores **all cluster state** — pod definitions, deployments, secrets, node status. If etcd is lost and has no backup, the cluster state is gone. In production, etcd runs as a cluster with 3 or 5 nodes for high availability.
+etcd stores **all cluster state** — pod definitions, deployments, secrets, node status. If etcd is lost without a backup, the cluster state is gone. In production, etcd runs as a 3 or 5-node cluster for high availability.
 
 ---
 
 ### Q: What is a Namespace and when would you use it?
 
-Namespaces provide **virtual clusters** within a physical cluster. Use cases:
-- Separate environments: `dev`, `staging`, `production`
-- Separate teams: each team gets their own namespace with RBAC
-- Resource isolation: ResourceQuotas per namespace
-- Avoid naming conflicts between teams
+Namespaces provide virtual clusters within a physical cluster. Use them to separate environments (`dev`, `staging`, `production`), isolate teams with RBAC, cap resources with ResourceQuotas, and avoid naming conflicts.
 
 ---
 
@@ -879,4 +731,4 @@ Helm           → K8s package manager (charts)
 
 ---
 
-*Last Updated: 2026-06-04*
+*Last Updated: 2026-06-18*

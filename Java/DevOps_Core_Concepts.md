@@ -53,19 +53,13 @@ Plan → Code → Build → Test → Release → Deploy → Operate → Monitor
 
 ## CI/CD Pipelines
 
-### Continuous Integration (CI)
-Developers **frequently merge code** into a shared repository. Each merge triggers automated builds and tests.
+### CI vs CD vs Continuous Deployment
 
-**CI Goals**:
-- Detect integration bugs early
-- Keep the main branch always deployable
-- Eliminate "integration hell"
+**CI (Continuous Integration)**: Developers frequently merge code; each merge triggers automated builds and tests. Goal: detect bugs early, keep main always deployable.
 
-### Continuous Delivery (CD)
-Code is **automatically built, tested, and prepared for release** to production. Deployment to production requires manual approval.
+**CD (Continuous Delivery)**: Extends CI — code is automatically built, tested, and prepared for release. Deployment to production requires manual approval.
 
-### Continuous Deployment
-Code that passes all automated tests is **automatically deployed to production** — no human approval needed.
+**Continuous Deployment**: Code that passes all tests is automatically deployed to production — no human approval needed.
 
 ```
 CI:   Code → Build → Test → [artifact ready]
@@ -76,7 +70,6 @@ Continuous Deployment: CI output → Staging → Production [automatic]
 ### Pipeline Stages
 
 ```yaml
-# Example: Generic CI/CD pipeline stages
 stages:
   - validate    # Lint, static analysis, security scan
   - build       # Compile, build Docker image
@@ -97,134 +90,67 @@ stages:
 | **GitLab CI** | Cloud/Self-hosted | Integrated with GitLab, powerful |
 | **CircleCI** | Cloud | Fast, easy parallelism |
 | **ArgoCD** | GitOps for K8s | Kubernetes-native, GitOps model |
-| **Tekton** | K8s-native | Cloud-native pipeline, vendor-neutral |
 | **AWS CodePipeline** | Cloud | Deep AWS integration |
 
 ### GitHub Actions Example
 
 ```yaml
 name: CI/CD Pipeline
-
 on:
   push:
     branches: [main, develop]
   pull_request:
     branches: [main]
 
-env:
-  IMAGE_NAME: myapp
-  REGISTRY: ghcr.io
-
 jobs:
   test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: '18'
           cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Run linter
-        run: npm run lint
-
-      - name: Run unit tests
-        run: npm test -- --coverage
-
-      - name: Upload coverage
-        uses: codecov/codecov-action@v3
+      - run: npm ci
+      - run: npm run lint
+      - run: npm test -- --coverage
 
   build:
     needs: test
     runs-on: ubuntu-latest
-    outputs:
-      image-tag: ${{ steps.meta.outputs.tags }}
     steps:
       - uses: actions/checkout@v4
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Login to registry
-        uses: docker/login-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
         with:
-          registry: ${{ env.REGISTRY }}
+          registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Extract metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.REGISTRY }}/${{ github.repository }}/${{ env.IMAGE_NAME }}
-
-      - name: Build and push
-        uses: docker/build-push-action@v5
+      - uses: docker/build-push-action@v5
         with:
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-  deploy-staging:
-    needs: build
-    runs-on: ubuntu-latest
-    environment: staging
-    steps:
-      - name: Deploy to staging
-        run: |
-          kubectl set image deployment/myapp \
-            myapp=${{ needs.build.outputs.image-tag }}
+          tags: ghcr.io/${{ github.repository }}/myapp:latest
 
   deploy-production:
-    needs: deploy-staging
+    needs: build
     runs-on: ubuntu-latest
     environment: production    # Requires manual approval
     steps:
-      - name: Deploy to production
-        run: |
-          kubectl set image deployment/myapp \
-            myapp=${{ needs.build.outputs.image-tag }}
+      - run: kubectl set image deployment/myapp myapp=ghcr.io/${{ github.repository }}/myapp:latest
 ```
 
 ### Deployment Strategies
 
-| Strategy | Description | Downtime | Risk | Rollback |
-|---|---|---|---|---|
-| **Recreate** | Stop old, start new | Yes | High | Slow |
-| **Rolling** | Replace instances gradually | No | Medium | Moderate |
-| **Blue/Green** | Two identical envs, switch traffic | No | Low | Instant |
-| **Canary** | Route small % traffic to new version | No | Very Low | Instant |
-| **A/B Testing** | Route by user segment | No | Very Low | Instant |
+| Strategy | Description | Downtime | Rollback |
+|---|---|---|---|
+| **Recreate** | Stop old, start new | Yes | Slow |
+| **Rolling** | Replace instances gradually | No | Moderate |
+| **Blue/Green** | Two identical envs, switch traffic | No | Instant |
+| **Canary** | Route small % traffic to new version | No | Instant |
 
-#### Blue/Green Deployment
+**Blue/Green**: Maintain two environments (Blue=idle, Green=active). Deploy v3 to Blue, then switch traffic. Keep Green for instant rollback.
 
-```
-                    ┌─── Blue (v1) ───┐ ← Idle
-Load Balancer ──────┤
-                    └─── Green (v2) ──┘ ← Active (100% traffic)
-
-Deploy v3 to Blue:
-                    ┌─── Blue (v3) ───┐ ← Switch traffic here
-Load Balancer ──────┤
-                    └─── Green (v2) ──┘ ← Keep for rollback
-```
-
-#### Canary Deployment
-
-```
-Request → Load Balancer → 95% → v1 (stable)
-                        → 5%  → v2 (canary)
-
-After validation:
-                        → 0%  → v1
-                        → 100% → v2
-```
+**Canary**: Route 5% of traffic to new version, monitor metrics, then gradually increase to 100%.
 
 ---
 
@@ -232,87 +158,33 @@ After validation:
 
 ### Git Branching Strategies
 
-#### GitFlow
+**GitFlow**: `main` (production), `develop` (integration), `feature/*`, `release/*`, `hotfix/*`. Good for versioned releases.
 
-```
-main ─────────────────────────────────────────● v1.0
-       ↑                                      ↑
-hotfix/fix-bug                          release/1.0
-                                              ↑
-develop ──────────────────────────────────────●──────
-              ↑           ↑           ↑
-         feature/A   feature/B   feature/C
-```
+**Trunk-Based Development** (preferred for CI/CD): All developers push short-lived branches (< 1-2 days) to main. Feature flags hide incomplete features. Enforces CI, reduces integration problems.
 
-**Branches**:
-- `main`: Production-ready code
-- `develop`: Integration branch
-- `feature/*`: New features (branch from develop)
-- `release/*`: Release preparation
-- `hotfix/*`: Emergency production fixes
-
-#### Trunk-Based Development (Preferred for CI/CD)
-
-```
-main (trunk) ●────●────●────●────●────●  (deployable at all times)
-              ↑    ↑    ↑    ↑
-          short-lived feature branches (< 1-2 days)
-```
-
-- All developers push to main frequently
-- Feature flags hide incomplete features
-- Enforces CI, reduces integration problems
-
-#### GitHub Flow
-
-```
-main ──●────────────────────────●───────
-        ↓                       ↑
-     feature/xyz ──●──●──●── PR & merge
-```
-
-Simple: branch from main, PR, review, merge.
+**GitHub Flow**: Branch from main → PR → review → merge. Simple and effective.
 
 ### Key Git Commands for DevOps
 
 ```bash
-# Tagging releases
-git tag -a v1.2.3 -m "Release 1.2.3"
+git tag -a v1.2.3 -m "Release 1.2.3"   # Tag a release
 git push origin v1.2.3
 
-# Cherry-pick a fix to production
-git cherry-pick <commit-hash>
+git cherry-pick <commit-hash>            # Apply a fix to another branch
+git revert <commit-hash>                 # Undo a bad commit safely
 
-# Revert a bad commit
-git revert <commit-hash>
+git bisect start                         # Find when a bug was introduced
+git bisect bad
+git bisect good v1.2.0
 
-# Stash work in progress
-git stash push -m "WIP: feature X"
-git stash pop
-
-# View commit graph
-git log --oneline --graph --all
-
-# Find when a bug was introduced
-git bisect start
-git bisect bad                   # Current is bad
-git bisect good v1.2.0           # This was good
-
-# Squash commits before PR
-git rebase -i HEAD~3
+git rebase -i HEAD~3                     # Squash commits before PR
 ```
 
 ---
 
 ## Infrastructure as Code (IaC)
 
-IaC means managing and provisioning infrastructure through **machine-readable configuration files** rather than manual processes.
-
-### Benefits
-- **Reproducibility**: Same config = same infrastructure, every time
-- **Version Control**: Infrastructure changes tracked in git
-- **Automation**: No manual clicks in cloud consoles
-- **Documentation**: Config IS the documentation
+IaC manages infrastructure through **machine-readable configuration files** instead of manual processes. Benefits: reproducibility, version control, automation, and the config IS the documentation.
 
 ### IaC Tools Comparison
 
@@ -322,39 +194,22 @@ IaC means managing and provisioning infrastructure through **machine-readable co
 | **AWS CloudFormation** | Provisioning | AWS only | YAML/JSON |
 | **Pulumi** | Provisioning | Multi-cloud | Python/TS/Go |
 | **Ansible** | Config Management | Multi-cloud | YAML |
-| **Chef/Puppet** | Config Management | Multi-cloud | Ruby DSL |
 
 ### Terraform Core Concepts
 
 ```hcl
-# provider.tf — Define cloud provider
+# Define provider and remote state
 terraform {
   required_providers {
-    aws = {
-      source  = "hashicorp/aws"
-      version = "~> 5.0"
-    }
+    aws = { source = "hashicorp/aws", version = "~> 5.0" }
   }
-
-  # Remote state (shared state)
   backend "s3" {
     bucket         = "mycompany-terraform-state"
     key            = "prod/main.tfstate"
     region         = "us-east-1"
-    dynamodb_table = "terraform-locks"  # State locking
+    dynamodb_table = "terraform-locks"  # Prevents concurrent modifications
     encrypt        = true
   }
-}
-
-provider "aws" {
-  region = var.region
-}
-
-# variables.tf — Input variables
-variable "region" {
-  description = "AWS region"
-  type        = string
-  default     = "us-east-1"
 }
 
 variable "instance_type" {
@@ -362,39 +217,12 @@ variable "instance_type" {
   default = "t3.micro"
 }
 
-# main.tf — Resources
-resource "aws_vpc" "main" {
-  cidr_block           = "10.0.0.0/16"
-  enable_dns_hostnames = true
-
-  tags = {
-    Name        = "main-vpc"
-    Environment = var.environment
-  }
-}
-
 resource "aws_instance" "web" {
   ami           = data.aws_ami.amazon_linux.id
   instance_type = var.instance_type
-  subnet_id     = aws_subnet.public.id
-
-  tags = {
-    Name = "web-server"
-  }
+  tags = { Name = "web-server" }
 }
 
-# Data sources (read existing resources)
-data "aws_ami" "amazon_linux" {
-  most_recent = true
-  owners      = ["amazon"]
-
-  filter {
-    name   = "name"
-    values = ["amzn2-ami-hvm-*-x86_64-gp2"]
-  }
-}
-
-# outputs.tf — Output values
 output "instance_public_ip" {
   value = aws_instance.web.public_ip
 }
@@ -403,24 +231,14 @@ output "instance_public_ip" {
 ### Terraform Workflow
 
 ```bash
-terraform init        # Download providers, initialize backend
-terraform validate    # Check syntax
-terraform plan        # Preview changes (dry run)
-terraform apply       # Apply changes
-terraform destroy     # Destroy all resources
-
-terraform fmt         # Format code
-terraform state list  # List managed resources
-terraform import aws_instance.web i-1234567890  # Import existing resource
-terraform workspace new staging  # Create workspace
+terraform init      # Download providers, initialize backend
+terraform validate  # Check syntax
+terraform plan      # Preview changes (dry run)
+terraform apply     # Apply changes
+terraform destroy   # Destroy all resources
 ```
 
-### Terraform State
-
-- **State file** (`terraform.tfstate`): Maps config to real infrastructure
-- **Remote state**: Store in S3/GCS for team use
-- **State locking**: DynamoDB (AWS) prevents concurrent modifications
-- **Never edit state manually**: Use `terraform state` commands
+**State**: The `terraform.tfstate` file maps config to real infrastructure. Store remotely in S3 for team use. Never edit state manually — use `terraform state` commands.
 
 ---
 
@@ -428,53 +246,32 @@ terraform workspace new staging  # Create workspace
 
 ### Ansible
 
-Ansible automates configuration management, application deployment, and orchestration.
+Ansible automates configuration management and application deployment.
 
-**Key concepts**:
-- **Agentless**: Uses SSH, no agent installed on target
-- **Idempotent**: Running playbook multiple times gives same result
-- **Inventory**: List of managed hosts
-- **Playbook**: YAML file defining automation tasks
-- **Role**: Reusable collection of tasks, templates, files
+- **Agentless**: Uses SSH, no agent on target hosts
+- **Idempotent**: Running a playbook multiple times gives the same result
+- **Inventory**: List of managed hosts; **Playbook**: YAML automation tasks; **Role**: Reusable task collection
 
 ```yaml
-# inventory.yml
-all:
-  children:
-    webservers:
-      hosts:
-        web1: { ansible_host: 10.0.1.10 }
-        web2: { ansible_host: 10.0.1.11 }
-    databases:
-      hosts:
-        db1: { ansible_host: 10.0.2.10 }
-
 # playbook.yml
----
 - name: Configure web servers
   hosts: webservers
-  become: yes               # sudo
-  vars:
-    nginx_port: 80
-
+  become: yes
   tasks:
     - name: Install nginx
       ansible.builtin.package:
         name: nginx
         state: present
-
     - name: Copy config
       ansible.builtin.template:
         src: nginx.conf.j2
         dest: /etc/nginx/nginx.conf
       notify: Restart nginx
-
     - name: Ensure nginx is running
       ansible.builtin.service:
         name: nginx
         state: started
         enabled: yes
-
   handlers:
     - name: Restart nginx
       ansible.builtin.service:
@@ -483,13 +280,10 @@ all:
 ```
 
 ```bash
-# Ansible commands
-ansible -i inventory.yml webservers -m ping          # Test connectivity
-ansible-playbook -i inventory.yml playbook.yml       # Run playbook
-ansible-playbook playbook.yml --check                # Dry run
-ansible-playbook playbook.yml --tags "install"       # Run specific tags
-ansible-vault encrypt secrets.yml                    # Encrypt secrets
-ansible-galaxy install geerlingguy.nginx             # Install role
+ansible -i inventory.yml webservers -m ping       # Test connectivity
+ansible-playbook -i inventory.yml playbook.yml    # Run playbook
+ansible-playbook playbook.yml --check             # Dry run
+ansible-vault encrypt secrets.yml                 # Encrypt secrets
 ```
 
 ---
@@ -500,50 +294,22 @@ ansible-galaxy install geerlingguy.nginx             # Install role
 
 ```
 Cluster
-├── Control Plane (Master)
+├── Control Plane
 │   ├── API Server          ← Entry point for all K8s commands
-│   ├── etcd                ← Distributed key-value store (cluster state)
+│   ├── etcd                ← Cluster state store
 │   ├── Scheduler           ← Decides which node runs a pod
 │   └── Controller Manager  ← Ensures desired state = actual state
 │
 └── Worker Nodes
-    ├── kubelet             ← Agent that runs pods
-    ├── kube-proxy          ← Network rules for services
-    └── Container Runtime   ← Docker/containerd
+    ├── kubelet             ← Runs pods
+    ├── kube-proxy          ← Network rules
+    └── Container Runtime   ← containerd/Docker
 ```
 
 ### Kubernetes Objects
 
 ```yaml
-# Pod — Smallest deployable unit
-apiVersion: v1
-kind: Pod
-spec:
-  containers:
-  - name: nginx
-    image: nginx:1.25
-    ports:
-    - containerPort: 80
-    resources:
-      requests:
-        memory: "64Mi"
-        cpu: "250m"
-      limits:
-        memory: "128Mi"
-        cpu: "500m"
-    livenessProbe:
-      httpGet:
-        path: /health
-        port: 80
-      initialDelaySeconds: 3
-      periodSeconds: 10
-    readinessProbe:
-      httpGet:
-        path: /ready
-        port: 80
-
----
-# Deployment — Manages replica sets
+# Deployment — manages replicas with rolling updates
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -566,9 +332,17 @@ spec:
       containers:
       - name: myapp
         image: myapp:1.0
+        resources:
+          requests: { memory: "64Mi", cpu: "250m" }
+          limits:   { memory: "128Mi", cpu: "500m" }
+        livenessProbe:
+          httpGet: { path: /health, port: 80 }
+          initialDelaySeconds: 3
+        readinessProbe:
+          httpGet: { path: /ready, port: 80 }
 
 ---
-# Service — Stable network endpoint
+# Service — stable network endpoint
 apiVersion: v1
 kind: Service
 metadata:
@@ -579,10 +353,10 @@ spec:
   ports:
   - port: 80
     targetPort: 3000
-  type: ClusterIP     # ClusterIP, NodePort, LoadBalancer
+  type: ClusterIP     # ClusterIP | NodePort | LoadBalancer
 
 ---
-# HPA — Horizontal Pod Autoscaler
+# HPA — auto-scale pods based on CPU
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
@@ -606,57 +380,36 @@ spec:
 ### kubectl Cheat Sheet
 
 ```bash
-# Context
-kubectl config get-contexts
-kubectl config use-context prod-cluster
-
-# Resources
 kubectl get pods -n production
-kubectl get pods -o wide          # With node info
 kubectl describe pod myapp-xyz
-kubectl logs myapp-xyz -f         # Follow logs
+kubectl logs myapp-xyz -f
 kubectl exec -it myapp-xyz -- bash
 
-# Deploy
 kubectl apply -f deployment.yaml
 kubectl rollout status deployment/myapp
-kubectl rollout history deployment/myapp
-kubectl rollout undo deployment/myapp       # Rollback
+kubectl rollout undo deployment/myapp        # Rollback
 kubectl set image deployment/myapp myapp=myapp:2.0
 
-# Scale
 kubectl scale deployment myapp --replicas=5
-
-# Debug
-kubectl get events --sort-by=.metadata.creationTimestamp
 kubectl top pods
-kubectl top nodes
 kubectl port-forward pod/myapp-xyz 8080:80
 ```
 
 ### GitOps with ArgoCD
 
-GitOps: **Git is the single source of truth for infrastructure and application state**.
+GitOps: **Git is the single source of truth** for infrastructure and application state.
 
 ```
-Developer → Push to Git repo → ArgoCD detects change
-                                     ↓
-                            Syncs to Kubernetes cluster
-                                     ↓
-                            Cluster matches Git state
+Developer → Push to Git → ArgoCD detects change → Syncs to Kubernetes cluster
 ```
 
-**Principles**:
-1. Declarative: Describe desired state in Git
-2. Versioned: Git history = audit trail
-3. Automatic: Sync is automated
-4. Continuously reconciled: Drift is corrected automatically
+Principles: declarative desired state in Git; versioned (git history = audit trail); automated sync; drift is corrected automatically.
 
 ---
 
 ## Monitoring & Observability
 
-### The Three Pillars of Observability
+### The Three Pillars
 
 | Pillar | Description | Tools |
 |---|---|---|
@@ -664,7 +417,7 @@ Developer → Push to Git repo → ArgoCD detects change
 | **Logs** | Timestamped event records | ELK Stack, Loki, Splunk |
 | **Traces** | Request flow across services | Jaeger, Zipkin, AWS X-Ray |
 
-### Metrics with Prometheus + Grafana
+### Prometheus + Grafana
 
 ```
 Application → /metrics endpoint → Prometheus scrapes → Grafana visualizes
@@ -673,24 +426,7 @@ Application → /metrics endpoint → Prometheus scrapes → Grafana visualizes
 ```
 
 ```yaml
-# prometheus.yml — Scrape config
-scrape_configs:
-  - job_name: 'myapp'
-    scrape_interval: 15s
-    static_configs:
-      - targets: ['myapp:3000']
-
-  - job_name: 'kubernetes-pods'
-    kubernetes_sd_configs:
-      - role: pod
-    relabel_configs:
-      - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
-        action: keep
-        regex: true
-```
-
-```yaml
-# AlertManager rule
+# Alert rule example
 groups:
   - name: myapp.rules
     rules:
@@ -701,29 +437,22 @@ groups:
           severity: critical
         annotations:
           summary: "High error rate detected"
-          description: "Error rate is {{ $value | humanizePercentage }}"
 ```
 
-### Key Metrics to Monitor
+### Key Metrics Methods
 
-**RED Method (for services)**:
-- **Rate**: Requests per second
-- **Errors**: Error rate
-- **Duration**: Latency (p50, p95, p99)
+**RED Method (services)**: Rate (req/s), Errors (error rate), Duration (latency p50/p95/p99)
 
-**USE Method (for resources)**:
-- **Utilization**: % of time resource is busy
-- **Saturation**: Queue depth / backlog
-- **Errors**: Error count
+**USE Method (resources)**: Utilization (% busy), Saturation (queue depth), Errors (count)
 
 ### SLI, SLO, SLA
 
 | Term | Definition | Example |
 |---|---|---|
-| **SLI** | Service Level Indicator — metric that measures a service behavior | 99th percentile latency = 250ms |
-| **SLO** | Service Level Objective — target for the SLI | 99% of requests < 500ms |
-| **SLA** | Service Level Agreement — contract with consequences | 99.9% uptime or 10% refund |
-| **Error Budget** | 1 - SLO = how much failure is allowed | 0.1% = 43.8 min/month |
+| **SLI** | Metric measuring service behavior | 99th percentile latency = 250ms |
+| **SLO** | Target for the SLI | 99% of requests < 500ms |
+| **SLA** | Contract with consequences | 99.9% uptime or 10% refund |
+| **Error Budget** | 1 - SLO = allowed failure | 0.1% = 43.8 min/month |
 
 ---
 
@@ -740,60 +469,53 @@ Application → Filebeat/Fluentd → Logstash → Elasticsearch → Kibana
 
 ```json
 {
-  "timestamp": "2026-06-05T10:30:00Z",
+  "timestamp": "2026-06-18T10:30:00Z",
   "level": "ERROR",
   "service": "payment-api",
   "traceId": "abc123",
-  "userId": "user-456",
   "message": "Payment processing failed",
   "error": "Connection timeout",
   "duration_ms": 5023
 }
 ```
 
-**Why structured logging?** Machines can parse, filter, and query JSON efficiently. Plain text requires fragile regex parsing.
+Machines can parse, filter, and query JSON efficiently. Plain text requires fragile regex parsing.
 
 ### Log Levels
 
 | Level | Use Case |
 |---|---|
-| `TRACE` | Very detailed debugging, typically disabled in production |
 | `DEBUG` | Development debugging |
-| `INFO` | Normal operational events (startup, user actions) |
+| `INFO` | Normal operational events |
 | `WARN` | Unexpected but handled situations |
 | `ERROR` | Failures that need attention |
-| `FATAL/CRITICAL` | System cannot continue |
+| `FATAL` | System cannot continue |
 
 ---
 
 ## Site Reliability Engineering (SRE)
 
-SRE is Google's approach to DevOps: apply software engineering principles to operations.
+SRE applies software engineering principles to operations (Google's approach to DevOps).
 
-### SRE Principles
+### Core Principles
 
 - **Eliminate toil**: Manual, repetitive work that scales with load — automate it
-- **Error budgets**: If SLO is 99.9%, the 0.1% error budget allows for risk taking
+- **Error budgets**: SLO = 99.9% means 0.1% budget to take risks; when depleted, slow down
 - **Blameless post-mortems**: Focus on systems, not people
 - **Gradual rollouts**: Canary deployments, feature flags
-- **Capacity planning**: Predict demand and provision ahead
 
-### Incident Management
+### Incident Management Flow
 
 ```
-Alert fires → On-call engineer notified
+Alert fires → On-call notified
      ↓
-Triage: Severity classification (P1/P2/P3)
-     ↓
-Incident channel opened (Slack/Teams)
+Triage: Severity (P1/P2/P3)
      ↓
 Mitigation: Restore service ASAP (rollback, scale, redirect)
      ↓
 Resolution: Root cause fixed
      ↓
-Post-mortem (within 48-72 hours)
-     ↓
-Action items: Prevent recurrence
+Post-mortem (within 48-72 hours) → Action items to prevent recurrence
 ```
 
 ### Toil vs Engineering Work
@@ -802,8 +524,7 @@ Action items: Prevent recurrence
 |---|---|
 | Manual server restarts | Write auto-restart script |
 | SSH into prod to check logs | Set up centralized logging |
-| Scale up manually when traffic spikes | Implement HPA in Kubernetes |
-| Manually approve deployments | Automated canary deployment |
+| Scale up manually during traffic spikes | Implement HPA in Kubernetes |
 
 ---
 
@@ -811,62 +532,44 @@ Action items: Prevent recurrence
 
 ### Shift Left Security
 
-Move security checks **earlier** in the development lifecycle — fix bugs when they're cheapest to fix.
+Move security checks earlier in the lifecycle — fixing bugs is cheapest at the developer IDE stage.
 
 ```
-Developer IDE → Code Review → CI Build → Staging → Production
-    ↑               ↑            ↑           ↑           ↑
-  Linting         SAST         DAST      Pen testing  Runtime
-  secrets       dep scan     container   compliance   monitoring
-  detection     code scan      scan
+Developer IDE → CI Build → Staging → Production
+    ↑               ↑           ↑           ↑
+  secrets         SAST/DAST   pen test   runtime
+  detection       dep scan    compliance  monitoring
 ```
 
 ### Security Scanning Types
 
 | Type | Description | Tools |
 |---|---|---|
-| **SAST** | Static Application Security Testing — scan source code | SonarQube, Semgrep, Checkmarx |
-| **DAST** | Dynamic Application Security Testing — attack running app | OWASP ZAP, Burp Suite |
-| **SCA** | Software Composition Analysis — scan dependencies | Snyk, Dependabot, OWASP Dependency-Check |
-| **Container Scanning** | Scan images for OS/package CVEs | Trivy, Clair, Snyk Container |
-| **Secret Detection** | Find leaked credentials in code | GitLeaks, truffleHog, git-secrets |
-| **IaC Scanning** | Find misconfigurations in Terraform/CloudFormation | Checkov, tfsec, KICS |
+| **SAST** | Scan source code for vulnerabilities | SonarQube, Semgrep |
+| **DAST** | Attack running application | OWASP ZAP, Burp Suite |
+| **SCA** | Scan dependencies for known CVEs | Snyk, Dependabot |
+| **Container Scanning** | Scan images for OS/package CVEs | Trivy, Snyk Container |
+| **Secret Detection** | Find leaked credentials in code | GitLeaks, truffleHog |
+| **IaC Scanning** | Find misconfigurations in Terraform | Checkov, tfsec |
 
 ### Secrets Management
 
 ```
 # Never do this:
-DATABASE_PASSWORD=mysecretpassword  # In code, dockerfile, or git
+DATABASE_PASSWORD=mysecretpassword  # In code, Dockerfile, or git
 
-# Use:
-AWS Secrets Manager        → aws secretsmanager get-secret-value
-HashiCorp Vault            → vault kv get secret/myapp/db
-Kubernetes Secrets         → kubectl create secret generic
-Environment variables      → injected at runtime by orchestrator
-```
-
-### Supply Chain Security
-
-```bash
-# Sign images with cosign
-cosign sign myregistry/myapp:1.0
-
-# Verify before deployment
-cosign verify myregistry/myapp:1.0 --certificate-identity-regexp=...
-
-# Generate SBOM (Software Bill of Materials)
-syft myregistry/myapp:1.0 -o cyclonedx-json > sbom.json
-
-# Check SBOM for vulnerabilities
-grype sbom:sbom.json
+# Use instead:
+AWS Secrets Manager    → aws secretsmanager get-secret-value
+HashiCorp Vault        → vault kv get secret/myapp/db
+Kubernetes Secrets     → kubectl create secret generic
+# Inject at runtime via environment variables
 ```
 
 ---
 
 ## Artifact Management
 
-### What are Artifacts?
-Build outputs: Docker images, JAR files, npm packages, Helm charts, zip archives.
+Build outputs (Docker images, JARs, npm packages, Helm charts) are stored in artifact repositories.
 
 ### Artifact Repositories
 
@@ -876,22 +579,16 @@ Build outputs: Docker images, JAR files, npm packages, Helm charts, zip archives
 | **Nexus Repository** | Maven, npm, Docker, PyPI |
 | **AWS ECR** | Docker images |
 | **GitHub Packages** | Docker, npm, Maven, NuGet |
-| **Harbor** | Docker images (self-hosted) |
 
-### Versioning Strategies
+### Semantic Versioning (SemVer): `MAJOR.MINOR.PATCH`
+- `1.0.0` → `1.0.1`: bug fix (patch)
+- `1.0.0` → `1.1.0`: new feature, backward compatible (minor)
+- `1.0.0` → `2.0.0`: breaking change (major)
 
-**Semantic Versioning (SemVer)**: `MAJOR.MINOR.PATCH`
-- `1.0.0` → `1.0.1` (patch: bug fix)
-- `1.0.0` → `1.1.0` (minor: new feature, backward compatible)
-- `1.0.0` → `2.0.0` (major: breaking change)
-
-**Image Tagging**:
 ```bash
-myapp:1.2.3          # SemVer (production)
-myapp:1.2            # Minor version alias
-myapp:latest         # Latest release (risky in prod)
-myapp:git-abc1234    # Git commit SHA (most precise)
-myapp:main-20260605  # Branch + date
+myapp:1.2.3         # SemVer (preferred for production)
+myapp:git-abc1234   # Git commit SHA (most precise)
+myapp:latest        # Risky in prod — avoid
 ```
 
 ---
@@ -911,48 +608,48 @@ myapp:main-20260605  # Branch + date
 | **Networking** | VPC, ALB, Route 53, CloudFront | Network and DNS |
 | **Storage** | S3, EFS, EBS | Object, file, block storage |
 
-### AWS Well-Architected Framework Pillars
+### AWS Well-Architected Framework
 
-1. **Operational Excellence**: Run and monitor systems to deliver business value
-2. **Security**: Protect data, systems, and assets
-3. **Reliability**: Recover from failures and meet demand
-4. **Performance Efficiency**: Use resources efficiently
-5. **Cost Optimization**: Avoid unnecessary costs
-6. **Sustainability**: Minimize environmental impact
+1. **Operational Excellence** — Run and monitor systems to deliver business value
+2. **Security** — Protect data, systems, and assets
+3. **Reliability** — Recover from failures and meet demand
+4. **Performance Efficiency** — Use resources efficiently
+5. **Cost Optimization** — Avoid unnecessary costs
+6. **Sustainability** — Minimize environmental impact
 
 ---
 
 ## Common Interview Questions
 
 ### Q1: What is the difference between CI and CD?
-**CI (Continuous Integration)**: Automatically build and test code on every commit to detect integration issues early. **CD (Continuous Delivery)**: Extends CI by automatically preparing the release for deployment — requires manual approval for production. **Continuous Deployment**: Fully automated — passes all tests → goes to production with no human approval.
+CI automatically builds and tests on every commit — catches integration issues early. CD extends CI by preparing releases for deployment but requires manual approval for production. Continuous Deployment goes further: anything passing all tests ships to production automatically with no human gate.
 
 ### Q2: What is Infrastructure as Code and why is it important?
-IaC manages infrastructure through version-controlled configuration files. Benefits: reproducibility (same code = same infra), auditability (git history), automation (no manual clicks), reduced human error, and the ability to test infrastructure changes in lower environments first.
+IaC manages infrastructure through version-controlled config files instead of manual clicks. Benefits: reproducibility (same code = same infra), auditability via git history, automation, reduced human error, and the ability to test infra changes in lower environments first.
 
 ### Q3: What is the difference between blue/green and canary deployments?
-**Blue/Green**: Maintain two identical environments; switch all traffic at once. Zero downtime, instant rollback, but costs double the resources. **Canary**: Gradually shift a small percentage of traffic to the new version (e.g., 5%). Monitor metrics; roll forward or back. Lower risk, resource-efficient, but slower to deploy fully.
+Blue/Green keeps two identical environments and switches all traffic at once — zero downtime and instant rollback, but costs double the resources. Canary gradually shifts a small percentage of traffic (e.g., 5%) to the new version, monitors metrics, then rolls forward or back — lower risk and resource-efficient.
 
 ### Q4: What are DORA metrics?
-DORA (DevOps Research and Assessment) metrics measure software delivery performance: **Deployment Frequency** (how often you deploy), **Lead Time for Changes** (time from commit to production), **Change Failure Rate** (% of deployments causing issues), and **MTTR** (time to recover from failures). Elite teams deploy multiple times per day with < 1 hour lead time.
+Four metrics that measure software delivery performance: **Deployment Frequency** (how often you deploy), **Lead Time for Changes** (commit to production), **Change Failure Rate** (% of deployments causing issues), and **MTTR** (recovery time). Elite teams deploy multiple times per day with under 1 hour lead time.
 
-### Q5: What is a post-mortem and why is it blameless?
-A post-mortem analyzes an incident to find root causes and prevent recurrence. It's blameless because incidents are systemic failures, not individual ones — blaming people creates a cover-up culture where problems hide rather than surface. Focus on processes, systems, and tooling improvements.
+### Q5: What is a blameless post-mortem?
+A post-mortem analyzes an incident to find root causes and prevent recurrence. It's blameless because incidents are systemic failures, not individual ones — blaming people creates a cover-up culture. The focus is on improving processes, systems, and tooling.
 
 ### Q6: What is GitOps?
-GitOps uses Git as the single source of truth for both application code and infrastructure configuration. Changes are made via PRs, merged into Git, and an operator (like ArgoCD) automatically reconciles the actual cluster state to match Git. Benefits: audit trail, rollback by reverting Git commits, security (cluster pulls, not push).
+GitOps uses Git as the single source of truth for both application code and infrastructure. Changes go via PRs; an operator like ArgoCD automatically reconciles the cluster to match Git state. Benefits: full audit trail, rollback by reverting a commit, and improved security (cluster pulls changes rather than being pushed to).
 
 ### Q7: What is the difference between Ansible and Terraform?
-**Terraform** is a **provisioning** tool — it creates and manages cloud infrastructure (VMs, networks, databases). **Ansible** is a **configuration management** tool — it configures existing servers (install packages, edit files, start services). They're complementary: Terraform provisions the server, Ansible configures it.
+Terraform is a **provisioning** tool — it creates cloud infrastructure (VMs, networks, databases). Ansible is a **configuration management** tool — it configures existing servers (install packages, edit files, start services). They're complementary: Terraform provisions the server, Ansible configures it.
 
 ### Q8: What is an error budget?
-If your SLO is 99.9% availability, your error budget is 0.1% = ~43.8 minutes/month of allowed downtime. When the error budget is healthy, you can move fast and take risks. When depleted, you slow down and prioritize reliability. It creates shared language between dev and ops.
+If your SLO is 99.9% availability, your error budget is 0.1% (~43.8 min/month of allowed downtime). A healthy budget means you can move fast and take risks. When it's depleted, you slow down and prioritize reliability — creating shared language between dev and ops.
 
 ### Q9: What is the difference between liveness and readiness probes in Kubernetes?
-**Liveness probe**: Is the container still running? If it fails, Kubernetes restarts the container. Used to recover from deadlocks. **Readiness probe**: Is the container ready to serve traffic? If it fails, Kubernetes removes the pod from the service's endpoints (no traffic). Used during startup and when temporarily overloaded.
+**Liveness probe**: Is the container still alive? Failure causes Kubernetes to restart it — used to recover from deadlocks. **Readiness probe**: Is the container ready to serve traffic? Failure removes the pod from service endpoints — used during startup or when temporarily overloaded.
 
 ### Q10: How do you handle secrets in a CI/CD pipeline?
-Never commit secrets to Git. Store in a secret manager (AWS Secrets Manager, HashiCorp Vault, GitHub/GitLab Secrets). Inject into the pipeline as environment variables at runtime. Use short-lived credentials where possible (IAM roles, OIDC). Scan code for accidental secret commits with tools like GitLeaks.
+Never commit secrets to Git. Store them in a secret manager (AWS Secrets Manager, HashiCorp Vault, or GitHub Secrets). Inject at runtime as environment variables. Use short-lived credentials where possible (IAM roles, OIDC). Scan code for accidental commits with tools like GitLeaks.
 
 ---
 
@@ -969,9 +666,9 @@ Container:             Security:              DORA Metrics:
 Docker                 SAST (Semgrep)         Deploy Frequency
 Kubernetes             DAST (ZAP)             Lead Time
 Helm                   Trivy (containers)     Change Failure Rate
-Istio                  Vault (secrets)        MTTR
+ArgoCD                 Vault (secrets)        MTTR
 ```
 
 ---
 
-*Last updated: 2026-06-05*
+*Last updated: 2026-06-18*
