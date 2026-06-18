@@ -1,21 +1,14 @@
 # Full-Stack Spring Boot Developer — Roadmap & Index
 
-A guided learning path through this repository for landing a **junior → mid full-stack Spring Boot developer** role. Every item links to a study guide in this folder.
+Learning path for a **junior full-stack Spring Boot** role. Follow phases top to bottom; each builds on the previous.
 
-## How to use this
+Priority markers: 🎯 Must-know · ⭐ Should-know · 🔭 Awareness only
 
-- Follow the phases **top to bottom** — each builds on the previous one.
-- Priority markers tell you where to spend your time:
-  - 🎯 **Must-know** — core to a junior Spring Boot interview. Do not skip.
-  - ⭐ **Should-know** — common follow-ups; learn after the must-knows.
-  - 🔭 **Awareness** — senior/advanced; know it *exists* and the one-line "why". (These guides were trimmed to awareness depth on purpose.)
-- Tick the boxes as you go. Revisit [`MASTER_CHEAT_SHEET.md`](MASTER_CHEAT_SHEET.md) the week before an interview.
+Revisit [`MASTER_CHEAT_SHEET.md`](MASTER_CHEAT_SHEET.md) the week before an interview.
 
 ---
 
 ## Phase 1 — Core Java Foundations 🎯
-
-The language itself. Most junior interviews are won or lost here.
 
 - [ ] 🎯 [Java Data Types](Java_Data_Types_Notes.md)
 - [ ] 🎯 [Collections Framework — Internal Working](Java_Collections_Framework_Internal_Working.md)
@@ -30,13 +23,11 @@ The language itself. Most junior interviews are won or lost here.
 - [ ] ⭐ [Reflection & Annotations](Java_Reflection_And_Annotations_Guide.md)
 - [ ] ⭐ [Serialization](Java_Serialization_Guide.md)
 - [ ] ⭐ [JVM Internals, Memory & GC](JVM_Internals_Memory_Management_GC.md)
-- [ ] 🎯 [Java Developer Interview Questions](Java_Developer_Interview_Questions.md) — broad Q&A drill
+- [ ] 🎯 [Java Developer Interview Questions](Java_Developer_Interview_Questions.md)
 
 ---
 
 ## Phase 2 — Spring & Spring Boot 🎯
-
-The framework you'll be hired to use.
 
 - [ ] 🎯 [Spring Framework Study Guide](Java_Spring_Framework_Study_Guide.md) — IoC, DI, the container
 - [ ] 🎯 [Spring Boot — Junior Developer Interview Questions](Spring_Boot_Junior_Developer_Interview_Questions.md)
@@ -47,8 +38,6 @@ The framework you'll be hired to use.
 ---
 
 ## Phase 3 — Persistence & Databases 🎯
-
-How your app stores and queries data.
 
 - [ ] 🎯 [JPA & Hibernate](JPA_Hibernate_Interview_Questions.md)
 - [ ] 🎯 [Database Concepts](Database_Concepts_Interview_Questions.md) — ACID, transactions, isolation, normalization
@@ -64,8 +53,6 @@ How your app stores and queries data.
 
 ## Phase 4 — REST APIs & Security 🎯
 
-Exposing and protecting your backend.
-
 - [ ] 🎯 [REST API & HTTP](REST_API_HTTP_Interview_Questions.md)
 - [ ] 🎯 [Spring Security & JWT](Spring_Security_JWT_Interview_Questions.md)
 - [ ] 🔭 [OAuth2, OIDC & Advanced Security](Spring_OAuth2_OIDC_Security.md)
@@ -74,16 +61,12 @@ Exposing and protecting your backend.
 
 ## Phase 5 — Testing 🎯
 
-Junior devs are expected to write tests.
-
 - [ ] 🎯 [Testing — JUnit & Mockito](Java_Testing_JUnit_Mockito_Guide.md)
 - [ ] 🔭 [Advanced Testing — TestContainers & Contract](Testing_Advanced_TestContainers_And_Contract.md)
 
 ---
 
 ## Phase 6 — Frontend (the "full-stack" half) ⭐
-
-Enough frontend to build and reason about a UI on top of your APIs.
 
 - [ ] 🎯 [HTML](HTML_Interview_Questions.md)
 - [ ] 🎯 [CSS](CSS_Interview_Study_Guide.md)
@@ -95,8 +78,6 @@ Enough frontend to build and reason about a UI on top of your APIs.
 ---
 
 ## Phase 7 — DevOps, Cloud & Tooling ⭐
-
-Getting your app built, shipped, and run.
 
 - [ ] 🎯 [Git, Docker & DevOps Interview Questions](Git_Docker_DevOps_Interview_Questions.md)
 - [ ] 🎯 [Docker Concepts](Docker_Concepts_Study_Guide.md)
@@ -115,8 +96,6 @@ Getting your app built, shipped, and run.
 
 ## Phase 8 — Messaging, Reactive & Microservices 🔭
 
-Common in real codebases; mostly awareness-level for a junior.
-
 - [ ] ⭐ [Kafka](Kafka_Interview_Questions.md)
 - [ ] 🔭 [Kafka vs RabbitMQ](Kafka_RabbitMQ_Interview_Questions.md)
 - [ ] 🔭 [Spring WebFlux — Reactive](Spring_WebFlux_Reactive.md)
@@ -127,8 +106,6 @@ Common in real codebases; mostly awareness-level for a junior.
 ---
 
 ## Phase 9 — Design, Architecture & Engineering Craft ⭐
-
-What separates a good junior from a forgettable one.
 
 - [ ] 🎯 [GoF Design Patterns](GoF_Design_Patterns_Complete.md)
 - [ ] 🎯 [Software Engineering Principles](Software_Engineering_Principles_Interview_Questions.md) — SOLID, etc.
@@ -142,8 +119,6 @@ What separates a good junior from a forgettable one.
 
 ## Phase 10 — Problem Solving (DSA) ⭐
 
-For the coding round.
-
 - [ ] 🎯 [DSA Interview Questions](DSA_Interview_Questions.md)
 - [ ] ⭐ [Dynamic Programming](DSA_Dynamic_Programming.md)
 
@@ -156,7 +131,7 @@ For the coding round.
 
 ---
 
-## Suggested study order at a glance
+## Study order at a glance
 
 ```
 Core Java  ─►  Spring Boot  ─►  Persistence  ─►  REST + Security  ─►  Testing
@@ -172,4 +147,4 @@ Core Java  ─►  Spring Boot  ─►  Persistence  ─►  REST + Security  �
                                    DSA (P10)  ─►  Behavioral (P11)
 ```
 
-**Minimum viable junior backend path (if short on time):** P1 → P2 → P3 → P4 → P5 → P10 → P11, then layer in P6 frontend for the "full-stack" label.
+**Minimum viable junior backend path:** P1 → P2 → P3 → P4 → P5 → P10 → P11, then add P6 for the "full-stack" label.
