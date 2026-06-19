@@ -13,13 +13,14 @@ Concurrency is a heavily tested Java interview topic. This guide covers thread l
 3. [Creating Threads](#creating-threads)
 4. [Synchronization](#synchronization)
 5. [volatile Keyword](#volatile-keyword)
-6. [java.util.concurrent Package](#javautilconcurrent-package)
-7. [ExecutorService & Thread Pools](#executorservice--thread-pools)
-8. [Locks](#locks)
-9. [Concurrent Collections](#concurrent-collections)
-10. [Deadlock, Livelock, Starvation](#deadlock-livelock-starvation)
-11. [Common Interview Questions](#common-interview-questions)
-12. [Quick Reference Cheat Sheet](#quick-reference-cheat-sheet)
+6. [Atomic Classes & CAS](#atomic-classes--cas)
+7. [java.util.concurrent Package](#javautilconcurrent-package)
+8. [ExecutorService & Thread Pools](#executorservice--thread-pools)
+9. [Locks](#locks)
+10. [Concurrent Collections](#concurrent-collections)
+11. [Deadlock, Livelock, Starvation](#deadlock-livelock-starvation)
+12. [Common Interview Questions](#common-interview-questions)
+13. [Quick Reference Cheat Sheet](#quick-reference-cheat-sheet)
 
 ---
 
@@ -165,6 +166,73 @@ class Flag {
 | Use Case | Simple flags/status | Compound operations |
 
 > **Interview Tip**: `count++` is NOT safe with `volatile` — it's still 3 operations. Use `AtomicInteger` or `synchronized` for compound operations.
+
+---
+
+## Atomic Classes & CAS
+
+The `java.util.concurrent.atomic` classes (`AtomicInteger`, `AtomicLong`, `AtomicReference`, etc.) give you lock-free, thread-safe updates for compound operations like `count++`. They are built on **CAS (Compare-And-Swap)**.
+
+### What is CAS (Compare-And-Swap)?
+
+CAS is a single hardware-level (atomic) CPU instruction that updates a value **only if it hasn't changed** since you read it. It takes three arguments:
+
+```
+CAS(memoryLocation, expectedValue, newValue)
+```
+
+- Read the current value at the location.
+- **If** it still equals `expectedValue` → write `newValue` and return `true` (success).
+- **Else** (another thread changed it) → do nothing and return `false` (retry).
+
+Because the compare and the swap happen as one indivisible CPU operation, no other thread can sneak in between them. This is the foundation of "lock-free" concurrency.
+
+### The retry loop (optimistic locking)
+
+`AtomicInteger.incrementAndGet()` is essentially a CAS in a loop. It keeps retrying until the swap succeeds:
+
+```java
+// Conceptual implementation of getAndIncrement()
+public int getAndIncrement() {
+    int current;
+    do {
+        current = get();                       // 1. read current value
+    } while (!compareAndSet(current, current + 1)); // 2. swap if unchanged, else retry
+    return current;
+}
+```
+
+This is **optimistic locking**: assume no conflict, and only retry on the rare occasion another thread won the race.
+
+### Example
+
+```java
+AtomicInteger counter = new AtomicInteger(0);
+
+counter.incrementAndGet();           // atomic ++counter
+counter.getAndAdd(5);                // atomic counter += 5
+counter.compareAndSet(6, 100);       // set to 100 only if currently 6
+
+AtomicReference<String> ref = new AtomicReference<>("A");
+ref.compareAndSet("A", "B");         // swap reference atomically
+```
+
+### CAS vs locks
+
+| | CAS (lock-free) | `synchronized` / locks |
+|---|---|---|
+| Blocking | Non-blocking (busy-retry) | Blocks waiting threads |
+| Best under | Low–moderate contention | High contention |
+| Overhead | No context switching | Thread parking/waking |
+| Deadlock risk | None | Possible |
+
+### The ABA problem
+
+CAS only checks that the value **equals** the expected value — not that it never changed. If a value goes `A → B → A`, CAS still succeeds even though it was modified in between. This matters for things like lock-free stacks where a reused node looks "unchanged."
+
+**Fix:** use `AtomicStampedReference`, which pairs the value with a version stamp so `A(v1) → B → A(v2)` is detected as a change.
+
+> **Interview Tip**: CAS powers `AtomicInteger`, `ConcurrentHashMap` writes, and `ConcurrentLinkedQueue`. Strength: no locks, no blocking. Weakness: under **high contention** the retry loop wastes CPU (many failed attempts), and it's vulnerable to the **ABA problem**.
 
 ---
 
