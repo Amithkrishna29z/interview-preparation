@@ -13,14 +13,11 @@ Kafka is the industry-standard distributed event streaming platform, central to 
 3. [Topics, Partitions & Offsets](#topics-partitions--offsets)
 4. [Producers](#producers)
 5. [Consumers & Consumer Groups](#consumers--consumer-groups)
-6. [Brokers & Clusters](#brokers--clusters)
-7. [Delivery Semantics](#delivery-semantics)
-8. [Kafka vs RabbitMQ](#kafka-vs-rabbitmq)
-9. [Spring Kafka](#spring-kafka)
-10. [Kafka Streams](#kafka-streams)
-11. [Performance & Configuration](#performance--configuration)
-12. [Common Interview Questions](#common-interview-questions)
-13. [Quick Reference Cheat Sheet](#quick-reference-cheat-sheet)
+6. [Delivery Semantics](#delivery-semantics)
+7. [Kafka vs RabbitMQ](#kafka-vs-rabbitmq)
+8. [Spring Kafka](#spring-kafka)
+9. [Common Interview Questions](#common-interview-questions)
+10. [Quick Reference Cheat Sheet](#quick-reference-cheat-sheet)
 
 ---
 
@@ -217,28 +214,6 @@ When a consumer joins or leaves a group, Kafka **rebalances** — reassigns part
 
 ---
 
-## Brokers & Clusters
-
-```bash
-# Create a topic
-kafka-topics.sh --create --topic orders \
-  --bootstrap-server localhost:9092 \
-  --partitions 3 --replication-factor 2
-
-# List / describe topics
-kafka-topics.sh --list --bootstrap-server localhost:9092
-kafka-topics.sh --describe --topic orders --bootstrap-server localhost:9092
-
-# CLI producer / consumer
-kafka-console-producer.sh --topic orders --bootstrap-server localhost:9092
-kafka-console-consumer.sh --topic orders --from-beginning --bootstrap-server localhost:9092
-
-# Consumer group info
-kafka-consumer-groups.sh --describe --group order-service-group --bootstrap-server localhost:9092
-```
-
----
-
 ## Delivery Semantics
 
 | Semantic | Description | Risk | Config |
@@ -406,55 +381,6 @@ class OrderProducerTest {
         assertThat(received.value().getId()).isEqualTo("order-1");
     }
 }
-```
-
----
-
-## Kafka Streams
-
-Kafka Streams is a **client library** for building stream processing applications on Kafka.
-
-```java
-StreamsBuilder builder = new StreamsBuilder();
-KStream<String, Order> orders = builder.stream("orders");
-
-// Filter and transform
-KStream<String, Order> highValue = orders
-    .filter((key, order) -> order.getAmount() > 1000);
-
-// Aggregate
-KTable<String, Long> countPerCustomer = orders
-    .groupBy((key, order) -> order.getCustomerId())
-    .count(Materialized.as("order-counts-store"));
-
-highValue.to("high-value-orders");
-
-KafkaStreams streams = new KafkaStreams(builder.build(), props);
-streams.start();
-```
-
----
-
-## Performance & Configuration
-
-### Key Tuning Properties
-
-```properties
-# Producer — throughput
-batch.size=65536            # 64KB batch
-linger.ms=20                # wait 20ms for more messages
-compression.type=lz4        # fastest compression
-acks=all
-enable.idempotence=true
-
-# Consumer
-fetch.min.bytes=1048576     # 1MB min fetch (fewer round trips)
-max.poll.records=500        # max records per poll
-session.timeout.ms=30000    # heartbeat timeout
-
-# Topic
-retention.ms=604800000      # 7 days
-min.insync.replicas=2       # require 2 ISR copies with acks=all
 ```
 
 ---

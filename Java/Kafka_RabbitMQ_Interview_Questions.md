@@ -18,8 +18,7 @@ Apache Kafka and RabbitMQ are the two most commonly asked message broker topics 
 8. [RabbitMQ in Spring Boot](#8-rabbitmq-in-spring-boot)
 9. [Kafka vs RabbitMQ — Comparison](#9-kafka-vs-rabbitmq--comparison)
 10. [Common Interview Questions & Answers](#10-common-interview-questions--answers)
-11. [System Design Patterns](#11-system-design-patterns)
-12. [Quick Reference Cheat Sheet](#12-quick-reference-cheat-sheet)
+11. [Quick Reference Cheat Sheet](#11-quick-reference-cheat-sheet)
 
 ---
 
@@ -421,37 +420,7 @@ A: A logical partition within a broker with its own exchanges, queues, and permi
 
 ---
 
-## 11. System Design Patterns
-
-### Event-Driven Microservices (Choreography)
-Services react to events — no central orchestrator. Highly decoupled but harder to trace.
-```
-OrderService ──"order.created"──► Kafka ──► InventoryService + NotificationService
-```
-
-### Saga Pattern (Distributed Transactions)
-Multi-step transaction across services via events. If any step fails, **compensating events** (e.g., `inventory.release`) undo earlier steps.
-
-### Outbox Pattern (Reliable Event Publishing)
-Solves dual-write (atomically save to DB and publish to Kafka):
-```java
-@Transactional
-public void createOrder(Order order) {
-    orderRepository.save(order);
-    outboxRepository.save(new OutboxEvent("order.created", order));
-    // Debezium CDC connector reads outbox table → publishes to Kafka
-}
-```
-
-### CQRS + Event Sourcing
-Events are the source of truth. Read models (e.g., Elasticsearch) are projections rebuilt by replaying events.
-
-### Work Queue (RabbitMQ)
-Distribute CPU-intensive tasks across workers with `prefetch=1` for fair dispatch.
-
----
-
-## 12. Quick Reference Cheat Sheet
+## 11. Quick Reference Cheat Sheet
 
 ### Kafka Key Configs
 

@@ -2,7 +2,7 @@
 
 ## Overview
 
-Covers the core database design concepts a junior full-stack Java developer needs for interviews: ERD fundamentals, normalization, primary key strategies, relationship patterns, soft delete, auditing, multi-tenancy, hierarchical data, pagination, common domain schemas, JPA inheritance, schema migrations, and indexing.
+Covers the core database design concepts a junior full-stack Java developer needs for interviews: ERD fundamentals, normalization, primary key strategies, relationship patterns, soft delete, auditing, pagination, common domain schemas, JPA inheritance, and indexing.
 
 ---
 
@@ -14,15 +14,12 @@ Covers the core database design concepts a junior full-stack Java developer need
 4. [Relationship Patterns](#relationship-patterns)
 5. [Soft Delete Pattern](#soft-delete-pattern)
 6. [Audit Tables Pattern](#audit-tables-pattern)
-7. [Multi-Tenancy Patterns](#multi-tenancy-patterns)
-8. [Hierarchical Data](#hierarchical-data)
-9. [Pagination Patterns](#pagination-patterns)
-10. [Common Domain Schemas](#common-domain-schemas)
-11. [Polymorphic Associations and JPA Inheritance](#polymorphic-associations-and-jpa-inheritance)
-12. [Schema Migrations with Flyway and Liquibase](#schema-migrations-with-flyway-and-liquibase)
-13. [Indexing Strategies](#indexing-strategies)
-14. [Interview Questions and Answers](#interview-questions-and-answers)
-15. [Quick Reference Summary](#quick-reference-summary)
+7. [Pagination Patterns](#pagination-patterns)
+8. [Common Domain Schemas](#common-domain-schemas)
+9. [Polymorphic Associations and JPA Inheritance](#polymorphic-associations-and-jpa-inheritance)
+10. [Indexing Strategies](#indexing-strategies)
+11. [Interview Questions and Answers](#interview-questions-and-answers)
+12. [Quick Reference Summary](#quick-reference-summary)
 
 ---
 
@@ -499,76 +496,6 @@ WHERE product_id = 1
 
 ---
 
-## Multi-Tenancy Patterns
-
-Multi-tenancy: one software instance serves multiple customers (tenants) with isolated data.
-
-**The three patterns:**
-
-1. **Database-per-tenant**: Maximum isolation, one DB per customer. High cost, hard to scale. Use for regulated industries with few large enterprise tenants.
-
-2. **Schema-per-tenant**: One database, one schema per tenant; route with `SET search_path TO tenant_abc`. Good isolation at medium cost. Scales to hundreds of tenants.
-
-3. **Shared schema (row-level)**: `tenant_id` column on every table. Lowest cost, simplest migration. Scales to thousands of tenants. Use PostgreSQL RLS as a safety net:
-
-```sql
-ALTER TABLE orders ENABLE ROW LEVEL SECURITY;
-CREATE POLICY tenant_isolation ON orders
-    USING (tenant_id = current_setting('app.current_tenant_id')::BIGINT);
--- App sets: SET LOCAL app.current_tenant_id = '42' per request
-```
-
-| Pattern | Isolation | Cost | Migration | Tenant Count |
-|---------|-----------|------|-----------|--------------|
-| DB-per-tenant | Highest | Highest | Highest | Tens |
-| Schema-per-tenant | High | Medium | Medium | Hundreds |
-| Shared schema | Low (RLS helps) | Lowest | Low | Thousands+ |
-
----
-
-## Hierarchical Data
-
-Hierarchical data: parent-child relationships of arbitrary depth (categories, org charts, threaded comments).
-
-### Adjacency List
-
-```sql
-CREATE TABLE categories (
-    id BIGSERIAL PRIMARY KEY,
-    name VARCHAR(100) NOT NULL,
-    parent_id BIGINT REFERENCES categories(id) ON DELETE CASCADE
-    -- NULL means root node
-);
-
--- Find all descendants using recursive CTE
-WITH RECURSIVE category_tree AS (
-    SELECT id, name, parent_id, 0 AS depth FROM categories WHERE id = 1
-    UNION ALL
-    SELECT c.id, c.name, c.parent_id, ct.depth + 1
-    FROM categories c JOIN category_tree ct ON c.parent_id = ct.id
-)
-SELECT id, name, depth FROM category_tree ORDER BY depth;
-```
-
-**Pros**: Simple, fast inserts/moves.
-**Cons**: Full subtree needs recursive CTE.
-
-### Other Models
-
-**Nested set**: Stores `lft`/`rgt` integers; descendants fall within the parent's range. Fast reads, but inserts/moves update O(n) rows. Best for static trees.
-
-**Closure table**: Separate `(ancestor_id, descendant_id, depth)` table for all pairs. Fast in both directions, no recursion needed. Costs more storage; best for read-heavy complex traversal.
-
-| Model | Subtree Read | Ancestor Read | Insert | Move |
-|-------|-------------|--------------|--------|------|
-| Adjacency list | Recursive CTE | Recursive CTE | O(1) | O(1) |
-| Nested set | O(log n) | O(log n) | O(n) | O(n) |
-| Closure table | O(1) join | O(1) join | O(depth) | O(subtree) |
-
-**Recommendation**: Use adjacency list for most cases. Use closure table for frequent ancestor/descendant queries on large trees.
-
----
-
 ## Pagination Patterns
 
 ### Offset Pagination
@@ -756,72 +683,6 @@ public class CreditCardPayment extends Payment {
 | TABLE_PER_CLASS | No | None | Expensive (UNION ALL) | Yes |
 
 **Rule of thumb**: Use SINGLE_TABLE for simple hierarchies. Use JOINED when subtype integrity constraints matter. Avoid TABLE_PER_CLASS.
-
----
-
-## Schema Migrations with Flyway and Liquibase
-
-### Why Migrations?
-
-Version-control schema changes alongside code, automate CI/CD, and track applied changes via a history table.
-
-### Flyway
-
-Scripts named `V{version}__{description}.sql`, applied in order.
-
-```
-src/main/resources/db/migration/
-  V1__create_users.sql
-  V2__create_orders.sql
-  V4__add_deleted_at_to_users.sql
-```
-
-```sql
--- V4__add_deleted_at_to_users.sql
-ALTER TABLE users ADD COLUMN deleted_at TIMESTAMPTZ;
-CREATE UNIQUE INDEX idx_users_email_active ON users(email) WHERE deleted_at IS NULL;
-```
-
-```properties
-spring.flyway.enabled=true
-spring.flyway.locations=classpath:db/migration
-spring.flyway.baseline-on-migrate=true
-spring.flyway.validate-on-migrate=true
-```
-
-**Rules**: Never modify an applied migration (checksum stored and validated). Use repeatable migrations (`R__`) for views and stored procedures.
-
-### Liquibase
-
-Supports XML/YAML/JSON/SQL changesets with built-in rollback.
-
-```yaml
-databaseChangeLog:
-  - changeSet:
-      id: 001-create-users
-      author: dev-team
-      changes:
-        - createTable:
-            tableName: users
-            columns:
-              - column: { name: id, type: BIGINT, autoIncrement: true, constraints: { primaryKey: true } }
-              - column: { name: email, type: VARCHAR(255), constraints: { nullable: false, unique: true } }
-      rollback:
-        - dropTable: { tableName: users }
-```
-
-| Feature | Flyway | Liquibase |
-|---------|--------|-----------|
-| Format | SQL (primary) | XML/YAML/JSON/SQL |
-| Rollback | Manual | Built-in |
-| Learning curve | Low | Medium |
-| Spring Boot | Auto-config | Auto-config |
-
-### Zero-Downtime Migration Rules
-
-- Never DROP a column in the same release as removing the code that uses it.
-- Never RENAME a column directly — add new, copy data, remove old (3 releases).
-- Never add NOT NULL without a DEFAULT on a live table.
 
 ---
 

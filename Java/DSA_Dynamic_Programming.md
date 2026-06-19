@@ -12,14 +12,11 @@
 4. [General DP Problem-Solving Template](#4-general-dp-problem-solving-template)
 5. [1D DP Problems](#5-1d-dp-problems)
 6. [2D DP Problems](#6-2d-dp-problems)
-7. [Interval DP (Awareness)](#7-interval-dp-awareness)
-8. [String DP](#8-string-dp)
-9. [DP on Trees (Awareness)](#9-dp-on-trees-awareness)
-10. [DP Patterns Summary Table](#10-dp-patterns-summary-table)
-11. [Space Optimization Techniques](#11-space-optimization-techniques)
-12. [Interview Questions & Answers](#12-interview-questions--answers)
-13. [Complexity Reference Sheet](#13-complexity-reference-sheet)
-14. [Quick Revision Cheat Sheet](#14-quick-revision-cheat-sheet)
+7. [String DP](#7-string-dp)
+8. [DP Patterns Summary Table](#8-dp-patterns-summary-table)
+9. [Interview Questions & Answers](#9-interview-questions--answers)
+10. [Complexity Reference Sheet](#10-complexity-reference-sheet)
+11. [Quick Revision Cheat Sheet](#11-quick-revision-cheat-sheet)
 
 ---
 
@@ -604,17 +601,7 @@ public int findTargetSumWays(int[] nums, int target) {
 
 ---
 
-## 7. Interval DP (Awareness)
-
-Interval DP solves problems on contiguous subarrays. State is `dp[i][j]` = answer for interval [i,j]; try every split point k. Iterate by **increasing interval length**. Rarely asked at junior level — know they exist.
-
-- **Matrix Chain Multiplication:** cheapest order to multiply a matrix chain. O(n³) time.
-- **Burst Balloons:** maximize coins from bursting; think about which balloon is burst **last** in an interval. O(n³) time.
-- **Palindrome Partitioning II (min cuts):** fewest cuts so every piece is a palindrome. O(n²) time.
-
----
-
-## 8. String DP
+## 7. String DP
 
 ### Longest Palindromic Subsequence (awareness)
 
@@ -650,16 +637,7 @@ Count how many distinct subsequences of s equal t. `dp[i][j]` = ways to form t[0
 
 ---
 
-## 9. DP on Trees (Awareness)
-
-Tree DP runs post-order DFS and combines children's results at each node. Advanced — awareness is enough for junior interviews.
-
-- **House Robber III:** each DFS returns `{robThis, skipThis}`. `robThis = node.val + left.skip + right.skip`, `skipThis = max(left) + max(right)`. O(n).
-- **Maximum Path Sum:** at each node, compute `gain = node.val + max(leftGain,0) + max(rightGain,0)`, update global max, but return `node.val + max(leftGain, rightGain)` upward. O(n).
-
----
-
-## 10. DP Patterns Summary Table
+## 8. DP Patterns Summary Table
 
 | Pattern | Representative Problems | Key State | Key Recurrence |
 |---------|------------------------|-----------|----------------|
@@ -676,27 +654,7 @@ Tree DP runs post-order DFS and combines children's results at each node. Advanc
 
 ---
 
-## 11. Space Optimization Techniques
-
-**Rolling variables** — when dp[i] depends only on dp[i-1] and dp[i-2]:
-```java
-int prev2 = base0, prev1 = base1;
-for (int i = 2; i <= n; i++) {
-    int curr = Math.max(prev1, prev2 + nums[i]); // or prev1 + prev2
-    prev2 = prev1; prev1 = curr;
-}
-return prev1;
-```
-
-**1D rolling array** — when dp[i][j] depends only on the previous row:
-- 0/1 knapsack: iterate j **right to left**
-- Unbounded knapsack / counting ways: iterate j **left to right**
-
-**When NOT to optimize:** when you need to reconstruct the actual solution (backtracking requires the full table).
-
----
-
-## 12. Interview Questions & Answers
+## 9. Interview Questions & Answers
 
 **Q1: What makes a problem a DP problem?**
 Two properties: **optimal substructure** (optimal solution is built from optimal sub-solutions) and **overlapping subproblems** (same subproblem solved multiple times). Problems typically ask for min/max, count, or feasibility.
@@ -827,7 +785,7 @@ The outer-coin loop ensures each combination is counted once. Since we fix avail
 
 ---
 
-## 13. Complexity Reference Sheet
+## 10. Complexity Reference Sheet
 
 | Problem | Time | Space | Optimized Space |
 |---------|------|-------|-----------------|
@@ -860,7 +818,7 @@ The outer-coin loop ensures each combination is counted once. Since we fix avail
 
 ---
 
-## 14. Quick Revision Cheat Sheet
+## 11. Quick Revision Cheat Sheet
 
 ```
 DP Identification:

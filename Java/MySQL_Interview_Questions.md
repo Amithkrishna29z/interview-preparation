@@ -271,82 +271,9 @@ SELECT name FROM customers UNION ALL SELECT name FROM suppliers;
 
 ---
 
-## Stored Procedures & Functions
-
-### Q15: What are stored procedures and when should you use them?
-
-**Answer:** Stored procedures are precompiled SQL blocks stored in the database, called with `CALL`. They reduce network round-trips, improve security (hide table structure), and centralize reusable logic. Use them for complex multi-step operations or repeated business logic.
-
-```sql
-DELIMITER //
-CREATE PROCEDURE GetUserOrders(IN p_user_id INT, IN p_start DATE, IN p_end DATE)
-BEGIN
-    SELECT o.id, o.order_date, o.total, COUNT(oi.id) AS item_count
-    FROM orders o
-    LEFT JOIN order_items oi ON o.id = oi.order_id
-    WHERE o.user_id = p_user_id AND o.order_date BETWEEN p_start AND p_end
-    GROUP BY o.id ORDER BY o.order_date DESC;
-END //
-DELIMITER ;
-
-CALL GetUserOrders(1, '2024-01-01', '2024-12-31');
-```
-
-### Q16: What are user-defined functions in MySQL?
-
-**Answer:** UDFs return a single value and can be used inline in SQL statements (unlike stored procedures). Mark them `DETERMINISTIC` when the same inputs always produce the same output.
-
-```sql
-DELIMITER //
-CREATE FUNCTION CalculateAge(birth_date DATE)
-RETURNS INT DETERMINISTIC
-BEGIN
-    RETURN TIMESTAMPDIFF(YEAR, birth_date, CURDATE());
-END //
-DELIMITER ;
-
-SELECT username, CalculateAge(birth_date) AS age FROM users WHERE CalculateAge(birth_date) >= 18;
-```
-
----
-
-## MySQL Optimization
-
-### Q17: How do you optimize MySQL database performance?
-
-**Answer:**
-
-**Schema:** use the smallest sufficient data type; normalize to reduce redundancy; consider a summary/denormalized table for read-heavy reporting.
-
-**Queries:** use `EXPLAIN`, create targeted indexes (including covering indexes), avoid `SELECT *`, use keyset pagination for large offsets.
-
-```sql
--- Keyset pagination (faster than OFFSET for large pages)
-SELECT * FROM products WHERE id > :last_seen_id ORDER BY id LIMIT 20;
-
--- Slow query log
-SET GLOBAL slow_query_log = 'ON';
-SET GLOBAL long_query_time = 2;
-```
-
-**Config (awareness):** `innodb_buffer_pool_size` (set ~70–80% of RAM) is the most impactful knob. Check with `SHOW VARIABLES LIKE 'innodb_buffer_pool_size';`.
-
-### Q18: Common MySQL performance issues
-
-**Answer:**
-
-| Issue | How to Spot | Fix |
-|-------|-------------|-----|
-| Slow queries | Slow query log, `mysqldumpslow` | Add indexes, rewrite queries |
-| Lock contention | `SHOW ENGINE INNODB STATUS` | Shorter transactions, right isolation level |
-| Missing index | `EXPLAIN` shows `type: ALL` | Add/composite indexes, no functions on indexed cols |
-| Connection exhaustion | `Threads_connected` status | Connection pooling, raise `max_connections` |
-
----
-
 ## MySQL Architecture
 
-### Q19: What is the MySQL architecture?
+### Q15: What is the MySQL architecture?
 
 **Answer:** MySQL is layered top to bottom:
 
@@ -355,7 +282,7 @@ SET GLOBAL long_query_time = 2;
 3. **Pluggable Storage Engines** — InnoDB (default, transactional), MyISAM, Memory (swappable per table)
 4. **File System** — `.ibd` files for InnoDB data, `.MYD`/`.MYI` for MyISAM
 
-### Q20: How does MySQL handle query execution?
+### Q16: How does MySQL handle query execution?
 
 **Answer:** Parse → Optimize → Execute → Return results.
 
@@ -373,7 +300,7 @@ EXPLAIN SELECT * FROM users WHERE email = 'user@example.com';
 
 ## MySQL Security
 
-### Q21: What are the MySQL security best practices?
+### Q17: What are the MySQL security best practices?
 
 **Answer:**
 
@@ -399,7 +326,7 @@ Never use `GRANT ALL PRIVILEGES ON *.* TO ...` for application accounts. Use pre
 
 ## MySQL vs Other Databases
 
-### Q22: MySQL vs PostgreSQL
+### Q18: MySQL vs PostgreSQL
 
 | Feature | MySQL | PostgreSQL |
 |---------|-------|------------|
@@ -412,7 +339,7 @@ Never use `GRANT ALL PRIVILEGES ON *.* TO ...` for application accounts. Use pre
 
 Use MySQL for LAMP-stack web apps with read-heavy workloads. Use PostgreSQL for complex data models, advanced features (arrays, JSONB), or analytical queries.
 
-### Q23: MySQL vs MongoDB
+### Q19: MySQL vs MongoDB
 
 | Feature | MySQL | MongoDB |
 |---------|-------|---------|

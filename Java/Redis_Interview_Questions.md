@@ -15,12 +15,10 @@ Redis (Remote Dictionary Server) is an in-memory key-value store used as a cache
 5. [Persistence](#persistence)
 6. [Pub/Sub & Streams](#pubsub--streams)
 7. [Transactions](#transactions)
-8. [Lua Scripting](#lua-scripting)
-9. [Redis Cluster & High Availability](#redis-cluster--high-availability)
-10. [Redis vs Memcached](#redis-vs-memcached)
-11. [Common Use Cases](#common-use-cases)
-12. [Common Interview Questions](#common-interview-questions)
-13. [Quick Reference Cheat Sheet](#quick-reference-cheat-sheet)
+8. [Redis vs Memcached](#redis-vs-memcached)
+9. [Common Use Cases](#common-use-cases)
+10. [Common Interview Questions](#common-interview-questions)
+11. [Quick Reference Cheat Sheet](#quick-reference-cheat-sheet)
 
 ---
 
@@ -338,57 +336,6 @@ EXEC                    # returns nil if balance was modified
 
 ---
 
-## Lua Scripting
-
-Lua scripts run atomically — no other command executes during the script.
-
-```bash
-EVAL "return redis.call('GET', KEYS[1])" 1 mykey
-
-# Atomic check-and-set
-EVAL "
-  local val = redis.call('GET', KEYS[1])
-  if val == ARGV[1] then
-    return redis.call('SET', KEYS[1], ARGV[2])
-  end
-  return 0
-" 1 mykey expectedValue newValue
-```
-
-**Use cases**: Distributed locks, rate limiters, conditional updates.
-
----
-
-## Redis Cluster & High Availability
-
-### Replication (Master–Replica)
-
-Master handles writes; replicas handle reads. Manual failover if master fails.
-
-```bash
-replicaof 192.168.1.100 6379   # in replica's redis.conf
-```
-
-### Redis Sentinel
-
-Provides **automatic failover** for a single-instance Redis. Requires at least 3 Sentinel instances for quorum.
-
-### Redis Cluster
-
-Horizontal sharding across multiple master nodes.
-
-- **16384 hash slots** — distributed by `CRC16(key) % 16384`
-- Minimum 3 masters + 3 replicas for production
-
-| Mode | Auto-Failover | Sharding |
-|---|---|---|
-| Standalone | No | No |
-| Replication | No (manual) | No |
-| Sentinel | Yes | No |
-| Cluster | Yes | Yes |
-
----
-
 ## Redis vs Memcached
 
 | Feature | Redis | Memcached |
@@ -531,12 +478,9 @@ HLL:     PFADD, PFCOUNT
 
 Expiry:  EXPIRE, TTL, PTTL, PERSIST
 Tx:      MULTI, EXEC, DISCARD, WATCH
-Script:  EVAL, EVALSHA, SCRIPT LOAD
 
 Persistence: RDB (snapshot) vs AOF (append log) — use both in production
 Eviction:    noeviction | allkeys-lru | allkeys-lfu | volatile-lru
-HA:          Replication → Sentinel → Cluster
-Cluster:     16384 hash slots, sharded across master nodes
 Lock:        SET key uuid NX EX ttl
 
 Redis vs Memcached: Redis wins on data structures, persistence, pub/sub, cluster

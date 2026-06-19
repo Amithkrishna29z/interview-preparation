@@ -28,12 +28,10 @@
 20. [State Management — Redux & Zustand](#20-state-management--redux--zustand)
 21. [Performance Optimization](#21-performance-optimization)
 22. [Error Boundaries](#22-error-boundaries)
-23. [Higher-Order Components (HOC)](#23-higher-order-components-hoc)
-24. [Render Props Pattern](#24-render-props-pattern)
-25. [Code Splitting & Lazy Loading](#25-code-splitting--lazy-loading)
-26. [Testing React Components](#26-testing-react-components)
-27. [Common Interview Questions](#27-common-interview-questions)
-28. [Quick Revision Cheat Sheet](#28-quick-revision-cheat-sheet)
+23. [Code Splitting & Lazy Loading](#23-code-splitting--lazy-loading)
+24. [Testing React Components](#24-testing-react-components)
+25. [Common Interview Questions](#25-common-interview-questions)
+26. [Quick Revision Cheat Sheet](#26-quick-revision-cheat-sheet)
 
 ---
 
@@ -767,57 +765,7 @@ class ErrorBoundary extends Component {
 
 ---
 
-## 23. Higher-Order Components (HOC)
-
-An HOC is a function that takes a component and returns a **new enhanced component**.
-
-```jsx
-// HOC for loading state
-function withLoading(WrappedComponent) {
-  return function({ isLoading, ...props }) {
-    if (isLoading) return <div>Loading...</div>;
-    return <WrappedComponent {...props} />;
-  };
-}
-
-// HOC for auth guard
-function withAuth(WrappedComponent) {
-  return function(props) {
-    const { isAuthenticated } = useAuth();
-    if (!isAuthenticated) return <Navigate to="/login" />;
-    return <WrappedComponent {...props} />;
-  };
-}
-
-const UserListWithLoading = withLoading(UserList);
-<UserListWithLoading isLoading={loading} users={users} />
-```
-
-> **Interview tip:** HOCs were the pre-hooks pattern. Today, custom hooks solve most of the same problems more cleanly. Know how to compare the two.
-
----
-
-## 24. Render Props Pattern
-
-A component's prop is a **function that returns JSX**, allowing behavior sharing.
-
-```jsx
-function MouseTracker({ render }) {
-  const [position, setPosition] = useState({ x: 0, y: 0 });
-  return (
-    <div onMouseMove={(e) => setPosition({ x: e.clientX, y: e.clientY })} style={{ height: '100vh' }}>
-      {render(position)}
-    </div>
-  );
-}
-
-// Usage
-<MouseTracker render={({ x, y }) => <p>Mouse at ({x}, {y})</p>} />
-```
-
----
-
-## 25. Code Splitting & Lazy Loading
+## 23. Code Splitting & Lazy Loading
 
 ```jsx
 import { lazy, Suspense } from 'react';
@@ -842,7 +790,7 @@ function App() {
 
 ---
 
-## 26. Testing React Components
+## 24. Testing React Components
 
 ```bash
 npm install --save-dev @testing-library/react @testing-library/jest-dom
@@ -890,7 +838,7 @@ Priority: ByRole > ByLabelText > ByText > ByTestId
 
 ---
 
-## 27. Common Interview Questions
+## 25. Common Interview Questions
 
 ### Q1: What is the difference between state and props?
 Props are read-only inputs passed from parent to child — a child cannot modify them. State is mutable data owned by the component — when it changes, React re-renders. Props flow down; state is local.
@@ -945,7 +893,7 @@ Prop drilling is passing props through many layers just to reach a deeply nested
 
 ---
 
-## 28. Quick Revision Cheat Sheet
+## 26. Quick Revision Cheat Sheet
 
 ```
 HOOKS

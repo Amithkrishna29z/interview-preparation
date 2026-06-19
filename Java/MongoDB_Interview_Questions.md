@@ -275,62 +275,9 @@ db.users.aggregate([{ $indexStats: {} }]);
 
 ---
 
-## Replication
-
-### Q9: How does replication work in MongoDB?
-
-**Answer:** A **replica set** is a group of `mongod` instances holding the same data, providing redundancy and automatic failover.
-
-- **Primary**: receives all writes
-- **Secondaries**: replicate primary data; can serve reads
-- **Arbiter**: votes in elections, holds no data
-- On primary failure, remaining members elect a new primary automatically
-
-**Read preference** controls which member serves reads: `primary` (default), `primaryPreferred`, `secondary`, `secondaryPreferred`, `nearest`.
-
-**Write concern** controls durability: `w: 1` (primary only), `w: "majority"` (most members), `j: true` (journaled). Higher concern = more durability, more latency.
-
-```javascript
-// Initialize 3-member replica set
-rs.initiate({
-  _id: "myReplicaSet",
-  members: [
-    { _id: 0, host: "mongodb1:27017" },
-    { _id: 1, host: "mongodb2:27017" },
-    { _id: 2, host: "mongodb3:27017" }
-  ]
-});
-
-// Durable write
-db.collection.insertOne({ name: "John" }, { writeConcern: { w: "majority", j: true } });
-```
-
----
-
-## Sharding
-
-### Q10: How does sharding work in MongoDB?
-
-**Answer:** Sharding distributes data across multiple machines to support large datasets and high throughput (horizontal scaling).
-
-- **Shards**: each is a replica set holding a subset of data
-- **mongos**: query router the application connects to
-- **Config servers**: store cluster metadata
-- **Shard key**: the field MongoDB uses to split data into chunks
-
-**Strategies**: *range-based* (good for range queries, may distribute unevenly) vs *hashed* (even distribution, poor for range queries).
-
-```javascript
-sh.enableSharding("mydb");
-sh.shardCollection("mydb.users", { userId: "hashed" });
-sh.status();
-```
-
----
-
 ## Performance Optimization
 
-### Q11: How do you optimize MongoDB performance?
+### Q9: How do you optimize MongoDB performance?
 
 **Answer:**
 
@@ -363,7 +310,7 @@ db.users.find({ _id: { $gt: lastSeenId } }).limit(10);
 
 ## Transactions
 
-### Q12: How do transactions work in MongoDB?
+### Q10: How do transactions work in MongoDB?
 
 **Answer:** MongoDB supports multi-document ACID transactions from v4.0 (replica sets) and v4.2 (sharded clusters). Use them when operations across multiple documents/collections must all succeed or all fail.
 
@@ -398,7 +345,7 @@ try {
 
 ## MongoDB vs SQL Databases
 
-### Q13: What are the key differences between MongoDB and SQL databases?
+### Q11: What are the key differences between MongoDB and SQL databases?
 
 | Aspect | MongoDB | SQL |
 |--------|---------|-----|
@@ -413,38 +360,6 @@ try {
 **Choose MongoDB:** flexible/evolving schema, document-oriented data, horizontal scaling, rapid prototyping.
 
 **Choose SQL:** complex joins, strong data integrity, regulatory compliance, structured consistent data.
-
----
-
-## Advanced Features
-
-### Q14: What are change streams in MongoDB?
-
-**Answer:** Change streams let applications subscribe to real-time data changes (inserts, updates, deletes) without polling. Useful for event-driven features, cache invalidation, and notifications. Support filtering via aggregation pipeline and resuming after disconnects via a resume token.
-
-```javascript
-const changeStream = db.collection('users').watch();
-changeStream.on('change', (change) => {
-  console.log(change.operationType, change.fullDocument);
-});
-```
-
-### Q15: What are MongoDB views?
-
-**Answer:** Views are read-only, queryable objects defined by an aggregation pipeline over a source collection. Queried like a normal collection.
-
-```javascript
-db.createView(
-  "activeUsers",   // view name
-  "users",         // source collection
-  [
-    { $match: { status: "active" } },
-    { $project: { name: 1, email: 1, lastLogin: 1, _id: 0 } }
-  ]
-);
-
-db.activeUsers.find({ lastLogin: { $gte: ISODate("2024-01-01") } });
-```
 
 ---
 
@@ -501,12 +416,6 @@ try {
 } finally {
   session.endSession();
 }
-```
-
-**Change stream:**
-```javascript
-const changeStream = db.collection('name').watch();
-changeStream.on('change', (change) => console.log(change));
 ```
 
 **Key update operators:** `$set`, `$inc`, `$unset`, `$push`, `$pull`, `$addToSet`, `$currentDate`

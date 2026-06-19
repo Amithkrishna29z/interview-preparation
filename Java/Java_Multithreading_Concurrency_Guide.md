@@ -2,7 +2,7 @@
 
 ## Overview
 
-Concurrency is a heavily tested Java interview topic. This guide covers thread lifecycle, synchronization, the `java.util.concurrent` package, CompletableFuture, and common concurrency pitfalls — at a junior interview level.
+Concurrency is a heavily tested Java interview topic. This guide covers thread lifecycle, synchronization, the `java.util.concurrent` package, and common concurrency pitfalls — at a junior interview level.
 
 ---
 
@@ -15,14 +15,11 @@ Concurrency is a heavily tested Java interview topic. This guide covers thread l
 5. [volatile Keyword](#volatile-keyword)
 6. [java.util.concurrent Package](#javautilconcurrent-package)
 7. [ExecutorService & Thread Pools](#executorservice--thread-pools)
-8. [CompletableFuture](#completablefuture)
-9. [Locks](#locks)
-10. [Atomic Classes](#atomic-classes)
-11. [Concurrent Collections](#concurrent-collections)
-12. [Deadlock, Livelock, Starvation](#deadlock-livelock-starvation)
-13. [Java Memory Model](#java-memory-model)
-14. [Common Interview Questions](#common-interview-questions)
-15. [Quick Reference Cheat Sheet](#quick-reference-cheat-sheet)
+8. [Locks](#locks)
+9. [Concurrent Collections](#concurrent-collections)
+10. [Deadlock, Livelock, Starvation](#deadlock-livelock-starvation)
+11. [Common Interview Questions](#common-interview-questions)
+12. [Quick Reference Cheat Sheet](#quick-reference-cheat-sheet)
 
 ---
 
@@ -235,39 +232,6 @@ executor.awaitTermination(60, TimeUnit.SECONDS);
 
 ---
 
-## CompletableFuture
-
-Java 8+: non-blocking, pipeline-style async programming.
-
-```java
-CompletableFuture<String> result = CompletableFuture
-    .supplyAsync(() -> fetchUser(userId))     // start async
-    .thenApply(user -> user.getName())        // sync transform
-    .thenCompose(name -> fetchOrders(name))   // async chain (flatMap)
-    .exceptionally(ex -> "Default");          // error fallback
-
-// Combine two futures
-CompletableFuture.supplyAsync(() -> "Hello")
-    .thenCombine(CompletableFuture.supplyAsync(() -> " World"), (a, b) -> a + b);
-
-// Wait for all / first
-CompletableFuture.allOf(f1, f2, f3).thenRun(() -> System.out.println("All done"));
-CompletableFuture.anyOf(f1, f2, f3).thenAccept(r -> System.out.println("First: " + r));
-```
-
-### Key Methods
-
-| Method | Use For |
-|---|---|
-| `thenApply(fn)` | Sync transform (like map) |
-| `thenCompose(fn)` | Async chain (like flatMap) |
-| `thenAccept(consumer)` | Consume result, no return |
-| `thenCombine(cf, fn)` | Merge two futures |
-| `handle((r, ex) -> ...)` | Handle both success and error |
-| `exceptionally(ex -> ...)` | Error fallback only |
-
----
-
 ## Locks
 
 ### ReentrantLock
@@ -304,27 +268,6 @@ ReentrantReadWriteLock rwLock = new ReentrantReadWriteLock();
 | Trylock | No | Yes |
 | Fairness | No | Yes (`new ReentrantLock(true)`) |
 | Multiple conditions | No | Yes |
-
----
-
-## Atomic Classes
-
-Lock-free thread-safe operations using CPU-level Compare-And-Swap (CAS).
-
-```java
-AtomicInteger counter = new AtomicInteger(0);
-counter.incrementAndGet();          // atomic ++
-counter.addAndGet(5);               // atomic += 5
-counter.compareAndSet(10, 20);      // set to 20 only if current == 10
-
-AtomicReference<String> ref = new AtomicReference<>("initial");
-ref.compareAndSet("initial", "updated");
-
-// High-contention: LongAdder beats AtomicLong
-LongAdder adder = new LongAdder();
-adder.increment();
-long total = adder.sum();
-```
 
 ---
 
@@ -380,26 +323,6 @@ A thread is perpetually denied CPU time by higher-priority threads. Fix: `new Re
 
 ---
 
-## Java Memory Model
-
-The JMM defines **happens-before**: when writes by one thread are guaranteed visible to another.
-
-| Guarantee | Rule |
-|---|---|
-| Thread start | Writes before `t.start()` are visible in the new thread |
-| Thread join | Writes in thread t visible after `t.join()` returns |
-| Synchronized | Unlock → happens-before → next lock of the same monitor |
-| Volatile | Write → happens-before → subsequent read of the same variable |
-
-```java
-// Without volatile — Thread 2 may loop forever (stale cached value)
-boolean flag = false;
-// Thread 1: flag = true;
-// Thread 2: while (!flag) { }  // may never see the update
-```
-
----
-
 ## Common Interview Questions
 
 ### Q: What is the difference between `wait()` and `sleep()`?
@@ -437,12 +360,6 @@ A background thread that is automatically killed when all non-daemon threads fin
 
 ---
 
-### Q: Explain CompletableFuture vs Future.
-
-`Future.get()` always blocks. `CompletableFuture` supports non-blocking pipelines (`thenApply`, `thenCompose`), combining futures (`allOf`, `thenCombine`), manual completion, and built-in error handling (`exceptionally`, `handle`).
-
----
-
 ### Q: What is a ThreadLocal?
 
 Gives each thread its own independent copy of a variable — threads never share it. Common use: `SimpleDateFormat` (not thread-safe), per-request context in web apps. Always call `remove()` when done in thread-pool threads to prevent memory leaks.
@@ -474,13 +391,6 @@ Thread Pools:
   newFixedThreadPool(n)  → fixed n threads
   newCachedThreadPool()  → unbounded (use carefully)
   new ThreadPoolExecutor(core, max, ttl, queue, rejectPolicy)
-
-CompletableFuture:
-  supplyAsync   → start async
-  thenApply     → sync transform
-  thenCompose   → async chain (flatMap)
-  thenCombine   → merge two futures
-  allOf / anyOf → wait for all / first to finish
 
 Locks:
   ReentrantLock          → tryLock, interruptible, fair mode

@@ -1,8 +1,8 @@
 # GoF Design Patterns — Java Interview Guide
 
-All 23 Gang of Four patterns with Java code, real-world use cases, Spring usage, and interview Q&A.
+The **8 most-asked patterns** for junior interviews — with full Java code, Spring usage, and interview Q&A: Singleton, Factory Method, Builder, Decorator, Proxy, Observer, Strategy, Template Method.
 
-> **Focus first on the 8 most-asked patterns** (bolded below): Singleton, Factory Method, Builder, Strategy, Observer, Decorator, Proxy, Template Method. The rest are "awareness" level for junior interviews.
+> **Scope note (junior job prep):** The detailed code for the other 15 GoF patterns (advanced/less-asked) was trimmed — they remain as one-line awareness entries in the [Patterns Summary Table](#patterns-summary-table) below, which is all a junior needs. The full per-pattern code remains in git history.
 
 ---
 
@@ -59,27 +59,6 @@ public class EmailNotificationService extends NotificationService {
 
 ---
 
-### 3. Abstract Factory
-Create families of related objects without specifying concrete classes.
-
-> Pick "Modern" furniture style — the factory gives you a matching chair, table, and sofa.
-
-```java
-public interface UIFactory {
-    Button createButton();
-    Checkbox createCheckbox();
-}
-public class WindowsUIFactory implements UIFactory {
-    public Button createButton() { return new WindowsButton(); }
-    public Checkbox createCheckbox() { return new WindowsCheckbox(); }
-}
-// Client uses UIFactory interface — doesn't know which platform it has
-```
-**vs Factory Method:** Abstract Factory creates a *family* of objects; Factory Method creates *one* type.  
-**Spring:** DataSource abstractions, Spring Data repository factories.
-
----
-
 ### **4. Builder**
 Construct complex objects step by step. Handles many optional parameters.
 
@@ -107,71 +86,9 @@ User user = new User.Builder("John", "john@example.com").phone("555-1234").build
 
 ---
 
-### 5. Prototype
-*(Awareness)* Clone existing objects instead of creating from scratch. Useful when creation is expensive.
-
-```java
-public DocumentTemplate copy() { return new DocumentTemplate(this); } // copy constructor
-```
-**Spring:** `@Scope("prototype")`.
-
----
-
 ## STRUCTURAL PATTERNS
 
 > How you assemble objects into bigger structures — wrapping, connecting, or simplifying them.
-
-### 6. Adapter
-Make incompatible interfaces work together.
-
-> Like a travel plug adapter — sits between your plug and the foreign socket.
-
-```java
-public class LegacyPaymentProcessor {
-    public void processPayment(double amount, String card) { /* ... */ }
-}
-public interface PaymentGateway { void charge(PaymentRequest request); }
-
-public class LegacyPaymentAdapter implements PaymentGateway {
-    private final LegacyPaymentProcessor legacy;
-    public LegacyPaymentAdapter(LegacyPaymentProcessor l) { this.legacy = l; }
-    public void charge(PaymentRequest req) {
-        legacy.processPayment(req.getAmount(), req.getCardNumber());
-    }
-}
-```
-**Java:** `Arrays.asList()`, `InputStreamReader` (adapts InputStream → Reader).  
-**Spring:** `HandlerAdapter` in Spring MVC, `JpaVendorAdapter`.
-
----
-
-### 7. Bridge
-*(Awareness)* Separate abstraction from implementation so both can vary independently.
-
-> Like a universal remote (abstraction) + any TV brand (implementation).
-
-```java
-public abstract class Shape {
-    protected Renderer renderer; // bridge to implementation
-    public Shape(Renderer renderer) { this.renderer = renderer; }
-}
-```
-**Java/Real-world:** JDBC (Java code = abstraction, driver = implementation), SLF4J.
-
----
-
-### 8. Composite
-*(Awareness)* Treat individual objects and compositions uniformly via a shared interface (tree structure).
-
-> Like folders and files — asking either for its "size" just works.
-
-```java
-public interface FileSystemItem { long getSize(); }
-// Directory.getSize() sums children; File.getSize() returns its own — same call works on both.
-```
-**Spring:** Spring Security FilterChain, UI component trees.
-
----
 
 ### **9. Decorator**
 Add behavior dynamically without subclassing.
@@ -201,41 +118,6 @@ Coffee c = new Milk(new SimpleCoffee()); // "Coffee, Milk = $1.25"
 ```
 **Java:** `new BufferedReader(new FileReader("file.txt"))`.  
 **Spring:** Spring Security filter chain, Servlet filter wrappers.
-
----
-
-### 10. Facade
-Simplified interface to a complex subsystem.
-
-> Like a "Watch Movie" button — one press turns on TV, sound system, and cable box.
-
-```java
-public class HomeTheaterFacade {
-    private DVDPlayer dvd; private Projector projector; private SoundSystem sound;
-
-    public HomeTheaterFacade(DVDPlayer d, Projector p, SoundSystem s) { dvd=d; projector=p; sound=s; }
-
-    public void watchMovie(String movie) {
-        projector.on(); projector.wideScreenMode();
-        sound.on(); sound.setVolume(10);
-        dvd.on(); dvd.play(movie);
-    }
-    public void endMovie() { dvd.off(); sound.off(); projector.off(); }
-}
-```
-**Spring:** `JdbcTemplate` (facade over JDBC boilerplate), Spring Data `Repository`, `RestTemplate`.
-
----
-
-### 11. Flyweight
-*(Awareness)* Share common (intrinsic) state among many objects to save memory; each holds only its unique (extrinsic) state.
-
-> The letter "a" is stored once; only each position differs.
-
-```java
-TreeType type = TreeTypeFactory.get("Oak", "green", "rough"); // shared, reused for all Oaks
-```
-**Java:** String pool, `Integer.valueOf()` cache (-128 to 127).
 
 ---
 
@@ -274,93 +156,6 @@ public class ImageProxy implements Image {
 
 > How objects communicate and divide responsibility.
 
-### 13. Chain of Responsibility
-*(Awareness)* Pass a request along a chain of handlers; each handles it or forwards it.
-
-> Like support escalation: L1 → L2 → L3.
-
-```java
-public abstract class LogHandler {
-    protected LogHandler next;
-    public LogHandler setNext(LogHandler next) { this.next = next; return next; }
-    public abstract void handle(String level, String message);
-}
-```
-**Spring:** Spring Security `FilterChain`, Servlet `FilterChain`.
-
----
-
-### 14. Command
-*(Awareness)* Encapsulate a request as an object so it can be queued, logged, or undone.
-
-> Like a restaurant order slip — holds the request as a "thing."
-
-```java
-public interface Command { void execute(); void undo(); }
-// Invoker keeps a history stack; undo() pops and reverses the last command.
-```
-**Java:** `Runnable`, `Callable`. **Spring:** Spring Batch `Tasklet`, `@Async` tasks.
-
----
-
-### 15. Interpreter
-*(Awareness)* Define a grammar and interpret sentences in it.
-
-> Like a calculator reading "3 + 5" — each rule is a class with `interpret()`.
-
-```java
-public interface Expression { int interpret(Map<String, Integer> context); }
-// AddExpression.interpret() = left.interpret() + right.interpret()
-```
-**Spring:** SpEL, SQL parsing, regex engines.
-
----
-
-### 16. Iterator
-*(Awareness)* Sequential access to elements without exposing internal representation.
-
-> Like a TV remote's "next channel" button.
-
-```java
-// Every Java for-each loop uses Iterator<T> internally
-public Iterator<Integer> iterator() {
-    return new Iterator<>() {
-        int current = start;
-        public boolean hasNext() { return current <= end; }
-        public Integer next() { return current++; }
-    };
-}
-```
-**Java:** `Iterator<T>`, `Iterable<T>`, all Collection iterators.
-
----
-
-### 17. Mediator
-*(Awareness)* Reduce coupling by routing communication through a central mediator.
-
-> Like an air-traffic controller — planes talk to the tower, not each other.
-
-```java
-public interface ChatMediator { void sendMessage(String message, User sender); }
-// ChatRoom forwards each message to all other users — users never reference each other.
-```
-**Spring:** `ApplicationEventPublisher`, Spring MVC Controller, message brokers (Kafka, RabbitMQ).
-
----
-
-### 18. Memento
-*(Awareness)* Capture an object's state as a snapshot that can be restored later.
-
-> Like a video-game save point.
-
-```java
-public Memento save() { return new Memento(content); }
-public void restore(Memento m) { content = m.getState(); }
-```
-**Java/Spring:** `Serializable`, git commits, database transaction savepoints.
-
----
-
 ### **19. Observer**
 Define a one-to-many dependency: when one object changes state, all dependents are notified.
 
@@ -391,20 +186,6 @@ public class PriceAlertService implements StockObserver {
 }
 ```
 **Spring:** `@EventListener` / `ApplicationEventPublisher`. Kafka/RabbitMQ are distributed observer implementations.
-
----
-
-### 20. State
-*(Awareness)* Let an object alter its behavior when its internal state changes.
-
-> Like a traffic light — same object, different behavior per state.
-
-```java
-public interface OrderState { void confirm(Order o); void ship(Order o); }
-// PendingState.confirm() does the work, then order.setState(new ConfirmedState()).
-```
-**vs Strategy:** State manages transitions and knows about other states; Strategy just swaps algorithms.  
-**Spring:** `@EnableStateMachine`, `@State`, `@Transition`.
 
 ---
 
@@ -459,20 +240,6 @@ public class SalesReport extends ReportGenerator {
 ```
 **Spring:** `JdbcTemplate` (you provide SQL + RowMapper; template handles connection/exceptions), `HttpServlet.service()` → `doGet()`/`doPost()`.  
 **vs Strategy:** Template Method uses inheritance; Strategy uses composition.
-
----
-
-### 23. Visitor
-*(Awareness)* Separate an algorithm from the object structure it operates on — add new operations without modifying existing classes.
-
-> Like a tax auditor visiting each business type — each element has `accept(visitor)`; visitor has `visitX()` per type.
-
-```java
-public interface Shape { void accept(ShapeVisitor visitor); }
-public interface ShapeVisitor { void visitCircle(Circle c); void visitRectangle(Rectangle r); }
-// Circle.accept() calls visitor.visitCircle(this) — double dispatch.
-```
-**Real-world:** Java compiler AST traversal, XML/JSON parsers, Spring's `BeanDefinitionVisitor`.
 
 ---
 

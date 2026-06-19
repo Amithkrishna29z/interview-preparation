@@ -4,18 +4,12 @@
 
 ## Table of Contents
 1. [PostgreSQL Basics](#postgresql-basics)
-2. [Advanced Data Types](#advanced-data-types)
-3. [JSON & JSONB Support](#json--jsonb-support)
-4. [Indexing](#indexing)
-5. [Query Optimization](#query-optimization)
-6. [Stored Procedures & Functions](#stored-procedures--functions)
-7. [PostgreSQL Extensions](#postgresql-extensions)
-8. [Replication & High Availability](#replication--high-availability)
-9. [Performance Tuning](#performance-tuning)
-10. [PostgreSQL vs MySQL](#postgresql-vs-mysql)
-11. [Window Functions & CTEs](#window-functions--ctes)
-12. [Common Mistakes](#common-mistakes)
-13. [Quick Reference Cheat Sheet](#quick-reference-cheat-sheet)
+2. [JSON & JSONB Support](#json--jsonb-support)
+3. [Indexing](#indexing)
+4. [Query Optimization](#query-optimization)
+5. [PostgreSQL vs MySQL](#postgresql-vs-mysql)
+6. [Common Mistakes](#common-mistakes)
+7. [Quick Reference Cheat Sheet](#quick-reference-cheat-sheet)
 
 ---
 
@@ -46,52 +40,6 @@ MVCC (Multi-Version Concurrency Control) lets readers and writers work simultane
 ```sql
 -- Manually reclaim space from dead tuples
 VACUUM users;
-```
-
----
-
-## Advanced Data Types
-
-### Q4: What are the advanced data types in PostgreSQL?
-
-**Arrays:**
-
-```sql
-CREATE TABLE products (
-    id SERIAL PRIMARY KEY,
-    name VARCHAR(100),
-    tags TEXT[]
-);
-
-INSERT INTO products (name, tags) VALUES ('Laptop', ARRAY['electronics', 'computers']);
-
-SELECT name FROM products WHERE 'electronics' = ANY(tags);
-UPDATE products SET tags = array_append(tags, 'new-tag') WHERE id = 1;
-```
-
-**Ranges:**
-
-```sql
-CREATE TABLE events (
-    id SERIAL PRIMARY KEY,
-    name VARCHAR(100),
-    date_range DATERANGE
-);
-
-INSERT INTO events (name, date_range) VALUES ('Conference', '[2024-01-01, 2024-01-31]');
-SELECT * FROM events WHERE date_range @> '2024-01-15'::date;  -- Contains
-```
-
-**ENUMs:**
-
-```sql
-CREATE TYPE order_status AS ENUM ('pending', 'processing', 'shipped', 'delivered', 'cancelled');
-
-CREATE TABLE orders (
-    id SERIAL PRIMARY KEY,
-    status order_status DEFAULT 'pending'
-);
--- Note: enum values can be added but not easily removed or renamed
 ```
 
 ---
@@ -251,137 +199,6 @@ SELECT * FROM products WHERE to_tsvector('english', name) @@ to_tsquery('english
 
 ---
 
-## Stored Procedures & Functions
-
-### Q9: How do you create stored procedures and functions in PostgreSQL?
-
-**Function returning a table:**
-
-```sql
-CREATE OR REPLACE FUNCTION get_user_orders(p_user_id INTEGER)
-RETURNS TABLE (order_id INTEGER, order_date TIMESTAMP, total NUMERIC) AS $$
-BEGIN
-    RETURN QUERY
-    SELECT o.id, o.order_date, o.total FROM orders o
-    WHERE o.user_id = p_user_id ORDER BY o.order_date DESC;
-END;
-$$ LANGUAGE plpgsql;
-
-SELECT * FROM get_user_orders(1);
-```
-
-**Stored Procedure (PostgreSQL 11+ — can manage transactions):**
-
-```sql
-CREATE OR REPLACE PROCEDURE archive_old_orders(p_before DATE) AS $$
-BEGIN
-    INSERT INTO orders_archive SELECT * FROM orders WHERE order_date < p_before;
-    DELETE FROM orders WHERE order_date < p_before;
-    COMMIT;
-END;
-$$ LANGUAGE plpgsql;
-
-CALL archive_old_orders('2023-01-01');
-```
-
-**Trigger function:**
-
-```sql
-CREATE OR REPLACE FUNCTION update_user_order_count()
-RETURNS TRIGGER AS $$
-BEGIN
-    IF TG_OP = 'INSERT' THEN
-        UPDATE users SET order_count = order_count + 1 WHERE id = NEW.user_id;
-        RETURN NEW;
-    ELSIF TG_OP = 'DELETE' THEN
-        UPDATE users SET order_count = order_count - 1 WHERE id = OLD.user_id;
-        RETURN OLD;
-    END IF;
-END;
-$$ LANGUAGE plpgsql;
-
-CREATE TRIGGER trigger_update_user_order_count
-AFTER INSERT OR DELETE ON orders
-FOR EACH ROW EXECUTE FUNCTION update_user_order_count();
-```
-
----
-
-## PostgreSQL Extensions
-
-### Q10: What are PostgreSQL extensions and how do you use them?
-
-Extensions add functionality and are enabled per database with `CREATE EXTENSION`.
-
-**Common extensions to recognize:**
-- **pg_stat_statements**: tracks slow queries by execution stats.
-- **PostGIS**: geographic/spatial data.
-- **pg_trgm**: fuzzy string matching and similarity.
-- **uuid-ossp** / `gen_random_uuid()`: UUID primary keys.
-- **hstore**: simple key-value column (JSONB is usually preferred).
-
-```sql
--- Enable and use
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
-CREATE TABLE users (id UUID PRIMARY KEY DEFAULT uuid_generate_v4(), username VARCHAR(50));
-
--- Fuzzy search with pg_trgm
-CREATE EXTENSION IF NOT EXISTS pg_trgm;
-CREATE INDEX idx_products_name_trgm ON products USING GIN (name gin_trgm_ops);
-SELECT name, similarity(name, 'laptop') FROM products WHERE name % 'laptop';
-```
-
----
-
-## Replication & High Availability
-
-### Q11: What are the replication methods in PostgreSQL?
-
-Awareness-level for juniors — this is primarily a DBA responsibility.
-
-- **Streaming (physical) replication**: ships the WAL byte-for-byte to standby servers; standbys can serve read-only queries. Used for failover/HA.
-- **Logical replication**: replicates selected tables via `PUBLICATION`/`SUBSCRIPTION`; works across major versions.
-
-```sql
--- Logical replication: publisher
-CREATE PUBLICATION my_publication FOR TABLE users, orders;
-
--- Subscriber
-CREATE SUBSCRIPTION my_subscription
-CONNECTION 'host=publisher_host dbname=mydb user=postgres password=password'
-PUBLICATION my_publication;
-
--- Check replication lag
-SELECT now() - pg_last_xact_replay_timestamp() AS lag;  -- on standby
-```
-
----
-
-## Performance Tuning
-
-### Q12: How do you tune PostgreSQL performance?
-
-Awareness-level for juniors — focus on writing good queries and indexes; know these settings exist.
-
-```sql
--- Key postgresql.conf settings
-shared_buffers = 4GB        -- ~25% of RAM
-effective_cache_size = 12GB -- ~50-75% of RAM (planner hint)
-work_mem = 64MB             -- per sort/hash operation
-max_connections = 200
-```
-
-**Find slow queries with pg_stat_statements:**
-
-```sql
-CREATE EXTENSION IF NOT EXISTS pg_stat_statements;
-SELECT query, calls, mean_time FROM pg_stat_statements ORDER BY mean_time DESC LIMIT 20;
-```
-
-`AUTOVACUUM` (on by default) prevents table bloat — defaults are fine for most apps.
-
----
-
 ## PostgreSQL vs MySQL
 
 ### Q13: Detailed comparison of PostgreSQL and MySQL
@@ -394,58 +211,6 @@ SELECT query, calls, mean_time FROM pg_stat_statements ORDER BY mean_time DESC L
 | Transactions | Full ACID, savepoints | Full ACID (InnoDB) |
 | Replication | Streaming + logical | Statement/row-based |
 | Strengths | Complex queries, writes, concurrency | Read-heavy, simple queries |
-
----
-
-## Window Functions & CTEs
-
-### Q14: What are window functions in PostgreSQL?
-
-Window functions calculate across related rows without collapsing them like `GROUP BY`. Think of them as "aggregates that keep every row."
-
-```sql
--- Ranking functions
-SELECT username, total,
-    ROW_NUMBER() OVER (ORDER BY total DESC) AS row_num,
-    RANK()       OVER (ORDER BY total DESC) AS rank,
-    DENSE_RANK() OVER (ORDER BY total DESC) AS dense_rank
-FROM orders;
-
--- Running total + LAG (access previous row)
-SELECT username, order_date, total,
-    SUM(total) OVER (ORDER BY order_date) AS running_total,
-    LAG(total) OVER (ORDER BY order_date) AS previous_total
-FROM orders;
-
--- PARTITION BY: restart calculation per group
-SELECT username, order_date, total,
-    SUM(total) OVER (PARTITION BY user_id ORDER BY order_date) AS user_running_total
-FROM orders JOIN users ON orders.user_id = users.id;
-```
-
-### Q15: What are CTEs in PostgreSQL?
-
-CTEs (`WITH` clauses) define temporary named result sets to make complex queries readable. Recursive CTEs traverse hierarchical data.
-
-```sql
--- Basic CTE
-WITH user_orders AS (
-    SELECT user_id, COUNT(*) AS order_count, SUM(total) AS total_spent
-    FROM orders GROUP BY user_id
-)
-SELECT u.username, uo.order_count, uo.total_spent
-FROM users u JOIN user_orders uo ON u.id = uo.user_id
-WHERE uo.order_count > 5;
-
--- Recursive CTE (org chart)
-WITH RECURSIVE org_chart AS (
-    SELECT id, name, manager_id, 1 AS level FROM employees WHERE manager_id IS NULL
-    UNION ALL
-    SELECT e.id, e.name, e.manager_id, oc.level + 1
-    FROM employees e JOIN org_chart oc ON e.manager_id = oc.id
-)
-SELECT * FROM org_chart ORDER BY level, name;
-```
 
 ---
 
@@ -507,12 +272,6 @@ CREATE INDEX idx_name ON table USING GIN (jsonb_column);
 -- JSON access and update
 SELECT data->'nested'->>'key' FROM table;
 UPDATE table SET data = data || '{"new": "value"}'::jsonb;
-
--- Window function
-SELECT col, ROW_NUMBER() OVER (PARTITION BY grp ORDER BY col) FROM table;
-
--- CTE
-WITH cte AS (SELECT ... FROM ...) SELECT * FROM cte;
 ```
 
 ---
