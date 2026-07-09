@@ -124,9 +124,9 @@
 ## Your Study Order (4-Week Plan)
 
 ### Week 1 — The Language
-- **Day 1–2:** Guide 1 (Fundamentals) — syntax, types, properties, namespaces
+- **Day 1–2:** Guide 1 (Fundamentals) — syntax, types, properties, namespaces + Guide 15 (Modern C# 8–12 syntax — read alongside; NRTs, patterns, records)
 - **Day 3–4:** Guide 2 (OOP & Type System) — classes, interfaces, generics, structs, records
-- **Day 5:** Guide 3 (Collections)
+- **Day 5:** Guide 3 (Collections) + Guide 14 (Delegates, Events & Functional C# — *heavily interviewed, no Java-only equivalent*)
 - **Day 6–7:** Guide 4 (LINQ) — *this is the big C# superpower; spend real time here*
 
 ### Week 2 — Intermediate Language
@@ -143,7 +143,7 @@
 ### Week 4 — Production Skills & Interview Prep
 - **Day 1–2:** Guide 11 (Security / JWT / Identity)
 - **Day 3:** Guide 12 (Testing)
-- **Day 4–5:** Build a full mini CRUD Web API (combines guides 8–12)
+- **Day 4–5:** Guide 16 (CRUD Web API Capstone) — *build it end-to-end, then rebuild from memory* + Guide 17 (Deployment & Ops — config, secrets, logging, Docker)
 - **Day 6–7:** Guide 13 (Interview Questions) — drill until fluent
 
 ---
@@ -166,6 +166,10 @@
 | 11 | **ASPNET_Core_Security_JWT_Identity.md** | Auth & authorization | Spring Security |
 | 12 | **DotNet_Testing_xUnit_Moq_Guide.md** | Unit & integration tests | JUnit / Mockito |
 | 13 | **DotNet_Junior_Interview_Questions.md** | 100+ Q&A to drill | Junior interview prep |
+| 14 | **CSharp_Delegates_Events_Functional.md** | Delegates, events, Func/Action, closures | Functional interfaces / Observer |
+| 15 | **CSharp_Modern_Language_Features.md** | C# 8–12 syntax, NRTs, patterns, records | Java 21 modern features |
+| 16 | **DotNet_CRUD_WebAPI_Capstone.md** | Build a full CRUD API end-to-end | Spring PetClinic-style build |
+| 17 | **DotNet_Deployment_And_Ops.md** | Config, secrets, logging, Docker, publish | Spring profiles / Actuator / Dockerized JAR |
 
 ---
 
@@ -252,6 +256,6 @@ GOLDEN RULES:
 
 ---
 
-*Study order: Guides 1 → 13. Build a project after Week 3. Drill interview questions in Week 4.*
+*Study order: Guides 1 → 17. Language + Guides 14–15 in Weeks 1–2; build the Guide 16 capstone and skim Guide 17 in Week 4; drill interview questions (13) last.*
 
-*Last Updated: 2026-06-16*
+*Last Updated: 2026-07-09*
