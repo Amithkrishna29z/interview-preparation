@@ -170,6 +170,7 @@
 | 15 | [**CSharp_Modern_Language_Features.md**](CSharp_Modern_Language_Features.md) | C# 8–12 syntax, NRTs, patterns, records | Java 21 modern features |
 | 16 | [**DotNet_CRUD_WebAPI_Capstone.md**](DotNet_CRUD_WebAPI_Capstone.md) | Build a full CRUD API end-to-end | Spring PetClinic-style build |
 | 17 | [**DotNet_Deployment_And_Ops.md**](DotNet_Deployment_And_Ops.md) | Config, secrets, logging, Docker, publish | Spring profiles / Actuator / Dockerized JAR |
+| 18 | [**SQL_Server_Guide_For_DotNet.md**](SQL_Server_Guide_For_DotNet.md) | SQL Server + T-SQL, connecting via ADO.NET/EF Core | MySQL/PG + JDBC (the .NET default DB) |
 
 ---
 
@@ -177,7 +178,7 @@
 
 These topics are **language-agnostic** — the concepts transfer 1:1 to .NET. **Don't re-study them; just reuse your existing notes:**
 
-- **SQL & Databases** → [`MySQL_Interview_Questions.md`](../Java/MySQL_Interview_Questions.md), [`PostgreSQL_Interview_Questions.md`](../Java/PostgreSQL_Interview_Questions.md), [`SQL_Advanced_Window_Functions.md`](../Java/SQL_Advanced_Window_Functions.md), [`Database_Concepts_Interview_Questions.md`](../Java/Database_Concepts_Interview_Questions.md) (EF Core still generates SQL — same fundamentals)
+- **SQL & Databases** → [`MySQL_Interview_Questions.md`](../Java/MySQL_Interview_Questions.md), [`PostgreSQL_Interview_Questions.md`](../Java/PostgreSQL_Interview_Questions.md), [`SQL_Advanced_Window_Functions.md`](../Java/SQL_Advanced_Window_Functions.md), [`Database_Concepts_Interview_Questions.md`](../Java/Database_Concepts_Interview_Questions.md) (EF Core still generates SQL — same fundamentals). **For SQL Server / T-SQL dialect specifics and how .NET connects to it, see Guide 18** — [`SQL_Server_Guide_For_DotNet.md`](SQL_Server_Guide_For_DotNet.md).
 - **Docker / Kubernetes** → [`Docker_Concepts_Study_Guide.md`](../Java/Docker_Concepts_Study_Guide.md), [`Kubernetes_Learning_Guide.md`](../Java/Kubernetes_Learning_Guide.md) (.NET apps containerize the same way)
 - **Networking / REST / HTTP** → [`Networking_Interview_Questions.md`](../Java/Networking_Interview_Questions.md), [`REST_API_HTTP_Interview_Questions.md`](../Java/REST_API_HTTP_Interview_Questions.md)
 - **System Design / Microservices** → [`System_Design_Microservices_Interview_Questions.md`](../Java/System_Design_Microservices_Interview_Questions.md), [`Microservices_Saga_CQRS_EventSourcing.md`](../Java/Microservices_Saga_CQRS_EventSourcing.md)
@@ -256,6 +257,6 @@ GOLDEN RULES:
 
 ---
 
-*Study order: Guides 1 → 17. Language + Guides 14–15 in Weeks 1–2; build the Guide 16 capstone and skim Guide 17 in Week 4; drill interview questions (13) last.*
+*Study order: Guides 1 → 17. Language + Guides 14–15 in Weeks 1–2; build the Guide 16 capstone and skim Guide 17 in Week 4; drill interview questions (13) last. Guide 18 (SQL Server) pairs with Guide 9 (EF Core) in Week 3.*
 
-*Last Updated: 2026-07-09*
+*Last Updated: 2026-07-14*

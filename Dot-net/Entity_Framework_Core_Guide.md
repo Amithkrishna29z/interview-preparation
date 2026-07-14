@@ -675,7 +675,7 @@ catch (DbUpdateConcurrencyException ex)   // == OptimisticLockException
 
 **Think of it like...** the **provider** is your JDBC driver + Hibernate dialect rolled into one NuGet package, the connection string is your JDBC URL, and `AddDbContext` is registering the `EntityManagerFactory` with the container so each request gets a scoped `EntityManager`.
 
-EF Core is database-agnostic; you pick a **provider** package:
+EF Core is database-agnostic; you pick a **provider** package (for SQL Server-specific connection strings, T-SQL, and the underlying ADO.NET layer, see [Guide 18: SQL Server for .NET](SQL_Server_Guide_For_DotNet.md)):
 
 | Database | Provider package | Hibernate dialect analogy |
 |---|---|---|
