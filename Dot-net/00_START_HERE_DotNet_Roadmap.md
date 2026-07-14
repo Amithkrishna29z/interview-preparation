@@ -152,24 +152,24 @@
 
 | # | Guide | What You'll Learn | Java Analog |
 |---|---|---|---|
-| 0 | **00_START_HERE_DotNet_Roadmap.md** | This file — your map | — |
-| 1 | **CSharp_Fundamentals_For_Java_Devs.md** | Syntax, types, properties, namespaces | Core Java |
-| 2 | **CSharp_OOP_And_Type_System.md** | Classes, interfaces, generics, structs, records | OOP / Generics / Enums |
-| 3 | **CSharp_Collections_Guide.md** | List, Dictionary, HashSet, etc. | Collections Framework |
-| 4 | **CSharp_LINQ_Guide.md** | Query data like a pro | Streams & Lambdas |
-| 5 | **CSharp_Async_Await_Concurrency.md** | `async`/`await`, `Task`, parallelism | Multithreading |
-| 6 | **CSharp_Exception_Handling_Guide.md** | try/catch/finally, custom exceptions | Exception Handling |
-| 7 | **DotNet_CLR_Memory_And_GC.md** | How the runtime + GC work | JVM Internals / GC |
-| 8 | **ASPNET_Core_Web_API_Guide.md** | Build REST APIs | Spring Boot / REST |
-| 9 | **Entity_Framework_Core_Guide.md** | Database access (ORM) | JPA / Hibernate |
-| 10 | **DependencyInjection_And_Middleware_Guide.md** | DI container + request pipeline | Spring DI / AOP |
-| 11 | **ASPNET_Core_Security_JWT_Identity.md** | Auth & authorization | Spring Security |
-| 12 | **DotNet_Testing_xUnit_Moq_Guide.md** | Unit & integration tests | JUnit / Mockito |
-| 13 | **DotNet_Junior_Interview_Questions.md** | 100+ Q&A to drill | Junior interview prep |
-| 14 | **CSharp_Delegates_Events_Functional.md** | Delegates, events, Func/Action, closures | Functional interfaces / Observer |
-| 15 | **CSharp_Modern_Language_Features.md** | C# 8–12 syntax, NRTs, patterns, records | Java 21 modern features |
-| 16 | **DotNet_CRUD_WebAPI_Capstone.md** | Build a full CRUD API end-to-end | Spring PetClinic-style build |
-| 17 | **DotNet_Deployment_And_Ops.md** | Config, secrets, logging, Docker, publish | Spring profiles / Actuator / Dockerized JAR |
+| 0 | [**00_START_HERE_DotNet_Roadmap.md**](00_START_HERE_DotNet_Roadmap.md) | This file — your map | — |
+| 1 | [**CSharp_Fundamentals_For_Java_Devs.md**](CSharp_Fundamentals_For_Java_Devs.md) | Syntax, types, properties, namespaces | Core Java |
+| 2 | [**CSharp_OOP_And_Type_System.md**](CSharp_OOP_And_Type_System.md) | Classes, interfaces, generics, structs, records | OOP / Generics / Enums |
+| 3 | [**CSharp_Collections_Guide.md**](CSharp_Collections_Guide.md) | List, Dictionary, HashSet, etc. | Collections Framework |
+| 4 | [**CSharp_LINQ_Guide.md**](CSharp_LINQ_Guide.md) | Query data like a pro | Streams & Lambdas |
+| 5 | [**CSharp_Async_Await_Concurrency.md**](CSharp_Async_Await_Concurrency.md) | `async`/`await`, `Task`, parallelism | Multithreading |
+| 6 | [**CSharp_Exception_Handling_Guide.md**](CSharp_Exception_Handling_Guide.md) | try/catch/finally, custom exceptions | Exception Handling |
+| 7 | [**DotNet_CLR_Memory_And_GC.md**](DotNet_CLR_Memory_And_GC.md) | How the runtime + GC work | JVM Internals / GC |
+| 8 | [**ASPNET_Core_Web_API_Guide.md**](ASPNET_Core_Web_API_Guide.md) | Build REST APIs | Spring Boot / REST |
+| 9 | [**Entity_Framework_Core_Guide.md**](Entity_Framework_Core_Guide.md) | Database access (ORM) | JPA / Hibernate |
+| 10 | [**DependencyInjection_And_Middleware_Guide.md**](DependencyInjection_And_Middleware_Guide.md) | DI container + request pipeline | Spring DI / AOP |
+| 11 | [**ASPNET_Core_Security_JWT_Identity.md**](ASPNET_Core_Security_JWT_Identity.md) | Auth & authorization | Spring Security |
+| 12 | [**DotNet_Testing_xUnit_Moq_Guide.md**](DotNet_Testing_xUnit_Moq_Guide.md) | Unit & integration tests | JUnit / Mockito |
+| 13 | [**DotNet_Junior_Interview_Questions.md**](DotNet_Junior_Interview_Questions.md) | 100+ Q&A to drill | Junior interview prep |
+| 14 | [**CSharp_Delegates_Events_Functional.md**](CSharp_Delegates_Events_Functional.md) | Delegates, events, Func/Action, closures | Functional interfaces / Observer |
+| 15 | [**CSharp_Modern_Language_Features.md**](CSharp_Modern_Language_Features.md) | C# 8–12 syntax, NRTs, patterns, records | Java 21 modern features |
+| 16 | [**DotNet_CRUD_WebAPI_Capstone.md**](DotNet_CRUD_WebAPI_Capstone.md) | Build a full CRUD API end-to-end | Spring PetClinic-style build |
+| 17 | [**DotNet_Deployment_And_Ops.md**](DotNet_Deployment_And_Ops.md) | Config, secrets, logging, Docker, publish | Spring profiles / Actuator / Dockerized JAR |
 
 ---
 
@@ -177,14 +177,14 @@
 
 These topics are **language-agnostic** — the concepts transfer 1:1 to .NET. **Don't re-study them; just reuse your existing notes:**
 
-- **SQL & Databases** → `MySQL_Interview_Questions.md`, `PostgreSQL_Interview_Questions.md`, `SQL_Advanced_Window_Functions.md`, `Database_Concepts_Interview_Questions.md` (EF Core still generates SQL — same fundamentals)
-- **Docker / Kubernetes** → `Docker_Concepts_Study_Guide.md`, `Kubernetes_Learning_Guide.md` (.NET apps containerize the same way)
-- **Networking / REST / HTTP** → `Networking_Interview_Questions.md`, `REST_API_HTTP_Interview_Questions.md`
-- **System Design / Microservices** → `System_Design_Microservices_Interview_Questions.md`, `Microservices_Saga_CQRS_EventSourcing.md`
-- **Design Patterns** → `GoF_Design_Patterns_Complete.md` (patterns are universal; syntax differs slightly)
-- **Git / CI-CD / DevOps** → `Git_Docker_DevOps_Interview_Questions.md`, `CI_CD_Pipelines_Deep_Dive.md`
-- **Data Structures & Algorithms** → `DSA_Interview_Questions.md`, `DSA_Dynamic_Programming.md`
-- **HR / Behavioral** → `HR_Behavioral_Interview_Questions.md`
+- **SQL & Databases** → [`MySQL_Interview_Questions.md`](../Java/MySQL_Interview_Questions.md), [`PostgreSQL_Interview_Questions.md`](../Java/PostgreSQL_Interview_Questions.md), [`SQL_Advanced_Window_Functions.md`](../Java/SQL_Advanced_Window_Functions.md), [`Database_Concepts_Interview_Questions.md`](../Java/Database_Concepts_Interview_Questions.md) (EF Core still generates SQL — same fundamentals)
+- **Docker / Kubernetes** → [`Docker_Concepts_Study_Guide.md`](../Java/Docker_Concepts_Study_Guide.md), [`Kubernetes_Learning_Guide.md`](../Java/Kubernetes_Learning_Guide.md) (.NET apps containerize the same way)
+- **Networking / REST / HTTP** → [`Networking_Interview_Questions.md`](../Java/Networking_Interview_Questions.md), [`REST_API_HTTP_Interview_Questions.md`](../Java/REST_API_HTTP_Interview_Questions.md)
+- **System Design / Microservices** → [`System_Design_Microservices_Interview_Questions.md`](../Java/System_Design_Microservices_Interview_Questions.md), [`Microservices_Saga_CQRS_EventSourcing.md`](../Java/Microservices_Saga_CQRS_EventSourcing.md)
+- **Design Patterns** → [`GoF_Design_Patterns_Complete.md`](../Java/GoF_Design_Patterns_Complete.md) (patterns are universal; syntax differs slightly)
+- **Git / CI-CD / DevOps** → [`Git_Docker_DevOps_Interview_Questions.md`](../Java/Git_Docker_DevOps_Interview_Questions.md), [`CI_CD_Pipelines_Deep_Dive.md`](../Java/CI_CD_Pipelines_Deep_Dive.md)
+- **Data Structures & Algorithms** → [`DSA_Interview_Questions.md`](../Java/DSA_Interview_Questions.md), [`DSA_Dynamic_Programming.md`](../Java/DSA_Dynamic_Programming.md)
+- **HR / Behavioral** → [`HR_Behavioral_Interview_Questions.md`](../Java/HR_Behavioral_Interview_Questions.md)
 - **Kafka / Redis / Messaging** → concepts identical; .NET has `Confluent.Kafka` and `StackExchange.Redis` client libraries
 
 > **The rule:** If a topic is about a *concept* (how databases work, how HTTP works, how to design a system), reuse Java notes. If it's about *.NET-specific syntax or tooling*, use this folder.
